@@ -13,12 +13,45 @@ export default function HowItWorks() {
         <div className="step">
           <div className="step-num">02</div>
           <h3>We arrive quietly</h3>
-          <p>Our electric-only crew shows up on schedule. No gas engines, no exhaust smell — just clean, efficient work from the moment we arrive.</p>
+          <p>Our electric-only crew shows up on schedule. Every visit is the full treatment — mow, edge every border crisp, blow all clippings off hard surfaces, and a complete cleanup. Zero gas, zero exhaust, zero disruption.</p>
         </div>
         <div className="step">
           <div className="step-num">03</div>
           <h3>Enjoy your lawn</h3>
-          <p>We clean up completely and leave the place spotless. You&apos;ll barely know we were there — except for the perfectly maintained lawn.</p>
+          <p>We leave the place spotless — driveways clear, edges sharp, not a clipping out of place. You&apos;ll barely know we were there, except for the perfectly finished lawn.</p>
+        </div>
+      </div>
+
+      <div className="included-row">
+        <div className="included-label">Every visit includes</div>
+        <div className="included-items">
+          <div className="included-item">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 8.5l4 4 8-8" />
+            </svg>
+            Full mow
+          </div>
+          <div className="included-sep" />
+          <div className="included-item">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 8.5l4 4 8-8" />
+            </svg>
+            Crisp edging
+          </div>
+          <div className="included-sep" />
+          <div className="included-item">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 8.5l4 4 8-8" />
+            </svg>
+            Clipping blowdown
+          </div>
+          <div className="included-sep" />
+          <div className="included-item">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 8.5l4 4 8-8" />
+            </svg>
+            Complete cleanup
+          </div>
         </div>
       </div>
     </section>

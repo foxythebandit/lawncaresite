@@ -9,6 +9,7 @@ export default function Nav() {
         <li><a href="#how">How it works</a></li>
         <li><a href="#why">Why electric</a></li>
         <li><a href="#reviews">Reviews</a></li>
+        <li><a href="#faq">FAQ</a></li>
       </ul>
       <a href="#map-quote" className="nav-cta">Get a free quote</a>
     </nav>
