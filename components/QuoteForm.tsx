@@ -1,0 +1,82 @@
+'use client'
+
+import { useActionState } from 'react'
+import { submitQuote, type QuoteState } from '@/app/actions/submit-quote'
+
+export default function QuoteForm() {
+  const [state, action, isPending] = useActionState<QuoteState, FormData>(
+    submitQuote,
+    null
+  )
+
+  return (
+    <section className="cta-section" id="quote">
+      <div>
+        <div className="section-label" style={{ color: 'rgba(255,255,255,.6)' }}>
+          Get started
+        </div>
+        <h2 className="section-h2" style={{ color: '#fff' }}>
+          Free quote in 60 seconds.<br />No commitment.
+        </h2>
+        <p className="section-sub" style={{ color: 'rgba(255,255,255,.65)' }}>
+          Tell us a little about your lawn and we&apos;ll send a clear, fixed price
+          — same day. No surprises, no upsells.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '36px' }}>
+          {[
+            'Fixed pricing — no surprise bills',
+            'Available as soon as tomorrow',
+            '100% satisfaction guarantee',
+          ].map((item) => (
+            <div key={item} style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'rgba(255,255,255,.8)', fontSize: '14px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#52b788" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {state?.success ? (
+        <div className="cta-form">
+          <p className="form-title">We&apos;ll be in touch soon!</p>
+          <p style={{ color: 'rgba(255,255,255,.7)', fontSize: '15px', lineHeight: '1.6', marginTop: '8px' }}>
+            Thanks for reaching out. We&apos;ll call or text within 2 hours.
+          </p>
+        </div>
+      ) : (
+        <form action={action} className="cta-form">
+          <p className="form-title">Get my free quote</p>
+          <div className="form-group">
+            <input type="text" name="name" placeholder="Your name" required />
+          </div>
+          <div className="form-group">
+            <input type="tel" name="phone" placeholder="Phone number" required />
+          </div>
+          <div className="form-group">
+            <input type="text" name="postcode" placeholder="Your postcode / zip" required />
+          </div>
+          <div className="form-group">
+            <select name="yard_size" required defaultValue="">
+              <option value="" disabled>Yard size</option>
+              <option value="small">Small (under 2,000 sq ft)</option>
+              <option value="medium">Medium (2,000–5,000 sq ft)</option>
+              <option value="large">Large (5,000–10,000 sq ft)</option>
+              <option value="xlarge">Very large (10,000+ sq ft)</option>
+            </select>
+          </div>
+          {!state?.success && state?.error && (
+            <p style={{ color: '#ff9999', fontSize: '13px', marginBottom: '8px' }}>
+              {state.error}
+            </p>
+          )}
+          <button type="submit" className="form-submit" disabled={isPending}>
+            {isPending ? 'Sending…' : 'Get my free quote →'}
+          </button>
+          <p className="form-disclaimer">We&apos;ll call or text within 2 hours. No spam, ever.</p>
+        </form>
+      )}
+    </section>
+  )
+}
