@@ -974,8 +974,8 @@ footer {
 /* ── ZZZ SLEEP ANIMATION ── */
 @keyframes zzz-rise {
   0%   { opacity: 0;   transform: translate(0, 0);        }
-  18%  { opacity: .9;  }
-  80%  { opacity: .55; }
+  18%  { opacity: 1;   }
+  80%  { opacity: .75; }
   100% { opacity: 0;   transform: translate(9px, -30px);  }
 }
 .zzz { transform-box: fill-box; transform-origin: bottom center; }

@@ -177,9 +177,9 @@ export default function Hero() {
           {/* Subtle overall sky lift */}
           <rect width="600" height="580" fill="#4a7060" opacity=".06"/>
 
-          {/* Trees — trunks extended to ground level */}
-          <ellipse cx="60"  cy="320" rx="38" ry="90"  fill="#0f2e1e" opacity=".7" />
-          <rect    x="52"   y="400"  width="16" height="190" fill="#0f2e1e" opacity=".7" />
+          {/* Trees — left tree shortened to clear 0g card */}
+          <ellipse cx="60"  cy="370" rx="32" ry="55"  fill="#0f2e1e" opacity=".7" />
+          <rect    x="52"   y="420"  width="16" height="170" fill="#0f2e1e" opacity=".7" />
           <ellipse cx="540" cy="290" rx="42" ry="100" fill="#0f2e1e" opacity=".7" />
           <rect    x="531"  y="380"  width="18" height="210" fill="#0f2e1e" opacity=".7" />
 
@@ -227,20 +227,20 @@ export default function Hero() {
           <line x1="200" y1="468" x2="280" y2="468" stroke="#1a3828" strokeWidth="2" opacity=".65" />
 
           {/* ZZZ — over sleeping person's head */}
-          <text className="zzz1" x="226" y="458" fontFamily="sans-serif" fontSize="13" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
-          <text className="zzz2" x="236" y="449" fontFamily="sans-serif" fontSize="10" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
-          <text className="zzz3" x="245" y="441" fontFamily="sans-serif" fontSize="8"  fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz1" x="224" y="460" fontFamily="sans-serif" fontSize="16" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz2" x="236" y="450" fontFamily="sans-serif" fontSize="13" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz3" x="247" y="442" fontFamily="sans-serif" fontSize="10" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
 
-          {/* Small window above door — right side */}
-          <rect x="349" y="448" width="40" height="40" rx="3" fill="#1a3828" />
-          <rect x="351" y="450" width="36" height="36" rx="2" fill="#0d2018" />
-          <line x1="369" y1="450" x2="369" y2="486" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
-          <line x1="351" y1="468" x2="389" y2="468" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
+          {/* Small window above door — just right of bedroom window */}
+          <rect x="292" y="448" width="38" height="40" rx="3" fill="#1a3828" />
+          <rect x="294" y="450" width="34" height="36" rx="2" fill="#0d2018" />
+          <line x1="311" y1="450" x2="311" y2="486" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
+          <line x1="294" y1="468" x2="328" y2="468" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
 
-          {/* Front door — right side, original full size */}
-          <path d="M345 555 L345 515 A21 21 0 0 1 387 515 L387 555 Z" fill="#1a3828"/>
-          <path d="M347 555 L347 517 A19 19 0 0 1 385 517 L385 555 Z" fill="#0d2018"/>
-          <circle cx="381" cy="536" r="2.5" fill="#52b788" opacity=".7"/>
+          {/* Front door — just right of center, close to bedroom window */}
+          <path d="M290 555 L290 515 A21 21 0 0 1 332 515 L332 555 Z" fill="#1a3828"/>
+          <path d="M292 555 L292 517 A19 19 0 0 1 330 517 L330 555 Z" fill="#0d2018"/>
+          <circle cx="327" cy="536" r="2.5" fill="#52b788" opacity=".7"/>
 
           {/* ── Lawn mower — smooth flat style ── */}
           <g ref={mowerRef} transform={`translate(${START_X},${MOWER_Y})`}>
