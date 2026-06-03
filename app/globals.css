@@ -68,10 +68,28 @@ nav {
   grid-template-columns: 1fr 1fr;
   padding-top: 68px;
   overflow: hidden;
+  position: relative;
+}
+/* Organic blob that bleeds across the illustration boundary */
+.hero::before {
+  content: '';
+  position: absolute;
+  right: 28%;
+  top: -8%;
+  width: 560px;
+  height: 116%;
+  background: var(--green-deep);
+  opacity: .13;
+  border-radius: 42% 58% 66% 34% / 44% 52% 48% 56%;
+  filter: blur(60px);
+  z-index: 1;
+  pointer-events: none;
 }
 .hero-left {
   display: flex; flex-direction: column; justify-content: center;
   padding: 80px 5vw 80px 8vw;
+  position: relative;
+  z-index: 2;
 }
 .hero-badge {
   display: inline-flex; align-items: center; gap: 8px;
@@ -136,6 +154,18 @@ nav {
   background: var(--green-deep);
   overflow: hidden;
   display: flex; align-items: center; justify-content: center;
+  border-radius: 72px 0 0 72px;
+}
+/* Soft gradient fade — replaces hard vertical divider with organic transition */
+.hero-right::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 100px;
+  background: linear-gradient(to right, var(--off-white) 0%, transparent 100%);
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 72px 0 0 72px;
 }
 .hero-illustration { width: 100%; height: 100%; position: absolute; inset: 0; }
 
@@ -156,8 +186,15 @@ nav {
 .stat-card-val span { font-size: 16px; color: var(--green-bright); }
 .stat-card-label { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-weight: 400; }
 
+/* card-1 lives inside .hero-right */
 .card-1 { top: 55%; right: 8%; }
-.card-2 { top: 22%; left: 8%; }
+/* card-2 is a direct child of .hero — straddles the illustration boundary */
+.card-2 {
+  top: 18%;
+  left: calc(50% - 45px);
+  animation-delay: -2s;
+  z-index: 10;
+}
 @keyframes float {
   0%,100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
