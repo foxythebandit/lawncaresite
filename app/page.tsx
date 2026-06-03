@@ -15,12 +15,12 @@ export default function Home() {
       <Nav />
       <Hero />
       <TrustBar />
+      <MapQuoteBuilder />
       <HowItWorks />
       <WhyElectric />
       <NoiseComparison />
       <Testimonials />
       <FAQ />
-      <MapQuoteBuilder />
       <Footer />
     </>
   )
