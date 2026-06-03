@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 const MOWER_W  = 130
 const START_X  = 20
 const END_X    = 450
-const MOWER_Y  = 560
+const MOWER_Y  = 425
 const POOL     = 12
 const FIRE_DIST = 16
 
@@ -129,16 +129,16 @@ export default function Hero() {
 
   return (
     <section className="hero">
+      <div className="hero-overlay" />
       <div className="hero-left">
         <div className="hero-badge">
           <div className="badge-pulse" />
           100% electric — zero emissions
         </div>
-        <h1 className="hero-h1">
-          Your lawn.<br />
-          <em>Finally</em> quiet.
+        <h1 className="hero-h1" style={{ color: '#fff', fontSize: 'clamp(32px, 3.8vw, 58px)' }}>
+          Your lawn. <em>Finally</em> quiet.
         </h1>
-        <p className="hero-p">
+        <p className="hero-p" style={{ color: 'rgba(255,255,255,.75)' }}>
           The only lawn care crew you won&apos;t hear coming. Battery-powered
           equipment, zero fumes, and a finish your yard deserves — scheduled
           around your life.
@@ -150,7 +150,7 @@ export default function Hero() {
               <path d="M3 8h10M9 4l4 4-4 4" />
             </svg>
           </a>
-          <a href="#how" className="btn-secondary">
+          <a href="#how" className="btn-secondary" style={{ color: 'rgba(255,255,255,.6)' }}>
             See how it works
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M7 1v12M1 7l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -162,85 +162,84 @@ export default function Hero() {
       <div className="hero-right">
         <svg
           className="hero-illustration"
-          viewBox="0 0 600 800"
+          viewBox="0 0 800 700"
           preserveAspectRatio="xMidYMid slice"
           xmlns="http://www.w3.org/2000/svg"
         >
-          {/* Sky */}
-          <rect width="600" height="800" fill="#1a3a2a" />
+          {/* Sky — must fill full viewBox */}
+          <rect width="800" height="700" fill="#1a3a2a" />
 
-          {/* Morning atmosphere — brighter warm sunrise */}
-          <ellipse cx="300" cy="490" rx="360" ry="170" fill="#c87020" opacity=".16"/>
-          <ellipse cx="300" cy="530" rx="300" ry="110" fill="#e09030" opacity=".14"/>
-          <ellipse cx="300" cy="420" rx="80"  ry="50"  fill="#f0c040" opacity=".12"/>
-          <ellipse cx="300" cy="560" rx="420" ry="70"  fill="#d4a040" opacity=".1"/>
-          {/* Subtle overall sky lift */}
-          <rect width="600" height="580" fill="#4a7060" opacity=".06"/>
+          {/* Atmosphere glow — behind house, not bleeding left */}
+          <ellipse cx="500" cy="480" rx="340" ry="160" fill="#c87020" opacity=".15"/>
+          <ellipse cx="500" cy="520" rx="280" ry="100" fill="#e09030" opacity=".11"/>
+          <ellipse cx="500" cy="545" rx="380" ry="65"  fill="#d4a040" opacity=".08"/>
 
-          {/* Trees — left tree shortened to clear 0g card */}
-          <ellipse cx="60"  cy="370" rx="32" ry="55"  fill="#0f2e1e" opacity=".7" />
-          <rect    x="52"   y="420"  width="16" height="170" fill="#0f2e1e" opacity=".7" />
-          <ellipse cx="540" cy="290" rx="42" ry="100" fill="#0f2e1e" opacity=".7" />
-          <rect    x="531"  y="380"  width="18" height="210" fill="#0f2e1e" opacity=".7" />
+          {/* Left tree — off screen */}
+          <ellipse cx="-20" cy="370" rx="32" ry="55"  fill="#0f2e1e" opacity=".7" />
+          <rect    x="-28"  y="420"  width="16" height="170" fill="#0f2e1e" opacity=".7" />
 
-          {/* Grass */}
-          <ellipse cx="300" cy="620" rx="360" ry="80" fill="#2d6a4f" />
-          <rect x="0" y="600" width="600" height="200" fill="#2d6a4f" />
+          {/* Right tree — far right edge */}
+          <ellipse cx="760" cy="290" rx="42" ry="100" fill="#0f2e1e" opacity=".7" />
+          <rect    x="751"  y="380"  width="18" height="210" fill="#0f2e1e" opacity=".7" />
+
+          {/* Grass — starts at y=555 to sit flush under house base */}
+          <ellipse cx="400" cy="580" rx="500" ry="60" fill="#2d6a4f" />
+          <rect x="0" y="555" width="800" height="200" fill="#2d6a4f" />
 
           {/* Mow stripes */}
-          <path d="M0 640 Q150 620 300 640 Q450 660 600 640" stroke="#3b8a63" strokeWidth="2" fill="none" opacity=".5" />
-          <path d="M0 660 Q150 640 300 660 Q450 680 600 660" stroke="#3b8a63" strokeWidth="2" fill="none" opacity=".4" />
-          <path d="M0 680 Q150 660 300 680 Q450 700 600 680" stroke="#3b8a63" strokeWidth="2" fill="none" opacity=".3" />
-          <path d="M20 700 L580 700" stroke="#52b788" strokeWidth="1" opacity=".15" />
-          <path d="M20 715 L580 715" stroke="#52b788" strokeWidth="1" opacity=".15" />
-          <path d="M20 730 L580 730" stroke="#52b788" strokeWidth="1" opacity=".15" />
+          <path d="M0 570 Q200 558 400 570 Q600 582 800 570" stroke="#3b8a63" strokeWidth="2" fill="none" opacity=".5" />
+          <path d="M0 585 Q200 573 400 585 Q600 597 800 585" stroke="#3b8a63" strokeWidth="2" fill="none" opacity=".4" />
+          <path d="M20 600 L780 600" stroke="#52b788" strokeWidth="1" opacity=".15" />
 
-          {/* ── House — wider, cleaner composition ── */}
+          {/* ── House — shifted right so text can float over left ── */}
+          {/* Warm window light spill on ground */}
+          <ellipse cx="382" cy="573" rx="28" ry="7" fill="#c47015" opacity=".1" />
+
           {/* Walls */}
-          <rect x="185" y="438" width="230" height="117" rx="2" fill="#2a5840" />
-          <line x1="415" y1="438" x2="415" y2="555" stroke="#1e4030" strokeWidth="3" opacity=".4" />
+          <rect x="305" y="438" width="230" height="117" rx="2" fill="#2a5840" />
+          <line x1="535" y1="438" x2="535" y2="555" stroke="#1e4030" strokeWidth="3" opacity=".4" />
 
           {/* Roof */}
-          <path d="M177 440 L300 360 L423 440 Z" fill="#1e4030" />
-          <line x1="177" y1="440" x2="300" y2="360" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
-          <line x1="300" y1="360" x2="423" y2="440" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
-          <line x1="177" y1="440" x2="423" y2="440" stroke="#3a7050" strokeWidth="1.5" opacity=".5" />
+          <path d="M297 440 L420 360 L543 440 Z" fill="#1e4030" />
+          <line x1="297" y1="440" x2="420" y2="360" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
+          <line x1="420" y1="360" x2="543" y2="440" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
+          <line x1="297" y1="440" x2="543" y2="440" stroke="#3a7050" strokeWidth="1.5" opacity=".5" />
 
           {/* Chimney */}
-          <rect x="358" y="383" width="18" height="32" fill="#1a3828" />
-          <rect x="356" y="381" width="22" height="5" rx="1.5" fill="#163222" />
+          <rect x="478" y="383" width="18" height="32" fill="#1a3828" />
+          <rect x="476" y="381" width="22" height="5" rx="1.5" fill="#163222" />
 
-          {/* ── Bedroom window — large, left side (60px tall) ── */}
-          <rect x="198" y="445" width="84" height="60" rx="3" fill="#1a3828" />
-          <rect x="200" y="447" width="80" height="56" rx="2" fill="#0d2018" />
-          <rect x="200" y="447" width="80" height="56" rx="2" fill="#c87828" opacity=".12" />
-          <rect x="200" y="447" width="14" height="56" fill="#163424" opacity=".85" />
-          <rect x="266" y="447" width="14" height="56" fill="#163424" opacity=".75" />
-          <line x1="251" y1="447" x2="251" y2="503" stroke="#e8c060" strokeWidth="1.5" opacity=".22" />
-          <rect x="200" y="447" width="9"  height="56" fill="#091810" opacity=".95" />
-          <rect x="209" y="496" width="69" height="7"  rx="2" fill="#091810" opacity=".85" />
-          <rect x="209" y="476" width="69" height="20" rx="9"  fill="#122818" opacity=".95" />
-          <rect x="209" y="476" width="69" height="5"  rx="4"  fill="#1e4030" opacity=".5" />
-          <ellipse cx="222" cy="475" rx="11" ry="6" fill="#163020" opacity=".95" />
-          <circle  cx="222" cy="465" r="9"  fill="#091810" opacity=".95" />
-          <line x1="240" y1="447" x2="240" y2="503" stroke="#1a3828" strokeWidth="2" opacity=".65" />
-          <line x1="200" y1="468" x2="280" y2="468" stroke="#1a3828" strokeWidth="2" opacity=".65" />
+          {/* ── Bedroom window — large, left side ── */}
+          <rect x="318" y="445" width="84" height="60" rx="3" fill="#1a3828" />
+          <rect x="320" y="447" width="80" height="56" rx="2" fill="#0d2018" />
+          <rect x="320" y="447" width="80" height="56" rx="2" fill="#c87828" opacity=".12" />
+          <rect x="320" y="447" width="14" height="56" fill="#163424" opacity=".85" />
+          <rect x="386" y="447" width="14" height="56" fill="#163424" opacity=".75" />
+          <line x1="371" y1="447" x2="371" y2="503" stroke="#e8c060" strokeWidth="1.5" opacity=".22" />
+          <rect x="320" y="447" width="9"  height="56" fill="#091810" opacity=".95" />
+          <rect x="329" y="496" width="69" height="7"  rx="2" fill="#091810" opacity=".85" />
+          <rect x="329" y="476" width="69" height="20" rx="9"  fill="#122818" opacity=".95" />
+          <rect x="329" y="476" width="69" height="5"  rx="4"  fill="#1e4030" opacity=".5" />
+          <ellipse cx="342" cy="475" rx="11" ry="6" fill="#163020" opacity=".95" />
+          <circle  cx="342" cy="465" r="9"  fill="#091810" opacity=".95" />
+          <line x1="360" y1="447" x2="360" y2="503" stroke="#1a3828" strokeWidth="2" opacity=".65" />
+          <line x1="320" y1="468" x2="400" y2="468" stroke="#1a3828" strokeWidth="2" opacity=".65" />
 
           {/* ZZZ — over sleeping person's head */}
-          <text className="zzz1" x="224" y="460" fontFamily="sans-serif" fontSize="16" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
-          <text className="zzz2" x="236" y="450" fontFamily="sans-serif" fontSize="13" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
-          <text className="zzz3" x="247" y="442" fontFamily="sans-serif" fontSize="10" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz1" x="344" y="460" fontFamily="sans-serif" fontSize="16" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz2" x="356" y="450" fontFamily="sans-serif" fontSize="13" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz3" x="367" y="442" fontFamily="sans-serif" fontSize="10" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
 
-          {/* Small window above door — just right of bedroom window */}
-          <rect x="292" y="448" width="38" height="40" rx="3" fill="#1a3828" />
-          <rect x="294" y="450" width="34" height="36" rx="2" fill="#0d2018" />
-          <line x1="311" y1="450" x2="311" y2="486" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
-          <line x1="294" y1="468" x2="328" y2="468" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
+          {/* Small window */}
+          <rect x="412" y="448" width="38" height="40" rx="3" fill="#1a3828" />
+          <rect x="414" y="450" width="34" height="36" rx="2" fill="#0d2018" />
+          <line x1="431" y1="450" x2="431" y2="486" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
+          <line x1="414" y1="468" x2="448" y2="468" stroke="#1a3828" strokeWidth="1.5" opacity=".5" />
 
-          {/* Front door — just right of center, close to bedroom window */}
-          <path d="M290 555 L290 515 A21 21 0 0 1 332 515 L332 555 Z" fill="#1a3828"/>
-          <path d="M292 555 L292 517 A19 19 0 0 1 330 517 L330 555 Z" fill="#0d2018"/>
-          <circle cx="327" cy="536" r="2.5" fill="#52b788" opacity=".7"/>
+          {/* Front door */}
+          <path d="M410 555 L410 515 A21 21 0 0 1 452 515 L452 555 Z" fill="#1a3828"/>
+          <path d="M412 555 L412 517 A19 19 0 0 1 450 517 L450 555 Z" fill="#0d2018"/>
+          <circle cx="447" cy="536" r="2.5" fill="#52b788" opacity=".7"/>
 
           {/* ── Lawn mower — smooth flat style ── */}
           <g ref={mowerRef} transform={`translate(${START_X},${MOWER_Y})`}>

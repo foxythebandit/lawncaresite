@@ -64,14 +64,38 @@ nav {
 /* ── HERO ── */
 .hero {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  position: relative;
   padding-top: 68px;
   overflow: hidden;
+  display: block;
+}
+.hero-right {
+  position: absolute !important;
+  inset: 0 !important;
+  min-height: 100vh;
+}
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right,
+      rgba(26,58,42,1)   0%,
+      rgba(26,58,42,1)  28%,
+      rgba(26,58,42,.82) 42%,
+      rgba(26,58,42,.45) 58%,
+      rgba(26,58,42,.12) 72%,
+      transparent        88%
+    );
 }
 .hero-left {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 68px);
   display: flex; flex-direction: column; justify-content: center;
-  padding: 80px 5vw 80px 8vw;
+  padding: 40px 8vw 100px 8vw;
+  max-width: 600px;
 }
 .hero-badge {
   display: inline-flex; align-items: center; gap: 8px;
@@ -156,8 +180,8 @@ nav {
 .stat-card-val span { font-size: 16px; color: var(--green-bright); }
 .stat-card-label { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-weight: 400; }
 
-.card-1 { top: 55%; right: 8%; }
-.card-2 { top: 22%; left: 8%; }
+.card-1 { top: 55%; right: 6%; }
+.card-2 { top: 22%; right: 28%; }
 @keyframes float {
   0%,100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
