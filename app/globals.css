@@ -66,8 +66,9 @@ nav {
   min-height: 100vh;
   position: relative;
   padding-top: 68px;
-  overflow: hidden;
+  overflow: visible;
   display: block;
+  z-index: 1;
 }
 .hero-right {
   position: absolute !important;
@@ -197,8 +198,11 @@ nav {
   border-top: 1px solid var(--green-light);
   border-bottom: 1px solid var(--green-light);
   padding: 20px 8vw;
+  padding-left: 340px; /* leave room for mower on left */
   display: flex; align-items: center; justify-content: center; gap: 48px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 0;
 }
 .trust-item {
   display: flex; align-items: center; gap: 10px;
@@ -539,6 +543,37 @@ footer {
 .footer-links a { font-size: 13px; color: rgba(255,255,255,.5); text-decoration: none; transition: color .2s; }
 .footer-links a:hover { color: var(--green-bright); }
 .footer-copy { font-size: 12px; color: rgba(255,255,255,.35); }
+
+/* ── LIVE COUNTER ── */
+.mapq-live-counter {
+  background: rgba(82,183,136,.08);
+  border: 1px solid rgba(82,183,136,.25);
+  border-radius: 18px;
+  padding: 22px 20px 14px;
+  text-align: center;
+  margin-bottom: 14px;
+}
+.mapq-live-sqft {
+  font-family: var(--font-display);
+  font-size: 56px;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -.02em;
+}
+.mapq-live-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.4);
+  margin-top: 6px;
+}
+.mapq-live-pts {
+  font-size: 12px;
+  color: var(--green-bright);
+  margin-top: 8px;
+  opacity: .8;
+}
 
 /* ── MAP QUOTE BUILDER ── */
 .mapq-section {
