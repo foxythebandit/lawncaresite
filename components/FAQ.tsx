@@ -32,11 +32,11 @@ const faqs = [
 export default function FAQ() {
   return (
     <section className="faq" id="faq">
-      <div className="section-label">FAQ</div>
-      <h2 className="section-h2">Questions homeowners ask</h2>
-      <p className="section-sub">Everything you need to know before booking.</p>
+      <div className="section-label reveal">FAQ</div>
+      <h2 className="section-h2 reveal" data-delay="80">Questions homeowners ask</h2>
+      <p className="section-sub reveal" data-delay="160">Everything you need to know before booking.</p>
 
-      <div className="faq-list">
+      <div className="faq-list reveal" data-delay="240">
         {faqs.map((item, i) => (
           <details key={i} className="faq-item">
             <summary className="faq-q">

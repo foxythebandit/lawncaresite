@@ -37,11 +37,11 @@ const reviews = [
 export default function Testimonials() {
   return (
     <section className="testimonials" id="reviews">
-      <div className="section-label">Reviews</div>
-      <h2 className="section-h2">What customers are saying</h2>
+      <div className="section-label reveal">Reviews</div>
+      <h2 className="section-h2 reveal" data-delay="80">What customers are saying</h2>
       <div className="testi-grid">
-        {reviews.map((r) => (
-          <div key={r.name} className="testi-card">
+        {reviews.map((r, i) => (
+          <div key={r.name} className="testi-card reveal" data-delay={i * 150}>
             <Stars />
             <p className="testi-text">{r.text}</p>
             <div className="testi-author">
