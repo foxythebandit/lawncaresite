@@ -12,7 +12,7 @@
   --ink:          #111c17;
   --ink-soft:     #4a5e54;
   --rule:         rgba(26,58,42,.12);
-  --radius:       14px;
+  --radius:       22px;
   /* --font-display and --font-body are set by next/font on <html> */
 }
 
@@ -208,7 +208,7 @@ section { padding: 100px 8vw; }
 .steps {
   display: grid; grid-template-columns: repeat(3, 1fr);
   gap: 2px; margin-top: 60px;
-  border: 1px solid var(--rule); border-radius: var(--radius);
+  border: 1px solid var(--rule); border-radius: 28px;
   overflow: hidden;
 }
 .step {
@@ -263,7 +263,7 @@ section { padding: 100px 8vw; }
   max-width: 740px;
   display: flex; flex-direction: column; gap: 0;
   border: 1px solid var(--rule);
-  border-radius: var(--radius);
+  border-radius: 28px;
   overflow: hidden;
 }
 .faq-item {
@@ -305,7 +305,7 @@ section { padding: 100px 8vw; }
 }
 .why-card {
   border: 1px solid rgba(255,255,255,.1);
-  border-radius: var(--radius);
+  border-radius: 28px;
   padding: 32px;
   transition: border-color .2s, background .2s;
   position: relative; overflow: hidden;
