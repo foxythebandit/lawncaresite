@@ -971,6 +971,18 @@ footer {
   filter: invert(1) brightness(0.7);
 }
 
+/* ── ZZZ SLEEP ANIMATION ── */
+@keyframes zzz-rise {
+  0%   { opacity: 0;   transform: translate(0, 0);        }
+  18%  { opacity: .9;  }
+  80%  { opacity: .55; }
+  100% { opacity: 0;   transform: translate(9px, -30px);  }
+}
+.zzz { transform-box: fill-box; transform-origin: bottom center; }
+.zzz1 { animation: zzz-rise 3s ease-out 0s  infinite; }
+.zzz2 { animation: zzz-rise 3s ease-out 1s  infinite; }
+.zzz3 { animation: zzz-rise 3s ease-out 2s  infinite; }
+
 /* ── SCROLL REVEAL ── */
 .reveal {
   opacity: 0;
