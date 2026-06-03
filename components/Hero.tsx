@@ -245,9 +245,11 @@ export default function Hero() {
             {/* Top highlight */}
             <line x1="30" y1="5" x2="84" y2="5" stroke="#fff" strokeWidth="1" opacity=".4" />
 
-            {/* Electric badge */}
-            <rect x="35" y="7" width="42" height="9" rx="3" fill="#1a3a2a" />
-            <text x="40" y="14" fontFamily="sans-serif" fontSize="8" fill="#52b788" fontWeight="700">⚡ ELEC</text>
+            {/* EV battery badge */}
+            <rect x="31" y="12" width="46" height="11" rx="3" fill="#2d6a4f" />
+            <rect x="77" y="14" width="5"  height="7"  rx="1.5" fill="#2d6a4f" />
+            <rect x="32" y="13" width="40" height="9"  rx="2"   fill="#52b788" opacity=".9" />
+            <text x="44" y="20" fontFamily="sans-serif" fontSize="9" fill="#1a3a2a" fontWeight="700">EV</text>
 
             {/* ── Discharge chute (right / front) ── */}
             {/* Side face */}
