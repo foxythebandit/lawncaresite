@@ -131,8 +131,7 @@ export default function Hero() {
         </div>
         <h1 className="hero-h1">
           Your lawn.<br />
-          Your <em>peace</em><br />
-          and quiet.
+          <em>Finally</em> quiet.
         </h1>
         <p className="hero-p">
           The only lawn care crew you won&apos;t hear coming. Battery-powered
@@ -191,6 +190,49 @@ export default function Hero() {
           <path d="M20 700 L580 700" stroke="#52b788" strokeWidth="1" opacity=".15" />
           <path d="M20 715 L580 715" stroke="#52b788" strokeWidth="1" opacity=".15" />
           <path d="M20 730 L580 730" stroke="#52b788" strokeWidth="1" opacity=".15" />
+
+          {/* ── House ── */}
+          {/* Warm window light spill on ground */}
+          <ellipse cx="262" cy="573" rx="28" ry="7" fill="#c47015" opacity=".1" />
+
+          {/* Walls */}
+          <rect x="220" y="484" width="160" height="91" rx="2" fill="#0d2418" />
+
+          {/* Roof */}
+          <path d="M212 486 L300 418 L388 486 Z" fill="#091c11" />
+          <line x1="212" y1="486" x2="300" y2="418" stroke="#2d6a4f" strokeWidth="1.5" opacity=".45" />
+          <line x1="300" y1="418" x2="388" y2="486" stroke="#2d6a4f" strokeWidth="1.5" opacity=".45" />
+          <line x1="212" y1="486" x2="388" y2="486" stroke="#1a4430" strokeWidth="1" opacity=".5" />
+
+          {/* Chimney */}
+          <rect x="336" y="432" width="16" height="28" fill="#091c11" />
+          <rect x="334" y="430" width="20" height="5" rx="1.5" fill="#0a1a0f" />
+
+          {/* Bedroom window — warm, lit */}
+          <rect x="232" y="496" width="56" height="46" rx="3" fill="#143320" />
+          <rect x="234" y="498" width="52" height="42" rx="2" fill="#b86010" opacity=".38" />
+          <rect x="234" y="498" width="52" height="42" rx="2" fill="#e09020" opacity=".1" />
+          {/* Sleeping silhouette — pillow, head, blanket lump */}
+          <ellipse cx="260" cy="528" rx="14" ry="6"  fill="#0a1e10" opacity=".65" />
+          <circle  cx="250" cy="523" r="8"            fill="#0a1e10" opacity=".75" />
+          <path d="M237 529 Q260 524 284 530 L284 541 Q260 537 237 541 Z" fill="#0a1e10" opacity=".5" />
+          {/* Bedside lamp glow */}
+          <circle  cx="281" cy="502" r="4"            fill="#e8a020" opacity=".55" />
+          <ellipse cx="281" cy="506" rx="7" ry="5"    fill="#e8a020" opacity=".16" />
+          {/* Window cross */}
+          <line x1="260" y1="498" x2="260" y2="540" stroke="#143320" strokeWidth="2" opacity=".7" />
+          <line x1="234" y1="519" x2="286" y2="519" stroke="#143320" strokeWidth="2" opacity=".7" />
+
+          {/* Right window — dark / unlit */}
+          <rect x="306" y="496" width="40" height="36" rx="3" fill="#143320" />
+          <rect x="308" y="498" width="36" height="32" rx="2" fill="#091c11" />
+          <line x1="326" y1="498" x2="326" y2="530" stroke="#143320" strokeWidth="2" opacity=".55" />
+          <line x1="308" y1="514" x2="344" y2="514" stroke="#143320" strokeWidth="2" opacity=".55" />
+
+          {/* Front door */}
+          <rect x="274" y="533" width="34" height="42" rx="3" fill="#143320" />
+          <rect x="276" y="535" width="30" height="38" rx="2" fill="#091c11" />
+          <circle cx="303" cy="555" r="2.5" fill="#2d6a4f" opacity=".7" />
 
           {/* Particle container */}
           <g ref={pGroupRef} />
