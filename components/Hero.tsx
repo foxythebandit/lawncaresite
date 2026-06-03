@@ -293,12 +293,10 @@ export default function Hero() {
           <div className="stat-card-val">60<span>dB</span></div>
           <div className="stat-card-label">Library-quiet operation</div>
         </div>
-      </div>
-
-      {/* card-2 is a sibling of hero-right so it can break outside the illustration frame */}
-      <div className="stat-card card-2">
-        <div className="stat-card-val">0<span>g</span></div>
-        <div className="stat-card-label">Zero emissions, zero fumes</div>
+        <div className="stat-card card-2">
+          <div className="stat-card-val">0<span>g</span></div>
+          <div className="stat-card-label">Zero emissions, zero fumes</div>
+        </div>
       </div>
     </section>
   )
