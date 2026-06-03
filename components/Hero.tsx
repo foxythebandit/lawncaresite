@@ -85,38 +85,43 @@ export default function Hero() {
       pRaf = requestAnimationFrame(tick)
     }
 
-    // ── Scroll handler ───────────────────────────────────
-    let lastScrollY   = window.scrollY
-    let facingRight   = true
-    let lastFireX     = START_X
+    // ── Auto mower loop ──────────────────────────────────
+    let autoX    = START_X
+    let autoDir  = 1
+    let lastFireX = START_X
+    let autoRaf  = 0
+    const SPEED  = 1.2
 
-    const onScroll = () => {
+    const mowerTick = () => {
+      autoX += autoDir * SPEED
+      if (autoX >= END_X)   { autoX = END_X;   autoDir = -1 }
+      if (autoX <= START_X) { autoX = START_X; autoDir =  1 }
+
       const mower = mowerRef.current
-      if (!mower) return
-
-      const pct = Math.min(Math.max(window.scrollY / window.innerHeight, 0), 1)
-      const x   = START_X + Math.round(pct * (END_X - START_X))
-
-      facingRight = window.scrollY >= lastScrollY
-      lastScrollY = window.scrollY
-
-      mower.setAttribute(
-        'transform',
-        facingRight
-          ? `translate(${x},${MOWER_Y})`
-          : `translate(${x + MOWER_W},${MOWER_Y}) scale(-1,1)`
-      )
-
-      if (Math.abs(x - lastFireX) >= FIRE_DIST) {
-        const cx = facingRight ? x + 118 : x + 12
-        spawn(cx, MOWER_Y + 36, facingRight)
-        lastFireX = x
+      if (mower) {
+        const x  = Math.round(autoX)
+        const fr = autoDir === 1
+        mower.setAttribute(
+          'transform',
+          fr
+            ? `translate(${x},${MOWER_Y})`
+            : `translate(${x + MOWER_W},${MOWER_Y}) scale(-1,1)`
+        )
       }
+
+      if (Math.abs(autoX - lastFireX) >= FIRE_DIST) {
+        const cx = autoDir === 1 ? autoX + 118 : autoX + 12
+        spawn(cx, MOWER_Y + 36, autoDir === 1)
+        lastFireX = autoX
+      }
+
+      autoRaf = requestAnimationFrame(mowerTick)
     }
 
-    window.addEventListener('scroll', onScroll, { passive: true })
+    autoRaf = requestAnimationFrame(mowerTick)
+
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(autoRaf)
       cancelAnimationFrame(pRaf)
       pEls.forEach(el => el.parentNode?.removeChild(el))
     }
@@ -164,6 +169,12 @@ export default function Hero() {
           {/* Sky */}
           <rect width="600" height="800" fill="#1a3a2a" />
 
+          {/* Morning atmosphere — warm horizon glow suggesting early sunrise */}
+          <ellipse cx="300" cy="490" rx="360" ry="170" fill="#c87020" opacity=".07"/>
+          <ellipse cx="300" cy="530" rx="300" ry="110" fill="#e09030" opacity=".06"/>
+          {/* Soft sun just below horizon, behind house */}
+          <ellipse cx="300" cy="420" rx="80"  ry="50"  fill="#f0c040" opacity=".06"/>
+
           {/* Stars */}
           <circle cx="80"  cy="60"  r="1.5" fill="#52b788" opacity=".4" />
           <circle cx="200" cy="40"  r="1"   fill="#52b788" opacity=".3" />
@@ -191,65 +202,64 @@ export default function Hero() {
           <path d="M20 715 L580 715" stroke="#52b788" strokeWidth="1" opacity=".15" />
           <path d="M20 730 L580 730" stroke="#52b788" strokeWidth="1" opacity=".15" />
 
-          {/* ── House (shifted up, door clear of windows) ── */}
-          {/* Morning light spill on ground */}
-          <ellipse cx="248" cy="535" rx="32" ry="5" fill="#e8c060" opacity=".1" />
-
+          {/* ── House (moved down 20px) ── */}
           {/* Walls */}
-          <rect x="200" y="418" width="200" height="117" rx="2" fill="#2a5840" />
-          <line x1="400" y1="418" x2="400" y2="535" stroke="#1e4030" strokeWidth="3" opacity=".45" />
+          <rect x="200" y="438" width="200" height="117" rx="2" fill="#2a5840" />
+          <line x1="400" y1="438" x2="400" y2="555" stroke="#1e4030" strokeWidth="3" opacity=".45" />
 
           {/* Roof */}
-          <path d="M192 420 L300 345 L408 420 Z" fill="#1e4030" />
-          <line x1="192" y1="420" x2="300" y2="345" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
-          <line x1="300" y1="345" x2="408" y2="420" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
-          <line x1="192" y1="420" x2="408" y2="420" stroke="#3a7050" strokeWidth="1.5" opacity=".5" />
+          <path d="M192 440 L300 365 L408 440 Z" fill="#1e4030" />
+          <line x1="192" y1="440" x2="300" y2="365" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
+          <line x1="300" y1="365" x2="408" y2="440" stroke="#52b788" strokeWidth="1.5" opacity=".4" />
+          <line x1="192" y1="440" x2="408" y2="440" stroke="#3a7050" strokeWidth="1.5" opacity=".5" />
 
           {/* Chimney */}
-          <rect x="344" y="363" width="18" height="32" fill="#1a3828" />
-          <rect x="342" y="361" width="22" height="5" rx="1.5" fill="#163222" />
+          <rect x="344" y="383" width="18" height="32" fill="#1a3828" />
+          <rect x="342" y="381" width="22" height="5" rx="1.5" fill="#163222" />
 
-          {/* ── Bedroom window — morning, person in bed ── */}
-          <rect x="210" y="428" width="76" height="62" rx="3" fill="#1a3828" />
-          {/* Morning sky tint (top half) */}
-          <rect x="212" y="430" width="72" height="28" rx="2" fill="#8ec4d8" opacity=".2" />
-          {/* Golden morning warmth (bottom half) */}
-          <rect x="212" y="456" width="72" height="32" rx="2" fill="#e8c060" opacity=".28" />
-          {/* Rising sun — top-right pane */}
-          <circle cx="276" cy="440" r="9" fill="#f5d050" opacity=".85" />
-          <line x1="276" y1="428" x2="276" y2="425" stroke="#f5d050" strokeWidth="1.5" opacity=".55" />
-          <line x1="286" y1="431" x2="289" y2="428" stroke="#f5d050" strokeWidth="1.5" opacity=".55" />
-          <line x1="263" y1="431" x2="260" y2="428" stroke="#f5d050" strokeWidth="1.5" opacity=".55" />
-          {/* Headboard (left strip) */}
-          <rect x="212" y="430" width="9" height="58" fill="#143020" opacity=".8" />
+          {/* ── Bedroom window — dark room, morning light seeping in ── */}
+          <rect x="210" y="448" width="76" height="62" rx="3" fill="#1a3828" />
+          {/* Dark room interior */}
+          <rect x="212" y="450" width="72" height="58" rx="2" fill="#0d2018" />
+          {/* Soft morning warmth bleeding through curtains from outside */}
+          <rect x="212" y="450" width="72" height="58" rx="2" fill="#c87828" opacity=".1" />
+          {/* Left curtain */}
+          <rect x="212" y="450" width="15" height="58" fill="#163424" opacity=".85" />
+          {/* Right curtain */}
+          <rect x="269" y="450" width="15" height="58" fill="#163424" opacity=".75" />
+          {/* Thin light seam between curtains */}
+          <line x1="255" y1="450" x2="255" y2="508" stroke="#e8c060" strokeWidth="1.5" opacity=".25" />
+          {/* Headboard */}
+          <rect x="212" y="450" width="9" height="58" fill="#091810" opacity=".95" />
           {/* Bed base */}
-          <rect x="221" y="483" width="59" height="7" rx="2" fill="#143020" opacity=".7" />
+          <rect x="221" y="500" width="59" height="7"  rx="2" fill="#091810" opacity=".85" />
           {/* Blanket — horizontal body lump */}
-          <rect x="221" y="464" width="59" height="21" rx="9" fill="#1e4830" opacity=".88" />
-          <rect x="221" y="464" width="59" height="5"  rx="4" fill="#2d6a4f" opacity=".45" />
+          <rect x="221" y="480" width="59" height="22" rx="9" fill="#122818" opacity=".95" />
+          {/* Blanket top highlight */}
+          <rect x="221" y="480" width="59" height="5"  rx="4" fill="#1e4030" opacity=".5" />
           {/* Pillow */}
-          <ellipse cx="232" cy="463" rx="10" ry="6" fill="#244830" opacity=".9" />
+          <ellipse cx="232" cy="479" rx="11" ry="6" fill="#163020" opacity=".95" />
           {/* Head */}
-          <circle cx="232" cy="454" r="9" fill="#143020" opacity=".9" />
+          <circle cx="232" cy="470" r="9" fill="#091810" opacity=".95" />
           {/* Window mullions */}
-          <line x1="248" y1="430" x2="248" y2="490" stroke="#1a3828" strokeWidth="2" opacity=".65" />
-          <line x1="212" y1="458" x2="286" y2="458" stroke="#1a3828" strokeWidth="2" opacity=".65" />
+          <line x1="248" y1="450" x2="248" y2="508" stroke="#1a3828" strokeWidth="2" opacity=".7" />
+          <line x1="212" y1="478" x2="284" y2="478" stroke="#1a3828" strokeWidth="2" opacity=".7" />
 
           {/* ZZZ — floating up from bedroom window */}
-          <text className="zzz1" x="290" y="424" fontFamily="sans-serif" fontSize="14" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
-          <text className="zzz2" x="300" y="414" fontFamily="sans-serif" fontSize="11" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
-          <text className="zzz3" x="309" y="406" fontFamily="sans-serif" fontSize="9"  fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz1" x="290" y="444" fontFamily="sans-serif" fontSize="14" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz2" x="300" y="434" fontFamily="sans-serif" fontSize="11" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
+          <text className="zzz3" x="309" y="426" fontFamily="sans-serif" fontSize="9"  fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
 
           {/* Right window — dark/unlit */}
-          <rect x="314" y="430" width="48" height="48" rx="3" fill="#1a3828" />
-          <rect x="316" y="432" width="44" height="44" rx="2" fill="#163020" />
-          <line x1="338" y1="432" x2="338" y2="476" stroke="#1a3828" strokeWidth="2" opacity=".55" />
-          <line x1="316" y1="454" x2="360" y2="454" stroke="#1a3828" strokeWidth="2" opacity=".55" />
+          <rect x="314" y="450" width="48" height="48" rx="3" fill="#1a3828" />
+          <rect x="316" y="452" width="44" height="44" rx="2" fill="#0d2018" />
+          <line x1="338" y1="452" x2="338" y2="496" stroke="#1a3828" strokeWidth="2" opacity=".55" />
+          <line x1="316" y1="474" x2="360" y2="474" stroke="#1a3828" strokeWidth="2" opacity=".55" />
 
-          {/* Front door — below windows, no overlap */}
-          <rect x="271" y="492" width="38" height="43" rx="3" fill="#1a3828" />
-          <rect x="273" y="494" width="34" height="39" rx="2" fill="#143020" />
-          <circle cx="304" cy="515" r="2.5" fill="#52b788" opacity=".7" />
+          {/* Front door */}
+          <rect x="271" y="512" width="38" height="43" rx="3" fill="#1a3828" />
+          <rect x="273" y="514" width="34" height="39" rx="2" fill="#0d2018" />
+          <circle cx="304" cy="534" r="2.5" fill="#52b788" opacity=".7" />
 
           {/* ── 3-D Lawn mower (scroll-driven) ── */}
           <g ref={mowerRef} transform={`translate(${START_X},${MOWER_Y})`}>
