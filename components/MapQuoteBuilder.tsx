@@ -695,8 +695,8 @@ export default function MapQuoteBuilder() {
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--green-bright)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/>
                 </svg>
-                <h3>You&apos;re on the list!</h3>
-                <p>We&apos;ll text or call within 2 hours to confirm your visit date.</p>
+                <h3>Request locked in.</h3>
+                <p>We&apos;ll reach out to confirm your date.</p>
                 <button className="booking-success-btn" onClick={closeBooking}>Done</button>
               </div>
             ) : (
