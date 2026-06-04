@@ -32,22 +32,28 @@ const faqs = [
 export default function FAQ() {
   return (
     <section className="faq" id="faq">
-      <div className="section-label reveal">FAQ</div>
-      <h2 className="section-h2 reveal" data-delay="80">Questions homeowners ask</h2>
-      <p className="section-sub reveal" data-delay="160">Everything you need to know before booking.</p>
+      <div className="faq-grid">
+        <div className="faq-heading-col">
+          <div className="section-label reveal">FAQ</div>
+          <h2 className="section-h2 reveal" data-delay="80">Questions homeowners ask</h2>
+          <p className="section-sub reveal" style={{ textAlign: 'left', maxWidth: 300, marginTop: 16 }} data-delay="160">
+            Everything you need to know before booking.
+          </p>
+        </div>
 
-      <div className="faq-list reveal" data-delay="240">
-        {faqs.map((item, i) => (
-          <details key={i} className="faq-item">
-            <summary className="faq-q">
-              <span>{item.q}</span>
-              <svg className="faq-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6l4 4 4-4" />
-              </svg>
-            </summary>
-            <p className="faq-a">{item.a}</p>
-          </details>
-        ))}
+        <div className="faq-list reveal" data-delay="240">
+          {faqs.map((item, i) => (
+            <details key={i} className="faq-item">
+              <summary className="faq-q">
+                <span>{item.q}</span>
+                <svg className="faq-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 6l4 4 4-4" />
+                </svg>
+              </summary>
+              <p className="faq-a">{item.a}</p>
+            </details>
+          ))}
+        </div>
       </div>
     </section>
   )

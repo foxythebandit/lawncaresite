@@ -372,9 +372,14 @@ section { padding: 100px 8vw; }
 
 /* ── FAQ ── */
 .faq { background: var(--off-white); }
+.faq-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 60px;
+  align-items: start;
+}
+.faq-heading-col { position: sticky; top: 100px; }
 .faq-list {
-  margin-top: 52px;
-  max-width: 740px;
   display: flex; flex-direction: column; gap: 0;
   border: 1px solid var(--rule);
   border-radius: 28px;
@@ -1338,6 +1343,8 @@ footer {
   .why-grid, .testi-grid, .steps { grid-template-columns: 1fr; }
   .cta-section { grid-template-columns: 1fr; gap: 40px; padding: 64px 6vw; }
   .how-two-col { grid-template-columns: 1fr; gap: 48px; }
+  .faq-grid { grid-template-columns: 1fr; gap: 32px; }
+  .faq-heading-col { position: static; }
   .mapq-grid { grid-template-columns: 1fr; }
   .mapq-panel { position: static; }
   .mapq-map-border { height: 380px; }

@@ -56,7 +56,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
       : 'No preference'
 
     await resend.emails.send({
-      from: 'QuietGreen Bookings <bookings@quietgreen.co>',
+      from: 'QuietGreen Bookings <booking@quietgreen.co>',
       to:   'hello@quietgreen.co',
       subject: `New booking — ${data.name} · ${data.address}`,
       html: `

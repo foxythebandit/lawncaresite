@@ -109,7 +109,8 @@ export default function MapQuoteBuilder() {
   const drawRef = useRef<{
     points:  [number, number][]
     clickFn: ((e: any) => void) | null
-  }>({ points: [], clickFn: null })
+    moveFn:  ((e: any) => void) | null
+  }>({ points: [], clickFn: null, moveFn: null })
 
   const [step,     setStep]     = useState<AppStep>('idle')
   const [address,  setAddress]  = useState('')
@@ -225,11 +226,12 @@ export default function MapQuoteBuilder() {
     if (!map) return
     const d = drawRef.current
     if (d.clickFn) map.off('click', d.clickFn)
-    d.clickFn = null; d.points = []
+    if (d.moveFn)  map.off('mousemove', d.moveFn)
+    d.clickFn = null; d.moveFn = null; d.points = []
     map.doubleClickZoom.enable()
     map.getCanvas().style.cursor = ''
-    ;['draw-fill','draw-line','draw-vertices'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
-    try { map.getSource('draw-data') && map.removeSource('draw-data') } catch {}
+    ;['draw-fill','draw-line','draw-vertices','draw-preview-line'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
+    ;['draw-data','draw-preview'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
     setIsDrawing(false); setDrawCount(0); setPtCount(0)
     setLiveSqFt(0); liveRef.current = 0
   }, [])
@@ -263,10 +265,12 @@ export default function MapQuoteBuilder() {
     map.getCanvas().style.cursor = MOWER_CURSOR
     drawRef.current.points = []
 
-    map.addSource('draw-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    map.addLayer({ id: 'draw-fill',     type: 'fill',   source: 'draw-data', filter: ['==', ['get', 't'], 'poly'], paint: { 'fill-color': '#52b788', 'fill-opacity': 0.18 } })
-    map.addLayer({ id: 'draw-line',     type: 'line',   source: 'draw-data', filter: ['==', ['get', 't'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#52b788', 'line-width': 2.5 } })
-    map.addLayer({ id: 'draw-vertices', type: 'circle', source: 'draw-data', filter: ['==', ['get', 't'], 'pt'],   paint: { 'circle-radius': 5, 'circle-color': '#52b788', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+    map.addSource('draw-data',    { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    map.addSource('draw-preview', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    map.addLayer({ id: 'draw-fill',         type: 'fill',   source: 'draw-data',    filter: ['==', ['get', 't'], 'poly'], paint: { 'fill-color': '#52b788', 'fill-opacity': 0.18 } })
+    map.addLayer({ id: 'draw-line',         type: 'line',   source: 'draw-data',    filter: ['==', ['get', 't'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#52b788', 'line-width': 2.5 } })
+    map.addLayer({ id: 'draw-vertices',     type: 'circle', source: 'draw-data',    filter: ['==', ['get', 't'], 'pt'],   paint: { 'circle-radius': 5, 'circle-color': '#52b788', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+    map.addLayer({ id: 'draw-preview-line', type: 'line',   source: 'draw-preview', paint: { 'line-color': '#95dbb8', 'line-width': 2, 'line-dasharray': [5, 5], 'line-opacity': 0.8 } })
 
     const clickFn = (e: any) => {
       const d = drawRef.current
@@ -276,8 +280,22 @@ export default function MapQuoteBuilder() {
       setDrawCount(c => c + 1)
     }
 
+    const moveFn = (e: any) => {
+      const d = drawRef.current
+      if (!d.points.length) return
+      const last   = d.points[d.points.length - 1]
+      const cursor: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      const src = map.getSource('draw-preview') as any
+      src?.setData({ type: 'FeatureCollection', features: [{
+        type: 'Feature', properties: {},
+        geometry: { type: 'LineString', coordinates: [last, cursor] },
+      }]})
+    }
+
     drawRef.current.clickFn = clickFn
-    map.on('click', clickFn)
+    drawRef.current.moveFn  = moveFn
+    map.on('click',     clickFn)
+    map.on('mousemove', moveFn)
     setIsDrawing(true)
   }, [stopDraw, updateDrawSource])
 
