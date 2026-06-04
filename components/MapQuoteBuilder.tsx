@@ -621,13 +621,17 @@ export default function MapQuoteBuilder() {
 
                     <button className="mapq-cta" onClick={() => {
                       const map = mapRef.current
-                      const capture = () => {
-                        const canvas = map?.getCanvas()
-                        setMapScreenshot(canvas ? canvas.toDataURL('image/jpeg', 0.8) : '')
+                      if (!map) { setShowBooking(true); return }
+                      map.triggerRepaint()
+                      map.once('render', () => {
+                        const src = map.getCanvas()
+                        const offscreen = document.createElement('canvas')
+                        offscreen.width = src.width
+                        offscreen.height = src.height
+                        offscreen.getContext('2d')?.drawImage(src, 0, 0)
+                        setMapScreenshot(offscreen.toDataURL('image/jpeg', 0.8))
                         setShowBooking(true)
-                      }
-                      if (map && !map.isMoving()) { capture() }
-                      else { map?.once('idle', capture) ?? capture() }
+                      })
                     }}>
                       Book this visit
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

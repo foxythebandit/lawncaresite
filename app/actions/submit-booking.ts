@@ -80,8 +80,8 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
       : 'No preference'
 
     await resend.emails.send({
-      from: 'QuietGreen <hello@quietgreen.co>',
-      to:   'hello@quietgreen.co',
+      from: 'QuietGreen Bookings <onboarding@resend.dev>',
+      to:   'paxonearth.22@gmail.com',
       subject: `New booking — ${data.name} · ${data.address}`,
       html: `
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111c17">
@@ -120,7 +120,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
           </div>
         </div>
       `,
-    }).catch(() => {}) // don't fail the booking if email fails
+    }).catch((err: unknown) => { console.error('Resend error:', err) })
   }
 
   return { success: true }
