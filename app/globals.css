@@ -1333,16 +1333,63 @@ footer {
 
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
+  /* ── Layout stacking ── */
   .hero { grid-template-columns: 1fr; min-height: auto; }
-  .hero-right { min-height: 340px; }
   .why-grid, .testi-grid, .steps { grid-template-columns: 1fr; }
-  .cta-section { grid-template-columns: 1fr; }
-  .nav-links { display: none; }
-  .included-row { margin-left: -6vw; margin-right: -6vw; padding: 40px 6vw; }
-  .included-items { flex-direction: column; align-items: flex-start; gap: 4px; }
-  .included-sep { display: none; }
+  .cta-section { grid-template-columns: 1fr; gap: 40px; padding: 64px 6vw; }
+  .how-two-col { grid-template-columns: 1fr; gap: 48px; }
   .mapq-grid { grid-template-columns: 1fr; }
   .mapq-panel { position: static; }
-  .mapq-map-border { height: 420px; }
-  .how-two-col { grid-template-columns: 1fr; gap: 60px; }
+  .mapq-map-border { height: 380px; }
+
+  /* ── Global spacing ── */
+  section { padding: 64px 6vw; }
+
+  /* ── Nav ── */
+  .nav-links { display: none; }
+
+  /* ── Hero overlay: stronger vertical fade for text legibility ── */
+  .hero-overlay {
+    background:
+      linear-gradient(to bottom, rgba(26,58,42,.4) 0%, rgba(26,58,42,.15) 100%),
+      linear-gradient(to right,
+        rgba(26,58,42,1)   0%,
+        rgba(26,58,42,1)  38%,
+        rgba(26,58,42,.88) 55%,
+        rgba(26,58,42,.55) 75%,
+        rgba(26,58,42,.2)  100%
+      );
+  }
+
+  /* ── Hero left ── */
+  .hero-left { padding: 40px 6vw 80px; }
+  .hero-h1 { letter-spacing: 0.015em; word-spacing: 0.06em; }
+
+  /* ── Stat cards: smaller, tucked to bottom-right corner ── */
+  .stat-card { padding: 12px 16px; min-width: 130px; }
+  .stat-card-val { font-size: 26px; }
+  .stat-card-val span { font-size: 13px; }
+  .stat-card-label { font-size: 11px; margin-top: 6px; }
+  .card-1 { top: auto; bottom: 10%; right: 4%; }
+  .card-2 { top: auto; bottom: calc(10% + 110px); right: 4%; }
+
+  /* ── Trust bar ── */
+  .trust-bar { gap: 20px; padding: 14px 6vw; }
+  .trust-divider { display: none; }
+
+  /* ── Noise chart ── */
+  .noise-bars { margin-top: 28px; max-width: 100%; }
+
+  /* ── Included band ── */
+  .included-row {
+    margin-left: -6vw; margin-right: -6vw;
+    margin-bottom: -64px;
+    padding: 44px 6vw;
+  }
+  .included-items { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .included-sep { display: none; }
+
+  /* ── Footer ── */
+  footer { flex-direction: column; align-items: flex-start; padding: 40px 6vw; gap: 16px; }
+  .footer-links { flex-wrap: wrap; gap: 16px; }
 }
