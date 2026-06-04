@@ -135,8 +135,20 @@ export default function Hero() {
         lastFireX = autoX
       }
 
-      autoRaf = requestAnimationFrame(mowerTick)
+      autoRaf = heroVisible ? requestAnimationFrame(mowerTick) : 0
     }
+
+    // Pause mower when hero scrolls off-screen
+    let heroVisible = true
+    const visObserver = new IntersectionObserver(
+      ([entry]) => {
+        heroVisible = entry.isIntersecting
+        if (heroVisible && !autoRaf) autoRaf = requestAnimationFrame(mowerTick)
+      },
+      { threshold: 0 }
+    )
+    const heroSection = mowerRef.current?.closest('section')
+    if (heroSection) visObserver.observe(heroSection)
 
     // Delay mower start so headline reads first
     const startTimer = setTimeout(() => {
@@ -147,6 +159,7 @@ export default function Hero() {
       clearTimeout(startTimer)
       cancelAnimationFrame(autoRaf)
       cancelAnimationFrame(pRaf)
+      visObserver.disconnect()
       pEls.forEach(el => el.parentNode?.removeChild(el))
     }
   }, [])
