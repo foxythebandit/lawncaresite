@@ -9,10 +9,10 @@ export default function Footer() {
         <a href="#">Services</a>
         <a href="#">Pricing</a>
         <a href="#">Service areas</a>
-        <a href="#">Contact</a>
+        <a href="mailto:hello@quietgreen.co">Contact</a>
         <a href="#">Privacy</a>
       </div>
-      <div className="footer-copy">© {new Date().getFullYear()} QuietGreen. All rights reserved.</div>
+      <div className="footer-copy">© {new Date().getFullYear()} QuietGreen · <a href="mailto:hello@quietgreen.co" style={{ color: 'inherit', textDecoration: 'none' }}>hello@quietgreen.co</a></div>
     </footer>
   )
 }

@@ -51,10 +51,10 @@ export default function HowItWorks() {
             {noiseBars.map((bar, i) => (
               <div key={bar.name} className="noise-row reveal" data-delay={i * 100 + 160}>
                 <div className="noise-meta">
-                  <span className="noise-name" style={bar.highlight ? { color: 'var(--green-mid)', fontWeight: 700, fontSize: '16px' } : undefined}>
+                  <span className="noise-name" style={bar.highlight ? { color: 'var(--green-mid)', fontSize: '17px' } : undefined}>
                     {bar.name}
                   </span>
-                  <span className="noise-db" style={bar.highlight ? { color: 'var(--green-mid)', fontWeight: 600, fontSize: '14px' } : undefined}>
+                  <span className="noise-db" style={bar.highlight ? { color: 'var(--green-mid)', fontWeight: 500, fontSize: '14px' } : undefined}>
                     {bar.db}
                   </span>
                 </div>
