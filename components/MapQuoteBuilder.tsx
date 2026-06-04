@@ -130,8 +130,9 @@ export default function MapQuoteBuilder() {
   const [bookingPhone,  setBookingPhone]  = useState('')
   const [bookingEmail,  setBookingEmail]  = useState('')
   const [bookingDate,   setBookingDate]   = useState('')
-  const [bookingStatus, setBookingStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
-  const [bookingError,  setBookingError]  = useState('')
+  const [bookingStatus,    setBookingStatus]    = useState<'idle' | 'submitting' | 'success'>('idle')
+  const [bookingError,     setBookingError]     = useState('')
+  const [mapScreenshot,    setMapScreenshot]    = useState('')
 
   /* ─── Init MapLibre ──────────────────────────────────── */
   useEffect(() => {
@@ -155,6 +156,7 @@ export default function MapQuoteBuilder() {
           glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         },
         center: [-98.5, 39.8], zoom: 4, maxZoom: 21, attributionControl: false,
+        ...(({ preserveDrawingBuffer: true } as any)),
       })
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
       mapRef.current = map
@@ -387,6 +389,7 @@ export default function MapQuoteBuilder() {
       sq_ft: lawnSqFt, frequency: FREQ[freq].label,
       price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice,
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
+      map_screenshot: mapScreenshot,
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setBookingStatus('success') }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
@@ -615,7 +618,11 @@ export default function MapQuoteBuilder() {
                       </div>
                     </div>
 
-                    <button className="mapq-cta" onClick={() => setShowBooking(true)}>
+                    <button className="mapq-cta" onClick={() => {
+                      const canvas = mapRef.current?.getCanvas()
+                      setMapScreenshot(canvas ? canvas.toDataURL('image/jpeg', 0.8) : '')
+                      setShowBooking(true)
+                    }}>
                       Book this visit
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>

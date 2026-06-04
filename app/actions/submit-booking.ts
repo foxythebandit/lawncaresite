@@ -22,6 +22,7 @@ export interface BookingData {
   first_visit_price: number
   overgrowth_fee:    number
   last_mow:          string
+  map_screenshot?:   string
 }
 
 export async function submitBooking(data: BookingData): Promise<{ success: boolean; error?: string }> {
@@ -29,19 +30,42 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     return { success: false, error: 'Name and phone number are required.' }
   }
 
+  // Upload map screenshot to Supabase Storage
+  let screenshotUrl: string | null = null
+  if (data.map_screenshot) {
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!
+    )
+    await adminClient.storage.createBucket('booking-maps', { public: true }).catch(() => {})
+    const base64 = data.map_screenshot.split(',')[1]
+    if (base64) {
+      const buffer = Buffer.from(base64, 'base64')
+      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const { data: uploaded } = await adminClient.storage
+        .from('booking-maps')
+        .upload(filename, buffer, { contentType: 'image/jpeg' })
+      if (uploaded) {
+        const { data: urlData } = adminClient.storage.from('booking-maps').getPublicUrl(filename)
+        screenshotUrl = urlData.publicUrl
+      }
+    }
+  }
+
   const supabase = getSupabase()
   const { error } = await supabase.from('bookings').insert({
-    name:              data.name.trim(),
-    phone:             data.phone.trim(),
-    email:             data.email.trim() || null,
-    preferred_date:    data.preferred_date || null,
-    address:           data.address,
-    sq_ft:             data.sq_ft,
-    frequency:         data.frequency,
-    price_per_visit:   data.price_per_visit,
-    first_visit_price: data.first_visit_price,
-    overgrowth_fee:    data.overgrowth_fee || null,
-    last_mow:          data.last_mow,
+    name:               data.name.trim(),
+    phone:              data.phone.trim(),
+    email:              data.email.trim() || null,
+    preferred_date:     data.preferred_date || null,
+    address:            data.address,
+    sq_ft:              data.sq_ft,
+    frequency:          data.frequency,
+    price_per_visit:    data.price_per_visit,
+    first_visit_price:  data.first_visit_price,
+    overgrowth_fee:     data.overgrowth_fee || null,
+    last_mow:           data.last_mow,
+    map_screenshot_url: screenshotUrl,
   })
 
   if (error) {
@@ -85,6 +109,11 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
               </table>
             </div>
 
+            ${screenshotUrl ? `
+            <div style="margin-bottom:20px">
+              <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Traced lawn</p>
+              <img src="${screenshotUrl}" alt="Lawn trace" style="width:100%;border-radius:10px;border:1px solid #e0ede6;display:block"/>
+            </div>` : ''}
             <a href="tel:${data.phone}" style="display:block;background:#1a3a2a;color:#fff;text-align:center;padding:13px;border-radius:100px;text-decoration:none;font-size:14px;font-weight:500">
               Call ${data.name.split(' ')[0]} →
             </a>

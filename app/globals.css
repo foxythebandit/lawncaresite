@@ -1443,6 +1443,9 @@ footer {
 .admin-card-row-warning svg { color: #b07800; }
 .admin-card-link { color: var(--green-mid); text-decoration: none; }
 
+.admin-card-screenshot { border-top: 1px solid var(--rule); }
+.admin-card-screenshot img { width: 100%; display: block; max-height: 200px; object-fit: cover; }
+
 .admin-card-actions {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0;
 }

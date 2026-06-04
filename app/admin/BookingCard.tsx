@@ -18,6 +18,7 @@ interface Booking {
   last_mow: string | null
   status: string
   created_at: string
+  map_screenshot_url: string | null
 }
 
 function timeAgo(dateStr: string) {
@@ -91,6 +92,12 @@ export default function BookingCard({ booking }: { booking: Booking }) {
           </div>
         )}
       </div>
+
+      {booking.map_screenshot_url && (
+        <div className="admin-card-screenshot">
+          <img src={booking.map_screenshot_url} alt="Traced lawn" />
+        </div>
+      )}
 
       <div className={`admin-card-actions ${booking.email ? 'admin-card-actions-3' : ''}`}>
         <a href={`tel:${booking.phone}`} className="admin-action-call">

@@ -74,6 +74,11 @@ export async function updateStatus(id: string, status: string) {
               <p style="margin:0">${booking.sq_ft?.toLocaleString()} sq ft · ${booking.frequency} · $${booking.price_per_visit}/visit</p>
               ${booking.overgrowth_fee ? `<p style="margin:6px 0 0;color:#b07800">First visit $${booking.first_visit_price} (incl. $${booking.overgrowth_fee} first-cut cleanup)</p>` : ''}
             </div>
+            ${booking.map_screenshot_url ? `
+            <div style="margin-bottom:20px">
+              <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Your traced lawn</p>
+              <img src="${booking.map_screenshot_url}" alt="Your lawn trace" style="width:100%;border-radius:10px;border:1px solid #e0ede6;display:block"/>
+            </div>` : ''}
             <p style="font-size:13px;color:#4a5e54;margin:0">Questions? Reply to this email or text us any time.</p>
           </div>
         </div>
