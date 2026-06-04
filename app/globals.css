@@ -1406,21 +1406,26 @@ footer {
 .admin-empty { text-align: center; padding: 60px 20px; color: var(--ink-soft); font-size: 15px; }
 
 .admin-card {
-  background: #fff; border-radius: 16px; overflow: hidden;
+  background: #fff; border-radius: 14px; overflow: hidden;
   border: 1px solid var(--rule);
-  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  box-shadow: 0 1px 4px rgba(0,0,0,.05);
   transition: opacity .2s;
 }
 .admin-card-loading { opacity: .6; pointer-events: none; }
-.admin-card-header {
-  padding: 16px 18px 12px;
-  display: flex; justify-content: space-between; align-items: flex-start;
+
+/* Compact always-visible summary row */
+.admin-card-summary {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px; background: none; border: none; cursor: pointer;
+  text-align: left; font-family: var(--font-body);
 }
-.admin-card-name { font-size: 18px; font-weight: 600; color: var(--ink); margin: 4px 0 2px; }
-.admin-card-time { font-size: 12px; color: var(--ink-soft); }
-.admin-card-price { text-align: right; }
-.admin-card-price-val { font-family: var(--font-display); font-size: 26px; color: var(--green-deep); line-height: 1; }
-.admin-card-price-sub { font-size: 11px; color: var(--ink-soft); }
+.admin-card-summary:hover { background: var(--green-pale); }
+.admin-card-summary-name { font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.admin-card-summary-addr { flex: 1; font-size: 13px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.admin-card-summary-price { font-size: 15px; font-weight: 700; color: var(--green-deep); white-space: nowrap; }
+.admin-card-summary-sub { font-size: 11px; font-weight: 400; color: var(--ink-soft); }
+.admin-card-chevron { flex-shrink: 0; color: var(--ink-soft); transition: transform .2s; }
+.admin-card-chevron-open { transform: rotate(180deg); }
 
 .admin-badge {
   display: inline-block; padding: 3px 10px; border-radius: 100px;
@@ -1431,8 +1436,8 @@ footer {
 .admin-badge-declined  { background: #fdf0f0; color: #b03030; }
 
 .admin-card-body {
-  padding: 0 18px 14px; display: flex; flex-direction: column; gap: 8px;
-  border-bottom: 1px solid var(--rule);
+  padding: 4px 18px 16px; display: flex; flex-direction: column; gap: 8px;
+  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
 }
 .admin-card-row {
   display: flex; align-items: flex-start; gap: 8px;
@@ -1443,8 +1448,9 @@ footer {
 .admin-card-row-warning svg { color: #b07800; }
 .admin-card-link { color: var(--green-mid); text-decoration: none; }
 
-.admin-card-screenshot { border-top: 1px solid var(--rule); }
+.admin-card-screenshot { display: block; border-top: 1px solid var(--rule); position: relative; text-decoration: none; }
 .admin-card-screenshot img { width: 100%; display: block; max-height: 200px; object-fit: cover; }
+.admin-screenshot-hint { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: #fff; background: rgba(0,0,0,.45); padding: 2px 8px; border-radius: 100px; }
 
 .admin-card-actions {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0;
