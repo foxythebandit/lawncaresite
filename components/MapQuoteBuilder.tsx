@@ -156,7 +156,8 @@ export default function MapQuoteBuilder() {
           glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         },
         center: [-98.5, 39.8], zoom: 4, maxZoom: 21, attributionControl: false,
-        ...(({ preserveDrawingBuffer: true } as any)),
+        // @ts-ignore — preserveDrawingBuffer needed for canvas.toDataURL()
+        preserveDrawingBuffer: true,
       })
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
       mapRef.current = map
@@ -619,9 +620,14 @@ export default function MapQuoteBuilder() {
                     </div>
 
                     <button className="mapq-cta" onClick={() => {
-                      const canvas = mapRef.current?.getCanvas()
-                      setMapScreenshot(canvas ? canvas.toDataURL('image/jpeg', 0.8) : '')
-                      setShowBooking(true)
+                      const map = mapRef.current
+                      const capture = () => {
+                        const canvas = map?.getCanvas()
+                        setMapScreenshot(canvas ? canvas.toDataURL('image/jpeg', 0.8) : '')
+                        setShowBooking(true)
+                      }
+                      if (map && !map.isMoving()) { capture() }
+                      else { map?.once('idle', capture) ?? capture() }
                     }}>
                       Book this visit
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
