@@ -1446,7 +1446,8 @@ footer {
 .admin-card-actions {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0;
 }
-.admin-action-call, .admin-action-text {
+.admin-card-actions-3 { grid-template-columns: 1fr 1fr 1fr; }
+.admin-action-call, .admin-action-text, .admin-action-email {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   padding: 14px; font-size: 14px; font-weight: 500; text-decoration: none;
   transition: background .15s;
@@ -1458,6 +1459,8 @@ footer {
 .admin-action-call:hover { background: var(--green-mid); }
 .admin-action-text { background: var(--green-bright); color: #fff; }
 .admin-action-text:hover { background: #3da870; }
+.admin-action-email { background: var(--green-mid); color: #fff; border-left: 1px solid rgba(255,255,255,.1); }
+.admin-action-email:hover { background: var(--green-deep); }
 
 .admin-card-status-btns {
   display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--rule);
