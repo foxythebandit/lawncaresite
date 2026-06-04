@@ -182,7 +182,7 @@ nav {
   line-height: 1;
 }
 .stat-card-val span { font-size: 16px; color: var(--green-bright); }
-.stat-card-label { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-weight: 400; }
+.stat-card-label { font-size: 12px; color: var(--ink-soft); margin-top: 10px; font-weight: 400; }
 
 .card-1 { top: 55%; right: 12%; }
 .card-2 { top: 22%; right: 34%; }

@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 
 const MOWER_W  = 130
 const START_X  = 20
-const END_X    = 450
+const END_X    = 295
 const MOWER_Y  = 535
 const POOL     = 12
 const FIRE_DIST = 16
@@ -127,7 +127,8 @@ export default function Hero() {
         fr ? '' : `translate(${MOWER_W},0) scale(-1,1)`
       )
 
-      if (Math.abs(autoX - lastFireX) >= FIRE_DIST) {
+      const nearEdge = autoX < START_X + 24 || autoX > END_X - 24
+      if (!nearEdge && Math.abs(autoX - lastFireX) >= FIRE_DIST) {
         // Chute center is at local x=133 — compute world position after mower transform
         const cx = fr ? x + 133 : x + MOWER_W - 133
         spawn(cx, MOWER_Y + 30, fr)
