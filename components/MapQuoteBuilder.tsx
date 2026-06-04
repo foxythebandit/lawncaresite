@@ -2,6 +2,7 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { submitBooking } from '@/app/actions/submit-booking'
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
@@ -23,14 +24,42 @@ const FREQ: Record<Frequency, { label: string; sub: string; discount: number }> 
 
 const SECT_COLORS = ['#52b788', '#74c9a0', '#2d9e6b', '#38a878', '#95dbb8']
 
+const MOWER_CURSOR = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='38' height='28' viewBox='0 0 38 28'><line x1='10' y1='14' x2='3' y2='4' stroke='white' stroke-width='1.5' stroke-linecap='round'/><line x1='3' y1='4' x2='8' y2='4' stroke='white' stroke-width='1.5' stroke-linecap='round'/><rect x='7' y='11' width='23' height='8' rx='2.5' fill='%2352b788' stroke='white' stroke-width='1'/><path d='M30,12 L36,10.5 L36,15.5 Z' fill='%2395dbb8'/><circle cx='26' cy='22' r='4.5' fill='%231a3a2a' stroke='white' stroke-width='1'/><circle cx='26' cy='22' r='1.8' fill='%2352b788'/><circle cx='11' cy='22' r='5' fill='%231a3a2a' stroke='white' stroke-width='1'/><circle cx='11' cy='22' r='2' fill='%2352b788'/><rect x='13' y='13.5' width='9' height='3' rx='1' fill='%231a3a2a'/><rect x='14' y='14' width='6' height='2' rx='0.5' fill='%2395dbb8'/></svg>") 36 13, crosshair`
+
+const LAST_MOW_OPTS = [
+  { key: 'thisweek', label: 'This week',  sub: '0–7 days'  },
+  { key: 'biweekly', label: '2–3 weeks',  sub: '~2–3 wks'  },
+  { key: 'month',    label: '~1 month',   sub: '3–5 weeks' },
+  { key: 'overdue',  label: '2+ months',  sub: '6+ weeks'  },
+]
+const LAST_MOW_WEEKS: Record<string, number> = {
+  thisweek: 0.5, biweekly: 2.5, month: 4, overdue: 9,
+}
+
 /* ── Helpers ──────────────────────────────────────────── */
 function uid() { return Math.random().toString(36).slice(2, 8) }
 
 function calcPrice(sqFt: number): number {
-  if (sqFt <= 2000)  return 39
-  if (sqFt <= 5000)  return 39  + Math.round((sqFt - 2000)  * 0.013)
-  if (sqFt <= 12000) return 78  + Math.round((sqFt - 5000)  * 0.010)
-  return                      148 + Math.round((sqFt - 12000) * 0.007)
+  if (sqFt <= 2000)  return 65
+  if (sqFt <= 5000)  return 65  + Math.round((sqFt - 2000)  * 0.018)
+  if (sqFt <= 12000) return 119 + Math.round((sqFt - 5000)  * 0.013)
+  return                      210 + Math.round((sqFt - 12000) * 0.009)
+}
+
+function getSeasonInfo(month: number) {
+  if (month >= 4 && month <= 7)
+    return { name: 'Peak season',     multiplier: 1.0, note: 'Grass grows up to 1″ per week right now', color: '#52b788' }
+  if (month === 2 || month === 3 || month === 8 || month === 9)
+    return { name: 'Shoulder season', multiplier: 0.5, note: 'Moderate growth this time of year',       color: '#95dbb8' }
+  return   { name: 'Dormant season',  multiplier: 0.1, note: 'Minimal growth — no cleanup fees apply',  color: 'rgba(255,255,255,.35)' }
+}
+
+function calcOvergrowthFee(weeks: number, multiplier: number): { fee: number; label: string } {
+  const score = weeks * multiplier
+  if (score >= 6)   return { fee: 45, label: 'Heavy first-cut cleanup' }
+  if (score >= 3)   return { fee: 25, label: 'First-cut cleanup' }
+  if (score >= 1.5) return { fee: 15, label: 'Light cleanup fee' }
+  return                   { fee: 0,  label: '' }
 }
 
 function easeInOut(t: number): number {
@@ -78,11 +107,9 @@ export default function MapQuoteBuilder() {
   const liveRef   = useRef<number>(0) // tracks animated live value
 
   const drawRef = useRef<{
-    points: [number, number][]
-    timer:   ReturnType<typeof setTimeout> | null
+    points:  [number, number][]
     clickFn: ((e: any) => void) | null
-    dblFn:   (() => void) | null
-  }>({ points: [], timer: null, clickFn: null, dblFn: null })
+  }>({ points: [], clickFn: null })
 
   const [step,     setStep]     = useState<AppStep>('idle')
   const [address,  setAddress]  = useState('')
@@ -92,9 +119,18 @@ export default function MapQuoteBuilder() {
   const [animSqFt, setAnimSqFt] = useState(0)
   const [liveSqFt, setLiveSqFt] = useState(0)
   const [freq,     setFreq]     = useState<Frequency>('biweekly')
+  const [lastMow,  setLastMow]  = useState('thisweek')
   const [isDrawing,setIsDrawing]= useState(false)
   const [drawCount,setDrawCount]= useState(0)
   const [ptCount,  setPtCount]  = useState(0)
+
+  const [showBooking,   setShowBooking]   = useState(false)
+  const [bookingName,   setBookingName]   = useState('')
+  const [bookingPhone,  setBookingPhone]  = useState('')
+  const [bookingEmail,  setBookingEmail]  = useState('')
+  const [bookingDate,   setBookingDate]   = useState('')
+  const [bookingStatus, setBookingStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
+  const [bookingError,  setBookingError]  = useState('')
 
   /* ─── Init MapLibre ──────────────────────────────────── */
   useEffect(() => {
@@ -157,6 +193,12 @@ export default function MapQuoteBuilder() {
     rafRef.current = requestAnimationFrame(tick)
   }, [drawCount])
 
+  /* ─── Derive lawnSqFt from sections ─────────────────── */
+  useEffect(() => {
+    const total = sections.reduce((s, sec) => s + sec.sqFt, 0)
+    setLawnSqFt(total > 0 ? total : null)
+  }, [sections])
+
   /* ─── Sync sections → map ────────────────────────────── */
   useEffect(() => {
     const map = mapRef.current
@@ -183,9 +225,7 @@ export default function MapQuoteBuilder() {
     if (!map) return
     const d = drawRef.current
     if (d.clickFn) map.off('click', d.clickFn)
-    if (d.dblFn)   map.off('dblclick', d.dblFn)
-    if (d.timer)   clearTimeout(d.timer)
-    d.clickFn = null; d.dblFn = null; d.timer = null; d.points = []
+    d.clickFn = null; d.points = []
     map.doubleClickZoom.enable()
     map.getCanvas().style.cursor = ''
     ;['draw-fill','draw-line','draw-vertices'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
@@ -194,27 +234,25 @@ export default function MapQuoteBuilder() {
     setLiveSqFt(0); liveRef.current = 0
   }, [])
 
-  const commitPolygon = useCallback((pts: [number, number][]) => {
+  const savePolygon = useCallback((pts: [number, number][]) => {
     if (pts.length < 3) return
     const closed = [...pts, pts[0]]
     const sqFt   = polygonSqFt(pts)
-    stopDraw()
-
     const map = mapRef.current
     if (map && !map.getSource('sections-data')) {
       map.addSource('sections-data', { type: 'geojson', data: sectionsGeoJSON([]) })
       map.addLayer({ id: 'sections-fill',    type: 'fill', source: 'sections-data', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.25 } })
       map.addLayer({ id: 'sections-outline', type: 'line', source: 'sections-data', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 2.5 } })
     }
+    setSections(prev => [...prev, { id: uid(), name: prev.length === 0 ? 'Lawn' : `Zone ${prev.length + 1}`, sqFt, coords: closed }])
+  }, [])
 
-    setSections(prev => {
-      const next = [...prev, { id: uid(), name: prev.length === 0 ? 'Lawn' : `Zone ${prev.length + 1}`, sqFt, coords: closed }]
-      const total = next.reduce((s, sec) => s + sec.sqFt, 0)
-      setLawnSqFt(total)
-      return next
-    })
+  const commitPolygon = useCallback((pts: [number, number][]) => {
+    if (pts.length < 3) return
+    stopDraw()
+    savePolygon(pts)
     setStep('done')
-  }, [stopDraw])
+  }, [stopDraw, savePolygon])
 
   const startDraw = useCallback(() => {
     const map = mapRef.current
@@ -222,7 +260,7 @@ export default function MapQuoteBuilder() {
     stopDraw()
 
     map.doubleClickZoom.disable()
-    map.getCanvas().style.cursor = 'crosshair'
+    map.getCanvas().style.cursor = MOWER_CURSOR
     drawRef.current.points = []
 
     map.addSource('draw-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
@@ -232,34 +270,31 @@ export default function MapQuoteBuilder() {
 
     const clickFn = (e: any) => {
       const d = drawRef.current
-      if (d.timer) clearTimeout(d.timer)
-      d.timer = setTimeout(() => {
-        d.points = [...d.points, [e.lngLat.lng, e.lngLat.lat]]
-        updateDrawSource()
-        setPtCount(d.points.length)
-        setDrawCount(c => c + 1)
-      }, 180)
-    }
-
-    const dblFn = () => {
-      const d = drawRef.current
-      if (d.timer) clearTimeout(d.timer)
-      commitPolygon(d.points)
+      d.points = [...d.points, [e.lngLat.lng, e.lngLat.lat]]
+      updateDrawSource()
+      setPtCount(d.points.length)
+      setDrawCount(c => c + 1)
     }
 
     drawRef.current.clickFn = clickFn
-    drawRef.current.dblFn   = dblFn
     map.on('click', clickFn)
-    map.on('dblclick', dblFn)
     setIsDrawing(true)
-  }, [stopDraw, updateDrawSource, commitPolygon])
+  }, [stopDraw, updateDrawSource])
 
   /* ─── Finish button ──────────────────────────────────── */
   const handleFinish = useCallback(() => {
-    const d = drawRef.current
-    if (d.timer) clearTimeout(d.timer)
-    commitPolygon(d.points)
+    commitPolygon(drawRef.current.points)
   }, [commitPolygon])
+
+  /* ─── Finish & immediately draw another zone ─────────── */
+  const handleFinishAndAdd = useCallback(() => {
+    const pts = [...drawRef.current.points]
+    if (pts.length < 3) return
+    stopDraw()
+    savePolygon(pts)
+    setStep('editing')
+    startDraw()
+  }, [stopDraw, savePolygon, startDraw])
 
   /* ─── Address search ─────────────────────────────────── */
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
@@ -286,11 +321,7 @@ export default function MapQuoteBuilder() {
   }, [startDraw])
 
   const deleteSection = useCallback((id: string) => {
-    setSections(prev => {
-      const next = prev.filter(s => s.id !== id)
-      setLawnSqFt(next.reduce((s, sec) => s + sec.sqFt, 0) || null)
-      return next
-    })
+    setSections(prev => prev.filter(s => s.id !== id))
   }, [])
 
   /* ─── Reset ──────────────────────────────────────────── */
@@ -304,14 +335,44 @@ export default function MapQuoteBuilder() {
       map.flyTo({ center: [-98.5, 39.8], zoom: 4, duration: 1200 })
     }
     setStep('idle'); setAddress(''); setError('')
-    setLawnSqFt(null); setAnimSqFt(0); setSections([])
+    setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek')
   }, [stopDraw])
 
+  /* ─── Booking modal ─────────────────────────────────── */
+  useEffect(() => {
+    if (!showBooking) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeBooking() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showBooking])
+
   /* ─── Pricing ────────────────────────────────────────── */
-  const basePrice  = lawnSqFt ? calcPrice(lawnSqFt) : 0
-  const discount   = FREQ[freq].discount
-  const finalPrice = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) : 0
-  const isDone     = step === 'done' || step === 'editing'
+  const season         = getSeasonInfo(new Date().getMonth())
+  const mowWeeks       = LAST_MOW_WEEKS[lastMow] ?? 0.5
+  const { fee: overgrowthFee, label: overgrowthLabel } = calcOvergrowthFee(mowWeeks, season.multiplier)
+  const basePrice      = lawnSqFt ? calcPrice(lawnSqFt) : 0
+  const discount       = FREQ[freq].discount
+  const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) : 0
+  const firstVisitPrice = ongoingPrice + overgrowthFee
+  const isDone         = step === 'done' || step === 'editing'
+
+  const closeBooking = useCallback(() => {
+    setShowBooking(false); setBookingStatus('idle'); setBookingError('')
+  }, [])
+
+  const handleBookingSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBookingStatus('submitting'); setBookingError('')
+    const result = await submitBooking({
+      name: bookingName, phone: bookingPhone, email: bookingEmail,
+      preferred_date: bookingDate, address,
+      sq_ft: lawnSqFt, frequency: FREQ[freq].label,
+      price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice,
+      overgrowth_fee: overgrowthFee, last_mow: lastMow,
+    }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
+    if (result.success) { setBookingStatus('success') }
+    else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
+  }, [bookingName, bookingPhone, bookingEmail, bookingDate, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow])
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
@@ -365,16 +426,16 @@ export default function MapQuoteBuilder() {
 
             {/* Step 2 — Trace */}
             <div className="mapq-step">
-              <div className={`mapq-step-indicator ${isDone ? 'done' : step === 'drawing' ? 'active' : 'idle'}`}>
-                {isDone ? <CheckIcon /> : '2'}
+              <div className={`mapq-step-indicator ${isDone && !isDrawing ? 'done' : isDrawing ? 'active' : 'idle'}`}>
+                {isDone && !isDrawing ? <CheckIcon /> : '2'}
               </div>
-              <div className="mapq-step-line" style={{ opacity: isDone ? 1 : 0.2 }} />
+              <div className="mapq-step-line" style={{ opacity: isDone && !isDrawing ? 1 : 0.2 }} />
               <div className="mapq-step-body">
-                <div className={`mapq-step-title ${step === 'drawing' ? 'active' : ''}`}>
+                <div className={`mapq-step-title ${isDrawing ? 'active' : ''}`}>
                   Trace your lawn
                 </div>
 
-                {step === 'drawing' && (
+                {isDrawing && (
                   <div style={{ marginTop: 14 }}>
                     {/* Live counter — the gamification hook */}
                     <div className="mapq-live-counter">
@@ -388,24 +449,34 @@ export default function MapQuoteBuilder() {
                     <p className="mapq-hint">
                       {ptCount < 3
                         ? 'Click around your lawn to place points'
-                        : 'Keep going — double-click anywhere to close and finish'}
+                        : 'Keep going — hit Finish when done'}
                     </p>
 
-                    {ptCount >= 3 && (
-                      <button className="mapq-btn-primary" onClick={handleFinish} style={{ width: '100%', marginBottom: 8 }}>
-                        Finish tracing ✓
+                    {ptCount >= 3 ? (
+                      <>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                          <button className="mapq-btn-primary" onClick={handleFinish} style={{ flex: 1 }}>
+                            Finish ✓
+                          </button>
+                          <button className="mapq-btn-ghost" onClick={handleFinishAndAdd} style={{ flex: 1 }}>
+                            + Add zone
+                          </button>
+                        </div>
+                        <button className="mapq-link" onClick={handleReset} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 12 }}>
+                          Start over
+                        </button>
+                      </>
+                    ) : (
+                      <button className="mapq-btn-ghost" onClick={handleReset} style={{ width: '100%' }}>
+                        Start over
                       </button>
                     )}
-                    <button className="mapq-btn-ghost" onClick={handleReset} style={{ width: '100%' }}>
-                      Start over
-                    </button>
                   </div>
                 )}
 
-                {isDone && lawnSqFt && (
+                {!isDrawing && isDone && lawnSqFt && (
                   <p className="mapq-step-done-text">
                     {lawnSqFt.toLocaleString()} sq ft traced
-                    {step === 'done' && <button className="mapq-link" onClick={enterEditMode}> · add a zone</button>}
                   </p>
                 )}
               </div>
@@ -435,6 +506,13 @@ export default function MapQuoteBuilder() {
                         Traced
                       </div>
                     </div>
+
+                    {/* Add zone button */}
+                    {step === 'done' && (
+                      <button className="mapq-btn-ghost" onClick={enterEditMode} style={{ width: '100%', marginBottom: 16 }}>
+                        + Add another area
+                      </button>
+                    )}
 
                     {/* Sections list (editing) */}
                     {step === 'editing' && sections.length > 0 && (
@@ -473,19 +551,42 @@ export default function MapQuoteBuilder() {
                       ))}
                     </div>
 
+                    {/* Season-aware overgrowth selector */}
+                    <div className="mapq-season-tag">
+                      <span className="mapq-season-dot" style={{ background: season.color }} />
+                      <span>{season.name} — {season.note}</span>
+                    </div>
+                    <div className="mapq-freq-label">When was it last mowed?</div>
+                    <div className="mapq-last-mow-grid">
+                      {LAST_MOW_OPTS.map(opt => (
+                        <button key={opt.key} className={`mapq-cond-btn ${lastMow === opt.key ? 'selected' : ''}`} onClick={() => setLastMow(opt.key)}>
+                          <span className="mapq-cond-name">{opt.label}</span>
+                          <span className="mapq-cond-sub">{opt.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="mapq-price-rows">
                       <div className="mapq-price-row"><span>Base rate</span><span>${basePrice}</span></div>
                       {discount > 0 && (
                         <div className="mapq-price-row mapq-price-discount">
-                          <span>{FREQ[freq].label} discount</span><span>–${basePrice - finalPrice}</span>
+                          <span>{FREQ[freq].label} discount</span><span>–${basePrice - ongoingPrice}</span>
+                        </div>
+                      )}
+                      {overgrowthFee > 0 && (
+                        <div className="mapq-price-row mapq-price-overgrowth">
+                          <span>{overgrowthLabel} <span className="mapq-price-once">(first visit only)</span></span>
+                          <span>+${overgrowthFee}</span>
                         </div>
                       )}
                     </div>
 
                     <div className="mapq-price-total">
                       <div>
-                        <div className="mapq-price-val">${finalPrice}</div>
-                        <div className="mapq-price-per">per visit · fixed price</div>
+                        <div className="mapq-price-val">${ongoingPrice}</div>
+                        <div className="mapq-price-per">
+                          per visit · fixed{overgrowthFee > 0 ? ` · first visit $${firstVisitPrice}` : ''}
+                        </div>
                       </div>
                       <div className="mapq-eco-badge">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -496,12 +597,12 @@ export default function MapQuoteBuilder() {
                       </div>
                     </div>
 
-                    <a href="mailto:hello@quietgreen.com" className="mapq-cta">
+                    <button className="mapq-cta" onClick={() => setShowBooking(true)}>
                       Book this visit
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
                       </svg>
-                    </a>
+                    </button>
                     <p className="mapq-cta-note">No payment now · we'll confirm within 2 hours</p>
 
                     <button className="mapq-link mapq-reset" onClick={handleReset}>Start over</button>
@@ -535,10 +636,10 @@ export default function MapQuoteBuilder() {
                 </div>
               )}
 
-              {step === 'drawing' && (
+              {isDrawing && (
                 <div className="mapq-draw-pill">
                   <span className="mapq-pulse-dot" />
-                  {ptCount < 3 ? 'Click to place points — trace your lawn' : `${ptCount} points · double-click or tap Finish to close`}
+                  {ptCount < 3 ? 'Click to place points — trace your lawn' : `${ptCount} points · hit Finish to close`}
                 </div>
               )}
 
@@ -548,6 +649,74 @@ export default function MapQuoteBuilder() {
           </div>
         </div>
       </div>
+
+      {/* ── Booking modal ── */}
+      {showBooking && (
+        <div className="booking-overlay" onClick={e => { if (e.target === e.currentTarget) closeBooking() }}>
+          <div className="booking-modal">
+
+            {bookingStatus === 'success' ? (
+              <div className="booking-success">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--green-bright)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <h3>You&apos;re on the list!</h3>
+                <p>We&apos;ll text or call within 2 hours to confirm your visit date.</p>
+                <button className="booking-success-btn" onClick={closeBooking}>Done</button>
+              </div>
+            ) : (
+              <>
+                <button className="booking-close" onClick={closeBooking} aria-label="Close">×</button>
+                <h3 className="booking-title">Confirm your booking</h3>
+
+                <div className="booking-summary">
+                  <div className="booking-summary-addr">{address}</div>
+                  <div className="booking-summary-stats">
+                    <span>{lawnSqFt?.toLocaleString()} sq ft</span>
+                    <span className="booking-dot">·</span>
+                    <span>{FREQ[freq].label}</span>
+                    <span className="booking-dot">·</span>
+                    <span>${ongoingPrice}/visit</span>
+                    {overgrowthFee > 0 && (
+                      <><span className="booking-dot">·</span><span>First visit ${firstVisitPrice}</span></>
+                    )}
+                  </div>
+                </div>
+
+                <form onSubmit={handleBookingSubmit}>
+                  <div className="booking-fields">
+                    <div className="booking-field">
+                      <label>Name</label>
+                      <input type="text" placeholder="Jane Smith" required value={bookingName} onChange={e => setBookingName(e.target.value)} />
+                    </div>
+                    <div className="booking-field">
+                      <label>Phone</label>
+                      <input type="tel" placeholder="(512) 555-0100" required value={bookingPhone} onChange={e => setBookingPhone(e.target.value)} />
+                    </div>
+                    <div className="booking-field">
+                      <label>Email <span className="booking-optional">optional</span></label>
+                      <input type="email" placeholder="jane@example.com" value={bookingEmail} onChange={e => setBookingEmail(e.target.value)} />
+                    </div>
+                    <div className="booking-field">
+                      <label>Preferred first visit <span className="booking-optional">optional</span></label>
+                      <input type="date" min={new Date(Date.now() + 86400000).toISOString().split('T')[0]} value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
+                    </div>
+                  </div>
+
+                  {bookingError && <p className="booking-error">{bookingError}</p>}
+
+                  <button type="submit" className="booking-submit" disabled={bookingStatus === 'submitting'}>
+                    {bookingStatus === 'submitting'
+                      ? <><span className="mapq-spinner" style={{ borderTopColor: '#fff' }} /> Sending…</>
+                      : 'Request this visit →'}
+                  </button>
+                </form>
+                <p className="booking-note">No payment now · we&apos;ll confirm within 2 hours</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

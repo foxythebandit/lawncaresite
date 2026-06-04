@@ -1,8 +1,8 @@
 const bars = [
-  { name: 'Gas hedge trimmer',          db: '103 dB — pain threshold',       width: '95%', cls: 'bar-red'   },
-  { name: 'Gas leaf blower',            db: '92 dB — hearing damage risk',   width: '84%', cls: 'bar-red'   },
-  { name: 'Gas lawn mower',             db: '85 dB — city traffic level',    width: '77%', cls: 'bar-amber' },
-  { name: 'QuietGreen electric equipment', db: '60 dB — washing machine level', width: '54%', cls: 'bar-green', highlight: true },
+  { name: 'Gas hedge trimmer',             db: '103 dB — pain threshold',       width: '95%', cls: 'bar-red',   shake: 'intense' },
+  { name: 'Gas leaf blower',               db: '92 dB — hearing damage risk',   width: '84%', cls: 'bar-red',   shake: 'strong'  },
+  { name: 'Gas lawn mower',                db: '85 dB — city traffic level',    width: '77%', cls: 'bar-amber', shake: 'mild'    },
+  { name: 'QuietGreen electric equipment', db: '60 dB — washing machine level', width: '54%', cls: 'bar-green', shake: '',       highlight: true },
 ]
 
 export default function NoiseComparison() {
@@ -37,6 +37,7 @@ export default function NoiseComparison() {
                 style={{ width: bar.width }}
                 data-reveal-width={bar.width}
                 data-delay={i * 100 + 200}
+                data-shake={bar.shake}
               />
             </div>
           </div>

@@ -4,7 +4,6 @@ import Hero from '@/components/Hero'
 import TrustBar from '@/components/TrustBar'
 import HowItWorks from '@/components/HowItWorks'
 import WhyElectric from '@/components/WhyElectric'
-import NoiseComparison from '@/components/NoiseComparison'
 import Testimonials from '@/components/Testimonials'
 import FAQ from '@/components/FAQ'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
@@ -20,7 +19,6 @@ export default function Home() {
       <MapQuoteBuilder />
       <HowItWorks />
       <WhyElectric />
-      <NoiseComparison />
       <Testimonials />
       <FAQ />
       <Footer />
