@@ -21,20 +21,23 @@ export default function ScrollReveal() {
     )
     fadeEls.forEach(el => fadeObserver.observe(el))
 
-    const barEls = document.querySelectorAll<HTMLElement>('[data-reveal-width]')
+    // Observe the bar containers (which have real dimensions), not the 0-width fills
+    const barContainers = document.querySelectorAll<HTMLElement>('.noise-bar-bg')
     const barObserver = new IntersectionObserver(
       entries => {
         entries.forEach(e => {
           if (!e.isIntersecting) return
-          const el = e.target as HTMLElement
-          const delay = parseInt(el.dataset.delay ?? '0')
-          setTimeout(() => { el.style.width = el.dataset.revealWidth! }, delay)
-          barObserver.unobserve(el)
+          const container = e.target as HTMLElement
+          const fill = container.querySelector<HTMLElement>('[data-reveal-width]')
+          if (!fill) return
+          const delay = parseInt(fill.dataset.delay ?? '0')
+          setTimeout(() => { fill.style.width = fill.dataset.revealWidth! }, delay)
+          barObserver.unobserve(container)
         })
       },
-      { threshold: 0.4 }
+      { threshold: 0.5 }
     )
-    barEls.forEach(bar => barObserver.observe(bar))
+    barContainers.forEach(el => barObserver.observe(el))
 
     return () => { fadeObserver.disconnect(); barObserver.disconnect() }
   }, [])
