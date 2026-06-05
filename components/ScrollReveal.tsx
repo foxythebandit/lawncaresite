@@ -22,7 +22,6 @@ export default function ScrollReveal() {
     fadeEls.forEach(el => fadeObserver.observe(el))
 
     const barEls = document.querySelectorAll<HTMLElement>('[data-reveal-width]')
-    barEls.forEach(bar => { bar.style.width = '0%' })
     const barObserver = new IntersectionObserver(
       entries => {
         entries.forEach(e => {

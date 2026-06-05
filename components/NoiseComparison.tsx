@@ -34,7 +34,7 @@ export default function NoiseComparison() {
             <div className="noise-bar-bg">
               <div
                 className={`noise-bar-fill ${bar.cls}`}
-                style={{ width: bar.width }}
+                style={{ width: 0 }}
                 data-reveal-width={bar.width}
                 data-delay={i * 100 + 200}
                 data-shake={bar.shake}
