@@ -3,6 +3,7 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { submitBooking } from '@/app/actions/submit-booking'
+import { getParcel }    from '@/app/actions/get-parcel'
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
@@ -395,6 +396,24 @@ export default function MapQuoteBuilder() {
     startDraw()
   }, [stopDraw, savePolygon, startDraw])
 
+  /* ─── Parcel boundary overlay ────────────────────────── */
+  const drawParcelBoundary = useCallback((coords: [number, number][]) => {
+    const map = mapRef.current
+    if (!map) return
+    try { map.getLayer('parcel-outline') && map.removeLayer('parcel-outline') } catch {}
+    try { map.getSource('parcel-boundary') && map.removeSource('parcel-boundary') } catch {}
+    map.addSource('parcel-boundary', {
+      type: 'geojson',
+      data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] }, properties: {} },
+    })
+    map.addLayer({
+      id: 'parcel-outline',
+      type: 'line',
+      source: 'parcel-boundary',
+      paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-opacity': 0.45, 'line-dasharray': [4, 3] },
+    })
+  }, [])
+
   /* ─── Address search ─────────────────────────────────── */
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
@@ -405,13 +424,18 @@ export default function MapQuoteBuilder() {
       const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`, { headers: { 'Accept-Language': 'en' } })
       const data = await res.json()
       if (!data.length) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
-      mapRef.current.flyTo({ center: [+data[0].lon, +data[0].lat], zoom: 18, duration: 2000 })
+      const lat = +data[0].lat, lon = +data[0].lon
+      mapRef.current.flyTo({ center: [lon, lat], zoom: 18, duration: 2000 })
+      // Fetch parcel boundary in parallel with the fly animation
+      getParcel(lat, lon).then(parcel => {
+        if (parcel) drawParcelBoundary(parcel.coordinates)
+      })
       setTimeout(() => { startDraw(); setStep('drawing') }, 2200)
     } catch {
       setError('Search failed. Please try again.')
       setStep('idle')
     }
-  }, [address, startDraw])
+  }, [address, startDraw, drawParcelBoundary])
 
   /* ─── Cancel current trace (keep address/map position) ── */
   const cancelTrace = useCallback(() => {
@@ -451,8 +475,8 @@ export default function MapQuoteBuilder() {
     stopDraw()
     const map = mapRef.current
     if (map) {
-      ;['sections-fill','sections-outline'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
-      ;['sections-data'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
+      ;['sections-fill','sections-outline','parcel-outline'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
+      ;['sections-data','parcel-boundary'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
       map.flyTo({ center: [-98.5, 39.8], zoom: 4, duration: 1200 })
     }
     setStep('idle'); setAddress(''); setError('')
@@ -894,6 +918,14 @@ export default function MapQuoteBuilder() {
           </div>
         </div>
       )}
+
+      <p className="mapq-text-fallback">
+        Prefer to talk to a person?{' '}
+        <a href="sms:6823528260&body=Hi%2C%20I%27d%20like%20a%20quote%20for%20my%20lawn%20at%20">
+          Text us your address
+        </a>{' '}
+        and we'll send you a price.
+      </p>
     </section>
   )
 }

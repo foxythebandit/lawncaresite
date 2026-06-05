@@ -1066,6 +1066,15 @@ footer {
   font-size: 11px; color: rgba(255,255,255,.3);
   text-align: center; margin-top: 10px;
 }
+.mapq-text-fallback {
+  text-align: center; font-size: 14px; color: rgba(255,255,255,.35);
+  margin: 28px auto 0; max-width: 400px;
+}
+.mapq-text-fallback a {
+  color: rgba(255,255,255,.6); text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mapq-text-fallback a:hover { color: #fff; }
 .mapq-reset {
   display: block; margin: 12px auto 0;
   text-align: center;
