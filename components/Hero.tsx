@@ -94,11 +94,18 @@ export default function Hero() {
     let lastFireX = START_X
     let totalDist = 0
     let autoRaf   = 0
-    const SPEED   = 1.2
+    let lastTime  = 0
+    const SPEED      = 1.2   // px per frame at 60fps
+    const TARGET_MS  = 1000 / 60
 
-    const mowerTick = () => {
-      totalDist += SPEED
-      autoX += autoDir * SPEED
+    const mowerTick = (timestamp: number) => {
+      // Delta-time normalisation — keeps speed constant across 60/120hz and frame drops
+      const delta = lastTime ? Math.min(timestamp - lastTime, 50) : TARGET_MS
+      lastTime = timestamp
+      const step = SPEED * (delta / TARGET_MS)
+
+      totalDist += step
+      autoX += autoDir * step
       if (autoX >= END_X)   { autoX = END_X;   autoDir = -1 }
       if (autoX <= START_X) { autoX = START_X; autoDir =  1 }
 
@@ -143,7 +150,8 @@ export default function Hero() {
     const visObserver = new IntersectionObserver(
       ([entry]) => {
         heroVisible = entry.isIntersecting
-        if (heroVisible && !autoRaf) autoRaf = requestAnimationFrame(mowerTick)
+        if (heroVisible && !autoRaf) { lastTime = 0; autoRaf = requestAnimationFrame(mowerTick) }
+        if (!heroVisible) lastTime = 0
       },
       { threshold: 0 }
     )
