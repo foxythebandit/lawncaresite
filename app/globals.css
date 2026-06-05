@@ -486,7 +486,14 @@ section { padding: 100px 8vw; }
 }
 .noise-bar-fill {
   height: 100%; border-radius: 100px;
-  transition: width 1s cubic-bezier(.4,0,.2,1);
+  width: 0;
+}
+.noise-row.revealed .noise-bar-fill {
+  animation: barGrow 1s cubic-bezier(.4,0,.2,1) forwards;
+}
+@keyframes barGrow {
+  from { width: 0; }
+  to   { width: var(--bar-width, 50%); }
 }
 .bar-red    { background: #e05252; }
 .bar-amber  { background: #d4a017; }

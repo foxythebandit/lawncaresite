@@ -61,9 +61,7 @@ export default function HowItWorks() {
                 <div className="noise-bar-bg">
                   <div
                     className={`noise-bar-fill ${bar.cls}`}
-                    style={{ width: 0 }}
-                    data-reveal-width={bar.width}
-                    data-delay={i * 100 + 260}
+                    style={{ '--bar-width': bar.width, animationDelay: `${i * 100 + 260}ms` } as React.CSSProperties}
                   />
                 </div>
               </div>
