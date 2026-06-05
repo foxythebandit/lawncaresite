@@ -223,7 +223,7 @@ export default function MapQuoteBuilder() {
     const src = map?.getSource('draw-data') as any
     if (!src || !pts.length) return
     const features: any[] = []
-    if (pts.length >= 3) features.push({ type: 'Feature', properties: { t: 'poly' }, geometry: { type: 'Polygon', coordinates: [[...pts, pts[0]]] } })
+    // Polygon fill is handled by canvas — only lines + vertices here
     features.push({ type: 'Feature', properties: { t: 'line' }, geometry: { type: 'LineString', coordinates: pts } })
     pts.forEach(p => features.push({ type: 'Feature', properties: { t: 'pt' }, geometry: { type: 'Point', coordinates: p } }))
     src.setData({ type: 'FeatureCollection', features })
@@ -243,7 +243,7 @@ export default function MapQuoteBuilder() {
     if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
     map.doubleClickZoom.enable()
     map.getCanvas().style.cursor = ''
-    ;['draw-fill','draw-line','draw-vertices'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
+    ;['draw-line','draw-vertices'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
     ;['draw-data'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
     setIsDrawing(false); setDrawCount(0); setPtCount(0)
     setLiveSqFt(0); liveRef.current = 0
@@ -279,12 +279,11 @@ export default function MapQuoteBuilder() {
     drawRef.current.points = []
 
     map.addSource('draw-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    map.addLayer({ id: 'draw-fill',     type: 'fill',   source: 'draw-data', filter: ['==', ['get', 't'], 'poly'], paint: { 'fill-color': '#52b788', 'fill-opacity': 0.18 } })
     map.addLayer({ id: 'draw-line',     type: 'line',   source: 'draw-data', filter: ['==', ['get', 't'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#52b788', 'line-width': 2.5 } })
     map.addLayer({ id: 'draw-vertices', type: 'circle', source: 'draw-data', filter: ['==', ['get', 't'], 'pt'],   paint: { 'circle-radius': 5, 'circle-color': '#52b788', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
 
-    // Canvas-based rubber-band preview — bypasses MapLibre's GeoJSON worker entirely
-    const drawPreviewLine = (cursor: [number, number]) => {
+    // Canvas draws both the polygon preview fill and the rubber-band line — no MapLibre worker
+    const drawPreview = (cursor: [number, number]) => {
       const canvas = previewCanvasRef.current
       const container = mapDivRef.current
       if (!canvas || !container) return
@@ -300,11 +299,35 @@ export default function MapQuoteBuilder() {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       const d = drawRef.current
       if (!d.points.length) return
+      ctx.save()
+      ctx.scale(dpr, dpr)
+
+      // Semi-transparent polygon fill including cursor as next vertex
+      if (d.points.length >= 2) {
+        const allPts = [...d.points, cursor]
+        const firstPx = map.project(allPts[0] as any)
+        ctx.beginPath()
+        ctx.moveTo(firstPx.x, firstPx.y)
+        for (let i = 1; i < allPts.length; i++) {
+          const px = map.project(allPts[i] as any)
+          ctx.lineTo(px.x, px.y)
+        }
+        ctx.closePath()
+        ctx.fillStyle   = '#52b788'
+        ctx.globalAlpha = 0.15
+        ctx.fill()
+        ctx.setLineDash([])
+        ctx.strokeStyle = '#52b788'
+        ctx.lineWidth   = 1
+        ctx.globalAlpha = 0.25
+        ctx.stroke()
+        ctx.globalAlpha = 1
+      }
+
+      // Rubber-band dashed line from last confirmed point to cursor
       const last     = d.points[d.points.length - 1]
       const lastPx   = map.project(last as any)
       const cursorPx = map.project(cursor as any)
-      ctx.save()
-      ctx.scale(dpr, dpr)
       ctx.beginPath()
       ctx.setLineDash([8, 6])
       ctx.strokeStyle = '#95dbb8'
@@ -317,6 +340,7 @@ export default function MapQuoteBuilder() {
       ctx.restore()
     }
 
+    let lastLiveUpdate = 0
     const clickFn = (e: any) => {
       const d = drawRef.current
       d.points = [...d.points, [e.lngLat.lng, e.lngLat.lat]]
@@ -328,12 +352,20 @@ export default function MapQuoteBuilder() {
     const moveFn = (e: any) => {
       const cursor: [number, number] = [e.lngLat.lng, e.lngLat.lat]
       cursorLngLatRef.current = cursor
-      if (drawRef.current.points.length) drawPreviewLine(cursor)
+      const d = drawRef.current
+      if (!d.points.length) return
+      drawPreview(cursor)
+      // Update live sq ft at ~30fps so React re-renders stay cheap
+      const now = Date.now()
+      if (d.points.length >= 2 && now - lastLiveUpdate > 33) {
+        lastLiveUpdate = now
+        setLiveSqFt(polygonSqFt([...d.points, cursor]))
+      }
     }
 
     const mapMoveFn = () => {
       if (cursorLngLatRef.current && drawRef.current.points.length)
-        drawPreviewLine(cursorLngLatRef.current)
+        drawPreview(cursorLngLatRef.current)
     }
 
     drawRef.current.clickFn   = clickFn
@@ -377,6 +409,17 @@ export default function MapQuoteBuilder() {
       setStep('idle')
     }
   }, [address, startDraw])
+
+  /* ─── Cancel current trace (keep address/map position) ── */
+  const cancelTrace = useCallback(() => {
+    if (step === 'editing') {
+      stopDraw()
+      setStep('done')
+    } else {
+      stopDraw()
+      startDraw()
+    }
+  }, [step, stopDraw, startDraw])
 
   /* ─── Edit mode ──────────────────────────────────────── */
   const enterEditMode = useCallback(() => {
@@ -527,13 +570,13 @@ export default function MapQuoteBuilder() {
                             + Add zone
                           </button>
                         </div>
-                        <button className="mapq-link" onClick={handleReset} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 12 }}>
-                          Start over
+                        <button className="mapq-link" onClick={cancelTrace} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 12 }}>
+                          Restart trace
                         </button>
                       </>
                     ) : (
-                      <button className="mapq-btn-ghost" onClick={handleReset} style={{ width: '100%' }}>
-                        Start over
+                      <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ width: '100%' }}>
+                        Restart trace
                       </button>
                     )}
                   </div>
