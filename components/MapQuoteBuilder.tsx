@@ -128,6 +128,9 @@ export default function MapQuoteBuilder() {
   const [drawCount,setDrawCount]= useState(0)
   const [ptCount,  setPtCount]  = useState(0)
 
+  const [showManualSqFt,  setShowManualSqFt]  = useState(false)
+  const [manualSqFtInput, setManualSqFtInput] = useState('')
+
   const [showBooking,   setShowBooking]   = useState(false)
   const [bookingName,   setBookingName]   = useState('')
   const [bookingPhone,  setBookingPhone]  = useState('')
@@ -420,6 +423,17 @@ export default function MapQuoteBuilder() {
       startDraw()
     }
   }, [step, stopDraw, startDraw])
+
+  /* ─── Manual sq ft entry ────────────────────────────── */
+  const handleManualSqFt = useCallback(() => {
+    const val = parseInt(manualSqFtInput.replace(/\D/g, ''), 10)
+    if (!val || val < 100) return
+    stopDraw()
+    setSections([{ id: uid(), name: 'Lawn', sqFt: val, coords: null }])
+    setShowManualSqFt(false)
+    setManualSqFtInput('')
+    setStep('done')
+  }, [manualSqFtInput, stopDraw])
 
   /* ─── Edit mode ──────────────────────────────────────── */
   const enterEditMode = useCallback(() => {
@@ -768,6 +782,47 @@ export default function MapQuoteBuilder() {
               <canvas ref={previewCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }} />
             </div>
             <p className="mapq-attribution">Satellite imagery © Esri</p>
+            {(step === 'drawing' || step === 'editing') && !showManualSqFt && (
+              <button
+                onClick={() => setShowManualSqFt(true)}
+                style={{ marginTop: 10, width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.06)', border: '1px dashed rgba(255,255,255,0.18)', borderRadius: 10, padding: '10px 14px', cursor: 'pointer', textAlign: 'left' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(149,219,184,0.8)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M2 12h20M2 12l4-4M2 12l4 4M22 12l-4-4M22 12l-4 4"/>
+                  <line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="16" y1="7" x2="16" y2="17"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>Can&apos;t see your lawn clearly?</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>Enter sq ft manually to get your quote</div>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            )}
+            {showManualSqFt && (
+              <div style={{ marginTop: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '12px 14px' }}>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>Enter your approximate lawn area</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    placeholder="e.g. 3500"
+                    value={manualSqFtInput}
+                    onChange={e => setManualSqFtInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleManualSqFt()}
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '8px 12px', color: '#fff', fontSize: 14, outline: 'none' }}
+                    autoFocus
+                  />
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>sq ft</span>
+                  <button className="mapq-btn-primary" onClick={handleManualSqFt} style={{ whiteSpace: 'nowrap', padding: '8px 14px' }}>
+                    Get quote →
+                  </button>
+                </div>
+                <button className="mapq-link" onClick={() => { setShowManualSqFt(false); setManualSqFtInput('') }} style={{ fontSize: 11, marginTop: 8, display: 'block' }}>
+                  ← Back to tracing
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
