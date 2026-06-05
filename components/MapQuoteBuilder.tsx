@@ -427,7 +427,7 @@ export default function MapQuoteBuilder() {
       const lat = +data[0].lat, lon = +data[0].lon
       mapRef.current.flyTo({ center: [lon, lat], zoom: 18, duration: 2000 })
       // Fetch parcel boundary in parallel with the fly animation
-      getParcel(lat, lon).then(parcel => {
+      getParcel(address).then(parcel => {
         if (parcel) drawParcelBoundary(parcel.coordinates)
       })
       setTimeout(() => { startDraw(); setStep('drawing') }, 2200)
@@ -763,7 +763,12 @@ export default function MapQuoteBuilder() {
                       </svg>
                     </button>
                     <p className="mapq-cta-note">Pay when the job is done · we'll confirm within 2 hours</p>
-                    <p className="mapq-cta-note" style={{ marginTop: 6 }}>Traced within 300 sq ft of actual? Your price is locked in.</p>
+                    <div className="mapq-price-lock">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                      </svg>
+                      Price locked if traced within 300 sq ft
+                    </div>
 
                     <button className="mapq-link mapq-reset" onClick={handleReset}>Start over</button>
                   </div>
