@@ -1066,15 +1066,6 @@ footer {
   font-size: 11px; color: rgba(255,255,255,.3);
   text-align: center; margin-top: 10px;
 }
-.mapq-price-lock {
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  margin-top: 12px;
-  padding: 7px 16px; border-radius: 100px;
-  background: rgba(82,183,136,.15);
-  border: 1px solid rgba(82,183,136,.35);
-  color: #52b788;
-  font-size: 12px; font-weight: 500; letter-spacing: .01em;
-}
 .mapq-text-fallback {
   text-align: center; font-size: 14px; color: rgba(255,255,255,.35);
   margin: 28px auto 0; max-width: 400px;
