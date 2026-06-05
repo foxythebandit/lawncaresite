@@ -285,23 +285,16 @@ export default function MapQuoteBuilder() {
       setDrawCount(c => c + 1)
     }
 
-    let pendingCursor: [number, number] | null = null
-    let previewRaf = 0
     const moveFn = (e: any) => {
       const d = drawRef.current
       if (!d.points.length) return
-      pendingCursor = [e.lngLat.lng, e.lngLat.lat]
-      if (previewRaf) return
-      previewRaf = requestAnimationFrame(() => {
-        previewRaf = 0
-        if (!pendingCursor) return
-        const last = d.points[d.points.length - 1]
-        const src = map.getSource('draw-preview') as any
-        src?.setData({ type: 'FeatureCollection', features: [{
-          type: 'Feature', properties: {},
-          geometry: { type: 'LineString', coordinates: [last, pendingCursor] },
-        }]})
-      })
+      const last   = d.points[d.points.length - 1]
+      const cursor: [number, number] = [e.lngLat.lng, e.lngLat.lat]
+      const src = map.getSource('draw-preview') as any
+      src?.setData({ type: 'FeatureCollection', features: [{
+        type: 'Feature', properties: {},
+        geometry: { type: 'LineString', coordinates: [last, cursor] },
+      }]})
     }
 
     drawRef.current.clickFn = clickFn
