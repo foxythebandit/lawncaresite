@@ -101,16 +101,19 @@ const CheckIcon = () => (
 
 /* ── Component ────────────────────────────────────────── */
 export default function MapQuoteBuilder() {
-  const mapDivRef = useRef<HTMLDivElement>(null)
-  const mapRef    = useRef<any>(null)
-  const rafRef    = useRef<number>(0)
-  const liveRef   = useRef<number>(0) // tracks animated live value
+  const mapDivRef        = useRef<HTMLDivElement>(null)
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null)
+  const mapRef           = useRef<any>(null)
+  const rafRef           = useRef<number>(0)
+  const liveRef          = useRef<number>(0)
+  const cursorLngLatRef  = useRef<[number, number] | null>(null)
 
   const drawRef = useRef<{
-    points:  [number, number][]
-    clickFn: ((e: any) => void) | null
-    moveFn:  ((e: any) => void) | null
-  }>({ points: [], clickFn: null, moveFn: null })
+    points:    [number, number][]
+    clickFn:   ((e: any) => void) | null
+    moveFn:    ((e: any) => void) | null
+    mapMoveFn: (() => void) | null
+  }>({ points: [], clickFn: null, moveFn: null, mapMoveFn: null })
 
   const [step,     setStep]     = useState<AppStep>('idle')
   const [address,  setAddress]  = useState('')
@@ -230,13 +233,18 @@ export default function MapQuoteBuilder() {
     const map = mapRef.current
     if (!map) return
     const d = drawRef.current
-    if (d.clickFn) map.off('click', d.clickFn)
-    if (d.moveFn)  map.off('mousemove', d.moveFn)
-    d.clickFn = null; d.moveFn = null; d.points = []
+    if (d.clickFn)   map.off('click',     d.clickFn)
+    if (d.moveFn)    map.off('mousemove', d.moveFn)
+    if (d.mapMoveFn) map.off('move',      d.mapMoveFn)
+    d.clickFn = null; d.moveFn = null; d.mapMoveFn = null; d.points = []
+    cursorLngLatRef.current = null
+    // Clear the canvas preview line
+    const canvas = previewCanvasRef.current
+    if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
     map.doubleClickZoom.enable()
     map.getCanvas().style.cursor = ''
-    ;['draw-fill','draw-line','draw-vertices','draw-preview-line'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
-    ;['draw-data','draw-preview'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
+    ;['draw-fill','draw-line','draw-vertices'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
+    ;['draw-data'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
     setIsDrawing(false); setDrawCount(0); setPtCount(0)
     setLiveSqFt(0); liveRef.current = 0
   }, [])
@@ -270,12 +278,44 @@ export default function MapQuoteBuilder() {
     map.getCanvas().style.cursor = MOWER_CURSOR
     drawRef.current.points = []
 
-    map.addSource('draw-data',    { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    map.addSource('draw-preview', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-    map.addLayer({ id: 'draw-fill',         type: 'fill',   source: 'draw-data',    filter: ['==', ['get', 't'], 'poly'], paint: { 'fill-color': '#52b788', 'fill-opacity': 0.18 } })
-    map.addLayer({ id: 'draw-line',         type: 'line',   source: 'draw-data',    filter: ['==', ['get', 't'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#52b788', 'line-width': 2.5 } })
-    map.addLayer({ id: 'draw-vertices',     type: 'circle', source: 'draw-data',    filter: ['==', ['get', 't'], 'pt'],   paint: { 'circle-radius': 5, 'circle-color': '#52b788', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
-    map.addLayer({ id: 'draw-preview-line', type: 'line',   source: 'draw-preview', paint: { 'line-color': '#95dbb8', 'line-width': 2, 'line-dasharray': [5, 5], 'line-opacity': 0.8 } })
+    map.addSource('draw-data', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    map.addLayer({ id: 'draw-fill',     type: 'fill',   source: 'draw-data', filter: ['==', ['get', 't'], 'poly'], paint: { 'fill-color': '#52b788', 'fill-opacity': 0.18 } })
+    map.addLayer({ id: 'draw-line',     type: 'line',   source: 'draw-data', filter: ['==', ['get', 't'], 'line'], layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#52b788', 'line-width': 2.5 } })
+    map.addLayer({ id: 'draw-vertices', type: 'circle', source: 'draw-data', filter: ['==', ['get', 't'], 'pt'],   paint: { 'circle-radius': 5, 'circle-color': '#52b788', 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } })
+
+    // Canvas-based rubber-band preview — bypasses MapLibre's GeoJSON worker entirely
+    const drawPreviewLine = (cursor: [number, number]) => {
+      const canvas = previewCanvasRef.current
+      const container = mapDivRef.current
+      if (!canvas || !container) return
+      const dpr = window.devicePixelRatio || 1
+      const w = container.clientWidth
+      const h = container.clientHeight
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width  = Math.round(w * dpr)
+        canvas.height = Math.round(h * dpr)
+      }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      const d = drawRef.current
+      if (!d.points.length) return
+      const last     = d.points[d.points.length - 1]
+      const lastPx   = map.project(last as any)
+      const cursorPx = map.project(cursor as any)
+      ctx.save()
+      ctx.scale(dpr, dpr)
+      ctx.beginPath()
+      ctx.setLineDash([8, 6])
+      ctx.strokeStyle = '#95dbb8'
+      ctx.lineWidth   = 2
+      ctx.globalAlpha = 0.85
+      ctx.lineCap     = 'round'
+      ctx.moveTo(lastPx.x, lastPx.y)
+      ctx.lineTo(cursorPx.x, cursorPx.y)
+      ctx.stroke()
+      ctx.restore()
+    }
 
     const clickFn = (e: any) => {
       const d = drawRef.current
@@ -286,21 +326,22 @@ export default function MapQuoteBuilder() {
     }
 
     const moveFn = (e: any) => {
-      const d = drawRef.current
-      if (!d.points.length) return
-      const last   = d.points[d.points.length - 1]
       const cursor: [number, number] = [e.lngLat.lng, e.lngLat.lat]
-      const src = map.getSource('draw-preview') as any
-      src?.setData({ type: 'FeatureCollection', features: [{
-        type: 'Feature', properties: {},
-        geometry: { type: 'LineString', coordinates: [last, cursor] },
-      }]})
+      cursorLngLatRef.current = cursor
+      if (drawRef.current.points.length) drawPreviewLine(cursor)
     }
 
-    drawRef.current.clickFn = clickFn
-    drawRef.current.moveFn  = moveFn
+    const mapMoveFn = () => {
+      if (cursorLngLatRef.current && drawRef.current.points.length)
+        drawPreviewLine(cursorLngLatRef.current)
+    }
+
+    drawRef.current.clickFn   = clickFn
+    drawRef.current.moveFn    = moveFn
+    drawRef.current.mapMoveFn = mapMoveFn
     map.on('click',     clickFn)
     map.on('mousemove', moveFn)
+    map.on('move',      mapMoveFn)
     setIsDrawing(true)
   }, [stopDraw, updateDrawSource])
 
@@ -652,7 +693,7 @@ export default function MapQuoteBuilder() {
 
           {/* ── Map ── */}
           <div className="mapq-map-wrap">
-            <div className="mapq-map-border">
+            <div className="mapq-map-border" style={{ position: 'relative' }}>
               {step === 'idle' && (
                 <div className="mapq-curtain">
                   <div className="mapq-curtain-icon">
@@ -681,6 +722,7 @@ export default function MapQuoteBuilder() {
               )}
 
               <div ref={mapDivRef} className="mapq-map" />
+              <canvas ref={previewCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }} />
             </div>
             <p className="mapq-attribution">Satellite imagery © Esri</p>
           </div>
