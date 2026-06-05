@@ -25,6 +25,10 @@ export interface BookingData {
   map_screenshot?:   string
 }
 
+function h(s: string | null | undefined) {
+  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 export async function submitBooking(data: BookingData): Promise<{ success: boolean; error?: string }> {
   if (!data.name.trim() || !data.phone.trim()) {
     return { success: false, error: 'Name and phone number are required.' }
@@ -37,7 +41,6 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!
     )
-    await adminClient.storage.createBucket('booking-maps', { public: true }).catch(() => {})
     const base64 = data.map_screenshot.split(',')[1]
     if (base64) {
       const buffer = Buffer.from(base64, 'base64')
@@ -87,22 +90,22 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111c17">
           <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0">
             <p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">New Booking Request</p>
-            <h1 style="color:#fff;font-size:22px;margin:0">${data.name}</h1>
+            <h1 style="color:#fff;font-size:22px;margin:0">${h(data.name)}</h1>
           </div>
           <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
 
             <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
-              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px;width:140px">Phone</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="tel:${data.phone}" style="color:#1a3a2a">${data.phone}</a></td></tr>
-              ${data.email ? `<tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Email</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="mailto:${data.email}" style="color:#1a3a2a">${data.email}</a></td></tr>` : ''}
-              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Address</td><td style="padding:8px 0;font-size:14px;font-weight:500">${data.address}</td></tr>
-              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Preferred date</td><td style="padding:8px 0;font-size:14px;font-weight:500">${preferredDate}</td></tr>
+              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px;width:140px">Phone</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="tel:${h(data.phone)}" style="color:#1a3a2a">${h(data.phone)}</a></td></tr>
+              ${data.email ? `<tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Email</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="mailto:${h(data.email)}" style="color:#1a3a2a">${h(data.email)}</a></td></tr>` : ''}
+              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Address</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(data.address)}</td></tr>
+              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Preferred date</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(preferredDate)}</td></tr>
             </table>
 
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:16px 20px;margin-bottom:20px">
               <p style="margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Quote details</p>
               <table style="width:100%;border-collapse:collapse">
                 <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Lawn size</td><td style="padding:5px 0;font-size:13px;text-align:right">${data.sq_ft?.toLocaleString()} sq ft</td></tr>
-                <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Frequency</td><td style="padding:5px 0;font-size:13px;text-align:right">${data.frequency}</td></tr>
+                <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Frequency</td><td style="padding:5px 0;font-size:13px;text-align:right">${h(data.frequency)}</td></tr>
                 <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Ongoing price</td><td style="padding:5px 0;font-size:13px;text-align:right">$${data.price_per_visit}/visit</td></tr>
                 ${data.overgrowth_fee ? `<tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">First-visit cleanup</td><td style="padding:5px 0;font-size:13px;text-align:right;color:#c08000">+$${data.overgrowth_fee}</td></tr>` : ''}
                 <tr style="border-top:1px solid #e0ede6"><td style="padding:10px 0 5px;font-weight:600;font-size:14px">First visit total</td><td style="padding:10px 0 5px;font-weight:600;font-size:14px;text-align:right">$${data.first_visit_price}</td></tr>
@@ -114,8 +117,8 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
               <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Traced lawn</p>
               <img src="${screenshotUrl}" alt="Lawn trace" style="width:100%;border-radius:10px;border:1px solid #e0ede6;display:block"/>
             </div>` : ''}
-            <a href="tel:${data.phone}" style="display:block;background:#1a3a2a;color:#fff;text-align:center;padding:13px;border-radius:100px;text-decoration:none;font-size:14px;font-weight:500">
-              Call ${data.name.split(' ')[0]} →
+            <a href="tel:${h(data.phone)}" style="display:block;background:#1a3a2a;color:#fff;text-align:center;padding:13px;border-radius:100px;text-decoration:none;font-size:14px;font-weight:500">
+              Call ${h(data.name.split(' ')[0])} →
             </a>
           </div>
         </div>

@@ -139,6 +139,7 @@ export default function MapQuoteBuilder() {
     if (!mapDivRef.current || mapRef.current) return
     let alive = true
     ;(async () => {
+      try {
       const ml = (await import('maplibre-gl')).default
       if (!alive || !mapDivRef.current) return
       const map = new ml.Map({
@@ -161,6 +162,7 @@ export default function MapQuoteBuilder() {
       })
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
       mapRef.current = map
+      } catch { /* map unavailable — user sees the static fallback UI */ }
     })()
     return () => { alive = false; cancelAnimationFrame(rafRef.current); mapRef.current?.remove(); mapRef.current = null }
   }, [])
@@ -378,7 +380,7 @@ export default function MapQuoteBuilder() {
   const isDone         = step === 'done' || step === 'editing'
 
   const closeBooking = useCallback(() => {
-    setShowBooking(false); setBookingStatus('idle'); setBookingError('')
+    setShowBooking(false); setBookingStatus('idle'); setBookingError(''); setMapScreenshot('')
   }, [])
 
   const handleBookingSubmit = useCallback(async (e: React.FormEvent) => {

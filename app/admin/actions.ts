@@ -6,6 +6,10 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
 
+function h(s: string | null | undefined) {
+  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,7 +62,7 @@ export async function updateStatus(id: string, status: string) {
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
           <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0">
             <p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Booking Confirmed</p>
-            <h1 style="color:#fff;font-size:22px;margin:0">You're on the schedule, ${firstName}.</h1>
+            <h1 style="color:#fff;font-size:22px;margin:0">You're on the schedule, ${h(firstName)}.</h1>
           </div>
           <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
             <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px">
@@ -67,11 +71,11 @@ export async function updateStatus(id: string, status: string) {
             ${preferredDate ? `
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px;margin-bottom:20px">
               <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Scheduled for</p>
-              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${preferredDate}</p>
+              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(preferredDate)}</p>
             </div>` : ''}
             <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#4a5e54">
-              <p style="margin:0 0 4px">${booking.address}</p>
-              <p style="margin:0">${booking.sq_ft?.toLocaleString()} sq ft · ${booking.frequency} · $${booking.price_per_visit}/visit</p>
+              <p style="margin:0 0 4px">${h(booking.address)}</p>
+              <p style="margin:0">${booking.sq_ft?.toLocaleString()} sq ft · ${h(booking.frequency)} · $${booking.price_per_visit}/visit</p>
               ${booking.overgrowth_fee ? `<p style="margin:6px 0 0;color:#b07800">First visit $${booking.first_visit_price} (incl. $${booking.overgrowth_fee} first-cut cleanup)</p>` : ''}
             </div>
             ${booking.map_screenshot_url ? `
@@ -94,7 +98,7 @@ export async function updateStatus(id: string, status: string) {
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
           <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0">
-            <h1 style="color:#fff;font-size:22px;margin:0">Hi ${firstName},</h1>
+            <h1 style="color:#fff;font-size:22px;margin:0">Hi ${h(firstName)},</h1>
           </div>
           <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
             <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 16px">
