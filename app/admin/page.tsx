@@ -102,7 +102,7 @@ export default async function AdminPage({
         <AdminSearch defaultValue={search} filter={filter} />
       </div>
 
-      <div className="admin-body">
+      <div className="admin-body" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '12px', padding: '12px 16px 24px', alignItems: 'start' }}>
         <div className="admin-list">
           {filtered.length === 0 ? (
             <div className="admin-empty">

@@ -61,20 +61,6 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
     const initMap = async () => {
       const L = (await import('leaflet')).default
 
-      // Inject CSS once
-      if (!document.getElementById('leaflet-admin-css')) {
-        const link = document.createElement('link')
-        link.id   = 'leaflet-admin-css'
-        link.rel  = 'stylesheet'
-        link.href = '/leaflet.css'
-        document.head.appendChild(link)
-
-        // Fallback to CDN if local not found
-        link.onerror = () => {
-          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-        }
-      }
-
       if (!mounted || !containerRef.current) return
 
       if (mapInstanceRef.current) {
@@ -164,7 +150,7 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
           </a>
         )}
       </div>
-      <div ref={containerRef} className="admin-map-canvas">
+      <div ref={containerRef} className="admin-map-canvas" style={{ height: '420px', width: '100%', display: 'block' }}>
         {geocoding && (
           <div className="admin-map-loading">
             <span>Locating clients…</span>
