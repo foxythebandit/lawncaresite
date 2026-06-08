@@ -1,6 +1,7 @@
 import { getBookings, logout } from './actions'
 import BookingCard from './BookingCard'
 import AdminSearch from './AdminSearch'
+import AdminMap from './AdminMap'
 
 export default async function AdminPage({
   searchParams,
@@ -100,6 +101,14 @@ export default async function AdminPage({
         </div>
         <AdminSearch defaultValue={search} filter={filter} />
       </div>
+
+      <AdminMap bookings={all.map(b => ({
+        id: b.id,
+        name: b.name,
+        address: b.address,
+        status: b.status,
+        price_per_visit: b.price_per_visit ?? null,
+      }))} />
 
       <div className="admin-list">
         {filtered.length === 0 ? (
