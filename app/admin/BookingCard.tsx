@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes } from './actions'
+import { updateStatus, updateNotes, markComplete } from './actions'
 
 interface Booking {
   id: string
@@ -21,6 +21,10 @@ interface Booking {
   created_at: string
   map_screenshot_url: string | null
   notes: string | null
+  completed_at: string | null
+  amount_charged: number | null
+  payment_method: string | null
+  next_visit_date: string | null
 }
 
 function timeAgo(dateStr: string) {
@@ -36,10 +40,19 @@ function formatDate(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+function calcNextDate(from: string, frequency: string | null) {
+  const base = new Date(from + 'T12:00:00')
+  const freq = (frequency ?? '').toLowerCase()
+  const days = freq.includes('bi') ? 14 : freq.includes('month') ? 30 : 7
+  base.setDate(base.getDate() + days)
+  return base.toISOString().split('T')[0]
+}
+
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   pending:   { label: 'Pending',   className: 'admin-badge-pending'   },
   confirmed: { label: 'Confirmed', className: 'admin-badge-confirmed' },
   declined:  { label: 'Declined',  className: 'admin-badge-declined'  },
+  completed: { label: 'Completed', className: 'admin-badge-completed' },
 }
 
 export default function BookingCard({ booking }: { booking: Booking }) {
@@ -50,11 +63,29 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const [notes, setNotes]         = useState(booking.notes ?? '')
   const [notesSaved, setNotesSaved] = useState(false)
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const today = new Date().toISOString().split('T')[0]
+  const [completing, setCompleting] = useState(false)
+  const [completeDate, setCompleteDate] = useState(today)
+  const [completeAmount, setCompleteAmount] = useState(booking.price_per_visit ?? 0)
+  const [completePayment, setCompletePayment] = useState('Stripe')
+
+  const previewNextDate = calcNextDate(completeDate || today, booking.frequency)
+
   const status = STATUS_STYLES[booking.status] ?? STATUS_STYLES.pending
 
   function doConfirm() {
     setConfirmingDate(false)
     startTransition(() => updateStatus(booking.id, 'confirmed', pickedDate || undefined))
+  }
+
+  function doMarkComplete() {
+    setCompleting(false)
+    startTransition(() => markComplete(booking.id, {
+      completed_at: completeDate,
+      amount_charged: completeAmount,
+      payment_method: completePayment,
+    }))
   }
 
   function saveNotes(val: string) {
@@ -116,6 +147,35 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                 <span>First visit ${booking.first_visit_price} (incl. ${booking.overgrowth_fee} cleanup)</span>
               </div>
             ) : null}
+
+            {/* Completion record */}
+            {booking.status === 'completed' && booking.completed_at && (
+              <div className="admin-complete-record">
+                <div className="admin-complete-record-row">
+                  <span>Completed</span>
+                  <strong>{formatDate(booking.completed_at.split('T')[0])}</strong>
+                </div>
+                {booking.amount_charged != null && (
+                  <div className="admin-complete-record-row">
+                    <span>Charged</span>
+                    <strong>${booking.amount_charged.toFixed(2)}</strong>
+                  </div>
+                )}
+                {booking.payment_method && (
+                  <div className="admin-complete-record-row">
+                    <span>Via</span>
+                    <strong>{booking.payment_method}</strong>
+                  </div>
+                )}
+                {booking.next_visit_date && (
+                  <div className="admin-complete-record-row">
+                    <span>Next visit</span>
+                    <strong>{formatDate(booking.next_visit_date)}</strong>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="admin-card-row">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.54 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <a href={`tel:${booking.phone}`} className="admin-card-link">{booking.phone}</a>
@@ -207,7 +267,67 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </div>
           )}
 
-          {booking.status !== 'pending' && (
+          {booking.status === 'confirmed' && !completing && (
+            <div className="admin-card-status-btns">
+              <button className="admin-status-complete" onClick={() => setCompleting(true)} disabled={pending}>
+                ✓ Mark complete
+              </button>
+            </div>
+          )}
+
+          {booking.status === 'confirmed' && completing && (
+            <div className="admin-complete-panel">
+              <div className="admin-complete-panel-title">Mark job complete</div>
+              <div className="admin-complete-fields">
+                <div className="admin-complete-field">
+                  <label>Date completed</label>
+                  <input
+                    type="date"
+                    value={completeDate}
+                    onChange={e => setCompleteDate(e.target.value)}
+                    className="admin-confirm-date-input"
+                  />
+                </div>
+                <div className="admin-complete-field">
+                  <label>Amount charged ($)</label>
+                  <input
+                    type="number"
+                    value={completeAmount}
+                    onChange={e => setCompleteAmount(parseFloat(e.target.value) || 0)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div className="admin-complete-field">
+                  <label>Payment method</label>
+                  <select
+                    value={completePayment}
+                    onChange={e => setCompletePayment(e.target.value)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  >
+                    <option>Stripe</option>
+                    <option>Cash</option>
+                    <option>Venmo</option>
+                    <option>Zelle</option>
+                  </select>
+                </div>
+              </div>
+              <div className="admin-complete-next-hint">
+                Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}</strong>
+              </div>
+              <div className="admin-confirm-date-btns">
+                <button className="admin-confirm-date-send" onClick={doMarkComplete} disabled={pending}>
+                  ✓ Save &amp; schedule next
+                </button>
+                <button className="admin-confirm-date-cancel" onClick={() => setCompleting(false)} disabled={pending}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {booking.status !== 'pending' && booking.status !== 'completed' && (
             <button className="admin-status-reset" onClick={() => startTransition(() => updateStatus(booking.id, 'pending'))} disabled={pending}>
               Reset to pending
             </button>

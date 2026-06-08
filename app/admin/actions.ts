@@ -127,6 +127,50 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
   }
 }
 
+export async function markComplete(
+  id: string,
+  data: { completed_at: string; amount_charged: number; payment_method: string }
+) {
+  const db = getAdmin()
+  const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
+  if (!booking) return
+
+  const base = new Date(data.completed_at)
+  const freq = (booking.frequency ?? '').toLowerCase()
+  const days = freq.includes('bi') ? 14 : freq.includes('month') ? 30 : 7
+  const nextDate = new Date(base)
+  nextDate.setDate(nextDate.getDate() + days)
+  const nextVisitDate = nextDate.toISOString().split('T')[0]
+
+  await db.from('bookings').update({
+    status: 'completed',
+    completed_at: data.completed_at,
+    amount_charged: data.amount_charged,
+    payment_method: data.payment_method,
+    next_visit_date: nextVisitDate,
+  }).eq('id', id)
+
+  await db.from('bookings').insert({
+    name: booking.name,
+    phone: booking.phone,
+    email: booking.email,
+    address: booking.address,
+    sq_ft: booking.sq_ft,
+    frequency: booking.frequency,
+    price_per_visit: booking.price_per_visit,
+    first_visit_price: booking.price_per_visit,
+    overgrowth_fee: null,
+    last_mow: data.completed_at,
+    map_screenshot_url: booking.map_screenshot_url,
+    preferred_date: nextVisitDate,
+    confirmed_date: nextVisitDate,
+    status: 'confirmed',
+    notes: `Auto-scheduled. Previous visit ${data.completed_at.split('T')[0]}.`,
+  })
+
+  revalidatePath('/admin')
+}
+
 export async function getBookings() {
   const { data } = await getAdmin()
     .from('bookings')
