@@ -128,6 +128,8 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
   const pendingCount   = pins.filter(p => p.status === 'pending').length
 
   return (
+    <>
+    <link rel="stylesheet" href="/leaflet.css" />
     <div className="admin-map-panel">
       <div className="admin-map-header">
         <div className="admin-map-title">
@@ -158,5 +160,6 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
         )}
       </div>
     </div>
+    </>
   )
 }
