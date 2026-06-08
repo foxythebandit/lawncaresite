@@ -16,7 +16,7 @@ export default function QuoteForm() {
           Get started
         </div>
         <h2 className="section-h2" style={{ color: '#fff' }}>
-          Free quote in 60 seconds.<br />No commitment.
+          Free quote for Austin lawns.<br />60 seconds, no commitment.
         </h2>
         <p className="section-sub" style={{ color: 'rgba(255,255,255,.65)' }}>
           Tell us a little about your lawn and we&apos;ll send a clear, fixed price

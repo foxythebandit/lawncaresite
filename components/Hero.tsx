@@ -176,6 +176,10 @@ export default function Hero() {
     <section className="hero">
       <div className="hero-overlay" />
       <div className="hero-left">
+        <div className="hero-badge">
+          <span className="badge-pulse" />
+          Electric lawn care · Austin, TX
+        </div>
         <h1 className="hero-h1" style={{ color: '#fff', fontSize: 'clamp(32px, 3.8vw, 58px)' }}>
           Your lawn. <em>Finally</em> quiet.
         </h1>
@@ -192,6 +196,8 @@ export default function Hero() {
           viewBox="0 0 800 700"
           preserveAspectRatio="xMidYMid slice"
           overflow="visible"
+          role="img"
+          aria-label="Electric lawn mower quietly cutting a green lawn"
           xmlns="http://www.w3.org/2000/svg"
         >
           {/* Sky — must fill full viewBox */}
