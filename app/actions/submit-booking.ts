@@ -29,9 +29,14 @@ function h(s: string | null | undefined) {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export async function submitBooking(data: BookingData): Promise<{ success: boolean; error?: string }> {
   if (!data.name.trim() || !data.phone.trim()) {
     return { success: false, error: 'Name and phone number are required.' }
+  }
+  if (data.email && !EMAIL_RE.test(data.email)) {
+    return { success: false, error: 'Please enter a valid email address.' }
   }
 
   // Upload map screenshot to Supabase Storage
@@ -44,7 +49,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     const base64 = data.map_screenshot.split(',')[1]
     if (base64) {
       const buffer = Buffer.from(base64, 'base64')
-      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const filename = `${Date.now()}-${crypto.randomUUID().replace(/-/g, '')}.jpg`
       const { data: uploaded } = await adminClient.storage
         .from('booking-maps')
         .upload(filename, buffer, { contentType: 'image/jpeg' })

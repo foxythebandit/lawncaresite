@@ -6,6 +6,9 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'declined', 'completed'])
+
 function h(s: string | null | undefined) {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -17,17 +20,37 @@ function getAdmin() {
   )
 }
 
+// Simple per-process rate limiter (slows brute force; not cross-instance)
+const loginAttempts = new Map<string, { count: number; resetAt: number }>()
+const RATE_WINDOW_MS = 15 * 60 * 1000 // 15 min
+const MAX_ATTEMPTS   = 10
+
 export async function login(_: unknown, formData: FormData) {
   const password = formData.get('password') as string
-  if (password !== process.env.ADMIN_PASSWORD) {
-    return { error: 'Wrong password.' }
+  const key = 'admin'
+  const now = Date.now()
+  const rec = loginAttempts.get(key)
+
+  if (rec && now < rec.resetAt && rec.count >= MAX_ATTEMPTS) {
+    await new Promise(r => setTimeout(r, 2000))
+    return { error: 'Too many attempts. Try again later.' }
   }
+
+  if (password !== process.env.ADMIN_PASSWORD) {
+    const entry = rec && now < rec.resetAt ? rec : { count: 0, resetAt: now + RATE_WINDOW_MS }
+    entry.count++
+    loginAttempts.set(key, entry)
+    await new Promise(r => setTimeout(r, 800)) // slow brute force
+    return { error: 'Incorrect password.' }
+  }
+
+  loginAttempts.delete(key)
   const jar = await cookies()
   jar.set('qg_admin', process.env.ADMIN_TOKEN!, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30,
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 8, // 8 hours
     path: '/',
   })
   redirect('/admin')
@@ -40,16 +63,19 @@ export async function logout() {
 }
 
 export async function updateNotes(id: string, notes: string) {
-  await getAdmin().from('bookings').update({ notes }).eq('id', id)
+  if (!UUID_RE.test(id)) return
+  await getAdmin().from('bookings').update({ notes: notes.slice(0, 2000) }).eq('id', id)
   revalidatePath('/admin')
 }
 
 export async function deleteBooking(id: string) {
+  if (!UUID_RE.test(id)) return
   await getAdmin().from('bookings').delete().eq('id', id)
   revalidatePath('/admin')
 }
 
 export async function updateStatus(id: string, status: string, confirmedDate?: string, confirmedTime?: string) {
+  if (!UUID_RE.test(id) || !ALLOWED_STATUSES.has(status)) return
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
   const update: Record<string, unknown> = { status }
@@ -138,6 +164,7 @@ export async function markComplete(
   id: string,
   data: { completed_at: string; amount_charged: number; payment_method: string }
 ) {
+  if (!UUID_RE.test(id)) return
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
   if (!booking) return
