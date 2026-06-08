@@ -1,18 +1,29 @@
 import { getBookings, logout } from './actions'
 import BookingCard from './BookingCard'
+import AdminSearch from './AdminSearch'
 
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>
+  searchParams: Promise<{ filter?: string; search?: string }>
 }) {
-  const { filter = 'all' } = await searchParams
+  const { filter = 'all', search = '' } = await searchParams
   const all = await getBookings()
 
   const now = new Date()
   const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7)
 
-  const filtered = all.filter(b => {
+  const q = search.toLowerCase().trim()
+  const searched = q
+    ? all.filter(b =>
+        b.name?.toLowerCase().includes(q) ||
+        b.address?.toLowerCase().includes(q) ||
+        b.phone?.toLowerCase().includes(q) ||
+        b.email?.toLowerCase().includes(q)
+      )
+    : all
+
+  const filtered = searched.filter(b => {
     if (filter === 'pending')   return b.status === 'pending'
     if (filter === 'confirmed') return b.status === 'confirmed'
     if (filter === 'week') {
@@ -23,12 +34,17 @@ export default async function AdminPage({
     return true
   })
 
-  const pendingCount = all.filter(b => b.status === 'pending').length
-  const weekCount    = all.filter(b => {
+  const pendingCount   = all.filter(b => b.status === 'pending').length
+  const confirmedCount = all.filter(b => b.status === 'confirmed').length
+  const weekCount      = all.filter(b => {
     if (!b.preferred_date) return false
     const d = new Date(b.preferred_date + 'T12:00:00')
     return d >= now && d <= weekEnd
   }).length
+
+  const confirmedBookings = all.filter(b => b.status === 'confirmed')
+  const totalFirstVisit   = confirmedBookings.reduce((s, b) => s + (b.first_visit_price ?? 0), 0)
+  const monthlyRecurring  = confirmedBookings.reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
 
   return (
     <div className="admin-wrap">
@@ -49,32 +65,47 @@ export default async function AdminPage({
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
+          <span className="admin-stat-val">{confirmedCount}</span>
+          <span className="admin-stat-label">Confirmed</span>
+        </div>
+        <div className="admin-stat-divider" />
+        <div className="admin-stat">
           <span className="admin-stat-val">{weekCount}</span>
           <span className="admin-stat-label">This week</span>
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
-          <span className="admin-stat-val">{all.length}</span>
-          <span className="admin-stat-label">Total</span>
+          <span className="admin-stat-val admin-stat-money">${totalFirstVisit.toLocaleString()}</span>
+          <span className="admin-stat-label">First-visit rev</span>
+        </div>
+        <div className="admin-stat-divider" />
+        <div className="admin-stat">
+          <span className="admin-stat-val admin-stat-money">${monthlyRecurring.toLocaleString()}</span>
+          <span className="admin-stat-label">Monthly rate</span>
         </div>
       </div>
 
-      <div className="admin-filters">
-        {[
-          { key: 'all',       label: 'All'       },
-          { key: 'pending',   label: 'Pending'   },
-          { key: 'confirmed', label: 'Confirmed' },
-          { key: 'week',      label: 'This week' },
-        ].map(f => (
-          <a key={f.key} href={`/admin?filter=${f.key}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
-            {f.label}
-          </a>
-        ))}
+      <div className="admin-toolbar">
+        <div className="admin-filters">
+          {[
+            { key: 'all',       label: 'All'       },
+            { key: 'pending',   label: 'Pending'   },
+            { key: 'confirmed', label: 'Confirmed' },
+            { key: 'week',      label: 'This week' },
+          ].map(f => (
+            <a key={f.key} href={`/admin?filter=${f.key}${q ? `&search=${encodeURIComponent(q)}` : ''}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
+              {f.label}
+            </a>
+          ))}
+        </div>
+        <AdminSearch defaultValue={search} filter={filter} />
       </div>
 
       <div className="admin-list">
         {filtered.length === 0 ? (
-          <div className="admin-empty">No bookings here yet.</div>
+          <div className="admin-empty">
+            {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
+          </div>
         ) : (
           filtered.map(b => <BookingCard key={b.id} booking={b as any} />)
         )}

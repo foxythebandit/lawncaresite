@@ -39,19 +39,28 @@ export async function logout() {
   redirect('/admin/login')
 }
 
-export async function updateStatus(id: string, status: string) {
+export async function updateNotes(id: string, notes: string) {
+  await getAdmin().from('bookings').update({ notes }).eq('id', id)
+  revalidatePath('/admin')
+}
+
+export async function updateStatus(id: string, status: string, confirmedDate?: string) {
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
-  await db.from('bookings').update({ status }).eq('id', id)
+  const update: Record<string, unknown> = { status }
+  if (confirmedDate) update.confirmed_date = confirmedDate
+  await db.from('bookings').update(update).eq('id', id)
   revalidatePath('/admin')
 
   if (!booking?.email || !process.env.RESEND_API_KEY) return
 
   const resend = new Resend(process.env.RESEND_API_KEY)
   const firstName = booking.name.split(' ')[0]
-  const preferredDate = booking.preferred_date
-    ? new Date(booking.preferred_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-    : null
+  const scheduledDate = confirmedDate
+    ? new Date(confirmedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    : booking.preferred_date
+      ? new Date(booking.preferred_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+      : null
 
   if (status === 'confirmed') {
     await resend.emails.send({
@@ -68,10 +77,10 @@ export async function updateStatus(id: string, status: string) {
             <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px">
               Your QuietGreen visit has been confirmed. We'll arrive quietly, get it done, and be out of your hair — no fumes, no noise.
             </p>
-            ${preferredDate ? `
+            ${scheduledDate ? `
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px;margin-bottom:20px">
               <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Scheduled for</p>
-              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(preferredDate)}</p>
+              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}</p>
             </div>` : ''}
             <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#4a5e54">
               <p style="margin:0 0 4px">${h(booking.address)}</p>
