@@ -67,6 +67,14 @@ export default function CalculatorPage() {
 
   const isProfit = netPerJob >= 0
 
+  // Payback period
+  const upfront = v.zeroTurn + v.blower + v.weedEater + v.trailer + (mode === 'full' ? v.vehicle : 0)
+  const insurancePerJob = jobsPerYear > 0 ? insurance / jobsPerYear : 0
+  const contributionPerJob = grossPerJob - insurancePerJob
+  const paybackJobs  = contributionPerJob > 0 ? Math.ceil(upfront / contributionPerJob) : Infinity
+  const paybackWeeks = v.jobsPerWeek > 0 ? paybackJobs / v.jobsPerWeek : Infinity
+  const paybackMonths = paybackWeeks / 4.33
+
   return (
     <div className="admin-wrap">
       <header className="admin-header">
@@ -175,6 +183,27 @@ export default function CalculatorPage() {
               </div>
             </div>
           </div>
+        {/* Payback period */}
+        <div style={{ marginTop: 12, background: '#fff', border: '1px solid var(--rule)', borderRadius: 16, padding: '20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-soft)', marginBottom: 14 }}>
+            Payback Period
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 16 }}>
+            Upfront cost: <strong style={{ color: 'var(--ink)' }}>{fmt(upfront)}</strong>
+            &nbsp;·&nbsp;
+            {fmt(contributionPerJob)} toward payback per job
+          </div>
+          {paybackJobs === Infinity ? (
+            <p style={{ fontSize: 14, color: '#c0392b' }}>Not profitable at current settings — adjust price or volume.</p>
+          ) : (
+            <div style={{ display: 'flex', gap: 12 }}>
+              <PaybackStat value={paybackJobs.toLocaleString()} label="jobs" />
+              <PaybackStat value={Math.ceil(paybackWeeks).toLocaleString()} label="weeks" />
+              <PaybackStat value={paybackMonths.toFixed(1)} label="months" />
+            </div>
+          )}
+        </div>
+
         </div>
       </div>
     </div>
@@ -202,6 +231,15 @@ function Row({ label, value, onChange }: { label: string; value: number; onChang
         onChange={onChange}
         style={{ width: 90, textAlign: 'right', border: '1px solid var(--rule)', borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: 'var(--font-body)', color: 'var(--ink)', background: '#fafafa', outline: 'none' }}
       />
+    </div>
+  )
+}
+
+function PaybackStat({ value, label }: { value: string; label: string }) {
+  return (
+    <div style={{ flex: 1, background: 'var(--green-pale)', border: '1px solid var(--green-light)', borderRadius: 10, padding: '12px', textAlign: 'center' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--green-deep)', lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 4, textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</div>
     </div>
   )
 }
