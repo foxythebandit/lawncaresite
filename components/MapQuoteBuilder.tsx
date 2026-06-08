@@ -116,9 +116,15 @@ export default function MapQuoteBuilder() {
     mapMoveFn: (() => void) | null
   }>({ points: [], clickFn: null, moveFn: null, mapMoveFn: null })
 
-  const [step,     setStep]     = useState<AppStep>('idle')
-  const [address,  setAddress]  = useState('')
-  const [error,    setError]    = useState('')
+  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const suggestAbortRef = useRef<AbortController | null>(null)
+  const addressWrapRef  = useRef<HTMLDivElement>(null)
+
+  const [step,        setStep]        = useState<AppStep>('idle')
+  const [address,     setAddress]     = useState('')
+  const [error,       setError]       = useState('')
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [activeSug,   setActiveSug]   = useState(-1)
   const [sections, setSections] = useState<Section[]>([])
   const [lawnSqFt, setLawnSqFt] = useState<number | null>(null)
   const [animSqFt, setAnimSqFt] = useState(0)
@@ -219,6 +225,33 @@ export default function MapQuoteBuilder() {
     const src = map.getSource('sections-data') as any
     if (src) src.setData(sectionsGeoJSON(sections))
   }, [sections])
+
+  /* ─── Address autocomplete ──────────────────────────── */
+  const fetchSuggestions = useCallback((query: string) => {
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
+    if (query.length < 3) { setSuggestions([]); return }
+    suggestTimerRef.current = setTimeout(async () => {
+      suggestAbortRef.current?.abort()
+      suggestAbortRef.current = new AbortController()
+      try {
+        const res  = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=0`,
+          { headers: { 'Accept-Language': 'en' }, signal: suggestAbortRef.current.signal }
+        )
+        const data = await res.json()
+        setSuggestions(data.map((d: { display_name: string }) => d.display_name))
+      } catch { /* aborted or network error — ignore */ }
+    }, 350)
+  }, [])
+
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (addressWrapRef.current && !addressWrapRef.current.contains(e.target as Node))
+        setSuggestions([])
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
 
   /* ─── Draw helpers ───────────────────────────────────── */
   const updateDrawSource = useCallback(() => {
@@ -418,6 +451,7 @@ export default function MapQuoteBuilder() {
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
     if (!address.trim() || !mapRef.current) return
+    setSuggestions([])
     setError('')
     setStep('searching')
     try {
@@ -479,7 +513,7 @@ export default function MapQuoteBuilder() {
       ;['sections-data','parcel-boundary'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
       map.flyTo({ center: [-98.5, 39.8], zoom: 4, duration: 1200 })
     }
-    setStep('idle'); setAddress(''); setError('')
+    setStep('idle'); setAddress(''); setError(''); setSuggestions([])
     setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek')
   }, [stopDraw])
 
@@ -552,11 +586,43 @@ export default function MapQuoteBuilder() {
                 <div className={`mapq-step-title ${step === 'idle' || step === 'searching' ? 'active' : ''}`}>Your address</div>
                 {(step === 'idle' || step === 'searching') && (
                   <form onSubmit={handleSearch} style={{ marginTop: 14 }}>
-                    <div className="mapq-input-wrap">
+                    <div className="mapq-input-wrap" ref={addressWrapRef}>
                       <svg className="mapq-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                       </svg>
-                      <input className="mapq-input" type="text" placeholder="123 Main St, Austin TX…" value={address} onChange={e => setAddress(e.target.value)} autoComplete="street-address" aria-label="Your street address" />
+                      <input
+                        className="mapq-input"
+                        type="text"
+                        placeholder="123 Main St, Austin TX…"
+                        value={address}
+                        autoComplete="off"
+                        aria-label="Your street address"
+                        aria-autocomplete="list"
+                        aria-expanded={suggestions.length > 0}
+                        onChange={e => { setAddress(e.target.value); setActiveSug(-1); fetchSuggestions(e.target.value) }}
+                        onKeyDown={e => {
+                          if (!suggestions.length) return
+                          if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSug(i => Math.min(i + 1, suggestions.length - 1)) }
+                          else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSug(i => Math.max(i - 1, -1)) }
+                          else if (e.key === 'Enter' && activeSug >= 0) { e.preventDefault(); setAddress(suggestions[activeSug]); setSuggestions([]); setActiveSug(-1) }
+                          else if (e.key === 'Escape') { setSuggestions([]); setActiveSug(-1) }
+                        }}
+                      />
+                      {suggestions.length > 0 && (
+                        <div className="mapq-suggestions" role="listbox">
+                          {suggestions.map((s, i) => (
+                            <div
+                              key={i}
+                              className={`mapq-suggestion${i === activeSug ? ' active' : ''}`}
+                              role="option"
+                              aria-selected={i === activeSug}
+                              onPointerDown={e => { e.preventDefault(); setAddress(s); setSuggestions([]); setActiveSug(-1) }}
+                            >
+                              {s}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <button type="submit" className="mapq-btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={step === 'searching' || !address.trim()}>
                       {step === 'searching' ? <><span className="mapq-spinner" /> Flying there…</> : 'Find my property →'}
