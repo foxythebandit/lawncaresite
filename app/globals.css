@@ -884,6 +884,27 @@ footer {
   border-color: rgba(82,183,136,.6);
   background: rgba(255,255,255,.13);
 }
+.mapq-suggestions {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 50;
+  background: #1e4535;
+  border: 1px solid rgba(82,183,136,.3);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.mapq-suggestion {
+  padding: 11px 14px;
+  font-size: 13px; color: rgba(255,255,255,.85);
+  cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background .12s;
+}
+.mapq-suggestion:last-child { border-bottom: none; }
+.mapq-suggestion:hover, .mapq-suggestion.active {
+  background: rgba(82,183,136,.18);
+  color: #fff;
+}
 .mapq-btn-primary {
   padding: 12px 20px;
   background: var(--green-bright);
@@ -1547,7 +1568,7 @@ footer {
   }
 
   /* ── Hero left ── */
-  .hero-left { padding: 40px 6vw 80px; }
+  .hero-left { padding: 40px 6vw 120px; min-height: 0; }
   .hero-h1 { letter-spacing: 0.015em; word-spacing: 0.06em; }
 
   /* ── Stat cards: smaller, tucked to bottom-right corner ── */
