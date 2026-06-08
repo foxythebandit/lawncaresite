@@ -24,8 +24,20 @@ const faqs = [
     a: "None. No sign-up fees, no cancellation penalties, no annual contracts. You can pause, adjust your schedule, or cancel anytime — just give us a heads-up before your next visit.",
   },
   {
-    q: "What areas do you serve?",
-    a: "Drop your address into the quote builder above and it'll confirm coverage instantly. We're expanding regularly, so if you're just outside our current zone, get a quote anyway — we may be able to fit you in.",
+    q: "What areas of Austin do you serve?",
+    a: "We currently serve South Austin, East Austin, North Austin, Cedar Park, Round Rock, and Pflugerville. Drop your address into the quote builder to confirm coverage instantly — we're expanding regularly.",
+  },
+  {
+    q: "How often should I mow in Austin's heat?",
+    a: "Weekly in spring and early summer when grass grows fastest — Austin lawns can put on an inch a week in April and May. Bi-weekly works well in fall once growth slows. During the peak summer heat (July–August), grass often goes semi-dormant and bi-weekly is usually fine. We'll tell you if we think your schedule needs adjusting.",
+  },
+  {
+    q: "Can you handle overgrown lawns?",
+    a: "Yes. If your lawn has gotten away from you, we add a small first-cut cleanup fee to account for the extra time and blade wear. That fee goes away on every visit after the first. We'll never refuse a yard just because it's overgrown — that's when you need us most.",
+  },
+  {
+    q: "Is electric equipment powerful enough for Texas grass?",
+    a: "Absolutely. St. Augustine, Bermuda, and Zoysia — the grasses most Austin lawns have — respond great to battery-powered mowers. Commercial electric mowers deliver the same torque as gas and handle thick Texas turf without bogging down. The difference is you won't smell exhaust or wake up your neighbors.",
   },
 ]
 
