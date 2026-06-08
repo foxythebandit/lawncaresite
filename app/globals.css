@@ -1538,7 +1538,8 @@ footer {
 /* ── RESPONSIVE ── */
 @media (max-width: 900px) {
   /* ── Layout stacking ── */
-  .hero { grid-template-columns: 1fr; min-height: auto; }
+  .hero { grid-template-columns: 1fr; min-height: 0; overflow: hidden; }
+  .hero-right { min-height: 0; }
   .why-grid, .testi-grid, .steps { grid-template-columns: 1fr; }
   .cta-section { grid-template-columns: 1fr; gap: 40px; padding: 64px 6vw; }
   .how-two-col { grid-template-columns: 1fr; gap: 48px; }
