@@ -235,7 +235,7 @@ export default function MapQuoteBuilder() {
       suggestAbortRef.current = new AbortController()
       try {
         const res  = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=0`,
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=0&countrycodes=us`,
           { headers: { 'Accept-Language': 'en' }, signal: suggestAbortRef.current.signal }
         )
         const data = await res.json()
