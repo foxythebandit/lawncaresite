@@ -47,8 +47,9 @@ export default function CalculatorPage() {
   const totalHrs    = totalMin / 60
 
   // Per-job costs
+  const stripeFee    = v.jobPrice * 0.029 + 0.30
   const employeeCost = v.employeeRate * totalHrs
-  const grossPerJob  = v.jobPrice - employeeCost
+  const grossPerJob  = v.jobPrice - stripeFee - employeeCost
 
   // Annual fixed costs
   const equipDepreciation = (v.zeroTurn + v.blower + v.weedEater + v.trailer) / v.equipYears
@@ -153,6 +154,7 @@ export default function CalculatorPage() {
           </div>
 
           <ResultRow label={`Total time per job`} value={`${totalMin} min (${totalHrs.toFixed(2)} hrs)`} />
+          <ResultRow label="Stripe fee / job" value={fmtDec(stripeFee)} sub="2.9% + $0.30" />
           <ResultRow label="Employee cost / job" value={fmtDec(employeeCost)} />
           <ResultRow label="Gross profit / job" value={fmtDec(grossPerJob)} />
           <ResultRow label="Fixed cost / job" value={fmtDec(fixedPerJob)} sub={`${fmt(annualFixed)}/yr ÷ ${jobsPerYear} jobs`} />
