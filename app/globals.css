@@ -1681,6 +1681,8 @@ footer {
   transition: border-color .15s; width: 100%;
 }
 .admin-confirm-date-input:focus { border-color: var(--green-bright); }
+.admin-confirm-date-row { display: flex; gap: 8px; }
+.admin-confirm-date-row .admin-confirm-date-input { flex: 1; min-width: 0; }
 .admin-confirm-date-btns {
   display: flex; gap: 8px;
 }

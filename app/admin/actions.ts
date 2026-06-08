@@ -49,11 +49,12 @@ export async function deleteBooking(id: string) {
   revalidatePath('/admin')
 }
 
-export async function updateStatus(id: string, status: string, confirmedDate?: string) {
+export async function updateStatus(id: string, status: string, confirmedDate?: string, confirmedTime?: string) {
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
   const update: Record<string, unknown> = { status }
   if (confirmedDate) update.confirmed_date = confirmedDate
+  if (confirmedTime) update.confirmed_time = confirmedTime
   await db.from('bookings').update(update).eq('id', id)
   revalidatePath('/admin')
 
@@ -66,6 +67,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
     : booking.preferred_date
       ? new Date(booking.preferred_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
       : null
+  const scheduledTime = confirmedTime ?? booking.confirmed_time ?? null
 
   if (status === 'confirmed') {
     await resend.emails.send({
@@ -85,7 +87,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
             ${scheduledDate ? `
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px;margin-bottom:20px">
               <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Scheduled for</p>
-              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}</p>
+              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}${scheduledTime ? ` at ${h(scheduledTime)}` : ''}</p>
             </div>` : ''}
             <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#4a5e54">
               <p style="margin:0 0 4px">${h(booking.address)}</p>
@@ -169,6 +171,7 @@ export async function markComplete(
     map_screenshot_url: booking.map_screenshot_url,
     preferred_date: nextVisitDate,
     confirmed_date: nextVisitDate,
+    confirmed_time: booking.confirmed_time ?? null,
     status: 'confirmed',
     notes: `Auto-scheduled. Previous visit ${data.completed_at.split('T')[0]}.`,
   })

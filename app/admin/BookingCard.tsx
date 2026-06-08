@@ -11,6 +11,7 @@ interface Booking {
   address: string
   preferred_date: string | null
   confirmed_date: string | null
+  confirmed_time: string | null
   sq_ft: number | null
   frequency: string | null
   price_per_visit: number | null
@@ -40,6 +41,13 @@ function formatDate(dateStr: string) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+function formatTime(t: string) {
+  const [h, m] = t.split(':').map(Number)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const hr = h % 12 || 12
+  return `${hr}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
 function calcNextDate(from: string, frequency: string | null) {
   const base = new Date(from + 'T12:00:00')
   const freq = (frequency ?? '').toLowerCase()
@@ -60,6 +68,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const [expanded, setExpanded]   = useState(false)
   const [confirmingDate, setConfirmingDate] = useState(false)
   const [pickedDate, setPickedDate] = useState(booking.preferred_date ?? '')
+  const [pickedTime, setPickedTime] = useState(booking.confirmed_time ?? '')
   const [notes, setNotes]         = useState(booking.notes ?? '')
   const [notesSaved, setNotesSaved] = useState(false)
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -76,7 +85,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
 
   function doConfirm() {
     setConfirmingDate(false)
-    startTransition(() => updateStatus(booking.id, 'confirmed', pickedDate || undefined))
+    startTransition(() => updateStatus(booking.id, 'confirmed', pickedDate || undefined, pickedTime || undefined))
   }
 
   function doMarkComplete() {
@@ -131,7 +140,10 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 <span>
                   {booking.confirmed_date
-                    ? <><strong>Confirmed:</strong> {formatDate(booking.confirmed_date)}</>
+                    ? <>
+                        <strong>Confirmed:</strong> {formatDate(booking.confirmed_date)}
+                        {booking.confirmed_time && <> at {formatTime(booking.confirmed_time)}</>}
+                      </>
                     : <><span style={{ color: 'var(--ink-soft)' }}>Preferred:</span> {formatDate(booking.preferred_date!)}</>
                   }
                 </span>
@@ -249,13 +261,22 @@ export default function BookingCard({ booking }: { booking: Booking }) {
 
           {booking.status === 'pending' && confirmingDate && (
             <div className="admin-confirm-date-panel">
-              <label className="admin-confirm-date-label">Set confirmed date (optional)</label>
-              <input
-                type="date"
-                className="admin-confirm-date-input"
-                value={pickedDate}
-                onChange={e => setPickedDate(e.target.value)}
-              />
+              <label className="admin-confirm-date-label">Date &amp; arrival time (optional)</label>
+              <div className="admin-confirm-date-row">
+                <input
+                  type="date"
+                  className="admin-confirm-date-input"
+                  value={pickedDate}
+                  onChange={e => setPickedDate(e.target.value)}
+                />
+                <input
+                  type="time"
+                  className="admin-confirm-date-input"
+                  value={pickedTime}
+                  onChange={e => setPickedTime(e.target.value)}
+                  style={{ maxWidth: 130 }}
+                />
+              </div>
               <div className="admin-confirm-date-btns">
                 <button className="admin-confirm-date-send" onClick={doConfirm} disabled={pending}>
                   ✓ Confirm &amp; send email
@@ -314,7 +335,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                 </div>
               </div>
               <div className="admin-complete-next-hint">
-                Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}</strong>
+                Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}{booking.confirmed_time ? ` at ${formatTime(booking.confirmed_time)}` : ''}</strong>
               </div>
               <div className="admin-confirm-date-btns">
                 <button className="admin-confirm-date-send" onClick={doMarkComplete} disabled={pending}>
