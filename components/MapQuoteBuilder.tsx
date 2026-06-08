@@ -556,7 +556,7 @@ export default function MapQuoteBuilder() {
                       <svg className="mapq-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                       </svg>
-                      <input className="mapq-input" type="text" placeholder="123 Main St, Austin TX…" value={address} onChange={e => setAddress(e.target.value)} autoComplete="street-address" />
+                      <input className="mapq-input" type="text" placeholder="123 Main St, Austin TX…" value={address} onChange={e => setAddress(e.target.value)} autoComplete="street-address" aria-label="Your street address" />
                     </div>
                     <button type="submit" className="mapq-btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={step === 'searching' || !address.trim()}>
                       {step === 'searching' ? <><span className="mapq-spinner" /> Flying there…</> : 'Find my property →'}
@@ -888,24 +888,24 @@ export default function MapQuoteBuilder() {
                 <form onSubmit={handleBookingSubmit}>
                   <div className="booking-fields">
                     <div className="booking-field">
-                      <label>Name</label>
-                      <input type="text" placeholder="Jane Smith" required value={bookingName} onChange={e => setBookingName(e.target.value)} />
+                      <label htmlFor="booking-name">Name</label>
+                      <input id="booking-name" type="text" placeholder="Jane Smith" required autoComplete="name" value={bookingName} onChange={e => setBookingName(e.target.value)} />
                     </div>
                     <div className="booking-field">
-                      <label>Phone</label>
-                      <input type="tel" placeholder="(512) 555-0100" required value={bookingPhone} onChange={e => setBookingPhone(e.target.value)} />
+                      <label htmlFor="booking-phone">Phone</label>
+                      <input id="booking-phone" type="tel" placeholder="(512) 555-0100" required autoComplete="tel" value={bookingPhone} onChange={e => setBookingPhone(e.target.value)} />
                     </div>
                     <div className="booking-field">
-                      <label>Email <span className="booking-optional">optional</span></label>
-                      <input type="email" placeholder="jane@example.com" value={bookingEmail} onChange={e => setBookingEmail(e.target.value)} />
+                      <label htmlFor="booking-email">Email <span className="booking-optional">optional</span></label>
+                      <input id="booking-email" type="email" placeholder="jane@example.com" autoComplete="email" value={bookingEmail} onChange={e => setBookingEmail(e.target.value)} />
                     </div>
                     <div className="booking-field">
-                      <label>Preferred first visit <span className="booking-optional">optional</span></label>
-                      <input type="date" min={new Date(Date.now() + 86400000).toISOString().split('T')[0]} value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
+                      <label htmlFor="booking-date">Preferred first visit <span className="booking-optional">optional</span></label>
+                      <input id="booking-date" type="date" min={new Date(Date.now() + 86400000).toISOString().split('T')[0]} value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
                     </div>
                   </div>
 
-                  {bookingError && <p className="booking-error">{bookingError}</p>}
+                  {bookingError && <p className="booking-error" role="alert">{bookingError}</p>}
 
                   <button type="submit" className="booking-submit" disabled={bookingStatus === 'submitting'}>
                     {bookingStatus === 'submitting'
