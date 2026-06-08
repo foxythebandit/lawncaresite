@@ -16,9 +16,20 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'QuietGreen — Electric Lawn Care',
+  title: 'QuietGreen — Electric Lawn Care in Austin, TX',
   description:
-    'Battery-powered lawn care. No noise, no fumes, scheduled around your life.',
+    'Battery-powered lawn mowing in Austin, TX. No noise, no fumes, fixed pricing. Get an instant quote and book online — available as soon as tomorrow.',
+  keywords: 'lawn care Austin TX, lawn mowing Austin, electric lawn service, quiet lawn mower Austin, lawn care near me',
+  metadataBase: new URL('https://quietgreen.co'),
+  alternates: { canonical: '/' },
+  openGraph: {
+    title: 'QuietGreen — Electric Lawn Care in Austin, TX',
+    description: 'Battery-powered lawn mowing in Austin, TX. Fixed pricing, instant quotes, no noise.',
+    url: 'https://quietgreen.co',
+    siteName: 'QuietGreen',
+    locale: 'en_US',
+    type: 'website',
+  },
 }
 
 export default function RootLayout({
@@ -31,7 +42,37 @@ export default function RootLayout({
       lang="en"
       className={`${dmSerifDisplay.variable} ${dmSans.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'LocalBusiness',
+            name: 'QuietGreen',
+            description: 'Battery-powered lawn care in Austin, TX. No noise, no fumes, fixed pricing.',
+            url: 'https://quietgreen.co',
+            telephone: '+16823528260',
+            address: {
+              '@type': 'PostalAddress',
+              addressLocality: 'Austin',
+              addressRegion: 'TX',
+              addressCountry: 'US',
+            },
+            geo: {
+              '@type': 'GeoCoordinates',
+              latitude: 30.2672,
+              longitude: -97.7431,
+            },
+            areaServed: { '@type': 'City', name: 'Austin', addressRegion: 'TX' },
+            priceRange: '$$',
+            openingHoursSpecification: {
+              '@type': 'OpeningHoursSpecification',
+              dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
+            },
+          })}}
+        />
+      </body>
     </html>
   )
 }
