@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface BookingPin {
   id: string
@@ -25,36 +25,56 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
   const containerRef   = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<import('leaflet').Map | null>(null)
   const [pins, setPins]       = useState<GeocodedPin[]>([])
-  const [geocoding, setGeocoding] = useState(false)
-  const [show, setShow]       = useState(false)
-  const geocodedRef = useRef(false)
+  const [geocoding, setGeocoding] = useState(true)
+  const didGeocode = useRef(false)
 
-  const geocodeAll = useCallback(async () => {
-    if (geocodedRef.current) return
-    geocodedRef.current = true
-    setGeocoding(true)
-    const results: GeocodedPin[] = []
-    for (const b of bookings.filter(b => b.status !== 'declined')) {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(b.address)}&limit=1`,
-          { headers: { 'Accept-Language': 'en' } }
-        )
-        const data = await res.json()
-        if (data[0]) results.push({ ...b, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) })
-        await new Promise(r => setTimeout(r, 250))
-      } catch { /* skip failed geocodes */ }
-    }
-    setPins(results)
-    setGeocoding(false)
-  }, [bookings])
-
+  // Geocode on mount
   useEffect(() => {
-    if (!show || !containerRef.current) return
+    if (didGeocode.current) return
+    didGeocode.current = true
+
+    const run = async () => {
+      const results: GeocodedPin[] = []
+      for (const b of bookings.filter(b => b.status !== 'declined')) {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(b.address)}&limit=1`,
+            { headers: { 'Accept-Language': 'en' } }
+          )
+          const data = await res.json()
+          if (data[0]) results.push({ ...b, lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) })
+          await new Promise(r => setTimeout(r, 250))
+        } catch { /* skip */ }
+      }
+      setPins(results)
+      setGeocoding(false)
+    }
+    run()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Init / refresh map when pins arrive
+  useEffect(() => {
+    if (!containerRef.current || geocoding) return
 
     let mounted = true
 
-    import('leaflet').then(L => {
+    const initMap = async () => {
+      const L = (await import('leaflet')).default
+
+      // Inject CSS once
+      if (!document.getElementById('leaflet-admin-css')) {
+        const link = document.createElement('link')
+        link.id   = 'leaflet-admin-css'
+        link.rel  = 'stylesheet'
+        link.href = '/leaflet.css'
+        document.head.appendChild(link)
+
+        // Fallback to CDN if local not found
+        link.onerror = () => {
+          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+        }
+      }
+
       if (!mounted || !containerRef.current) return
 
       if (mapInstanceRef.current) {
@@ -62,20 +82,11 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
         mapInstanceRef.current = null
       }
 
-      // Leaflet needs its CSS — inject once
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link')
-        link.id   = 'leaflet-css'
-        link.rel  = 'stylesheet'
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-        document.head.appendChild(link)
-      }
-
-      const map = L.map(containerRef.current, { zoomControl: true })
+      const map = L.map(containerRef.current, { zoomControl: true, scrollWheelZoom: false })
       mapInstanceRef.current = map
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
+        attribution: '© OpenStreetMap',
         maxZoom: 19,
       }).addTo(map)
 
@@ -89,91 +100,77 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
         const color = STATUS_COLOR[p.status] ?? '#888'
         const icon = L.divIcon({
           className: '',
-          html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35)"></div>`,
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
+          html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4)"></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
           popupAnchor: [0, -10],
         })
-        const marker = L.marker([p.lat, p.lng], { icon })
+        const m = L.marker([p.lat, p.lng], { icon })
           .addTo(map)
-          .bindPopup(`
-            <div style="font-family:sans-serif;min-width:140px">
-              <div style="font-weight:600;font-size:14px;margin-bottom:3px">${p.name}</div>
-              <div style="font-size:12px;color:#4a5e54;margin-bottom:4px">${p.address}</div>
-              <div style="display:flex;align-items:center;gap:6px;font-size:12px">
-                <span style="color:${color};font-weight:500;text-transform:capitalize">${p.status}</span>
-                ${p.price_per_visit ? `<span style="color:#888">· $${p.price_per_visit}/visit</span>` : ''}
-              </div>
-            </div>
-          `)
-        markers.push(marker)
+          .bindPopup(
+            `<div style="font-family:sans-serif;font-size:13px;min-width:130px">
+              <div style="font-weight:600;margin-bottom:2px">${p.name}</div>
+              <div style="color:#4a5e54;font-size:12px;margin-bottom:4px">${p.address}</div>
+              <span style="color:${color};font-weight:500;text-transform:capitalize;font-size:12px">${p.status}</span>
+              ${p.price_per_visit ? `<span style="color:#888;font-size:12px"> · $${p.price_per_visit}/visit</span>` : ''}
+            </div>`,
+            { maxWidth: 220 }
+          )
+        markers.push(m)
       })
 
       const group = L.featureGroup(markers)
-      map.fitBounds(group.getBounds().pad(0.25))
-    })
+      map.fitBounds(group.getBounds().pad(0.3))
+    }
+
+    initMap()
 
     return () => {
       mounted = false
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove()
-        mapInstanceRef.current = null
-      }
+      mapInstanceRef.current?.remove()
+      mapInstanceRef.current = null
     }
-  }, [show, pins])
-
-  // Re-render markers when pins update while map is open
-  useEffect(() => {
-    if (!show || !mapInstanceRef.current || pins.length === 0) return
-    // Map will re-init from the show+pins effect above when pins change
-  }, [pins, show])
+  }, [pins, geocoding])
 
   const confirmedAddresses = bookings
     .filter(b => b.status === 'confirmed')
     .map(b => encodeURIComponent(b.address))
     .join('/')
-
   const googleMapsUrl = confirmedAddresses ? `https://www.google.com/maps/dir/${confirmedAddresses}` : null
 
+  const confirmedCount = pins.filter(p => p.status === 'confirmed').length
+  const pendingCount   = pins.filter(p => p.status === 'pending').length
+
   return (
-    <div className="admin-map-wrap">
-      <div className="admin-map-bar">
-        <button
-          className={`admin-map-toggle${show ? ' active' : ''}`}
-          onClick={() => {
-            const next = !show
-            setShow(next)
-            if (next) geocodeAll()
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-            <circle cx="12" cy="10" r="3"/>
-          </svg>
-          Client map
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: show ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-
-        {geocoding && <span className="admin-map-status">Locating clients…</span>}
-        {!geocoding && pins.length > 0 && (
-          <span className="admin-map-status">
-            <span className="admin-map-dot confirmed" /> {pins.filter(p => p.status === 'confirmed').length} confirmed
-            &nbsp;&nbsp;
-            <span className="admin-map-dot pending" /> {pins.filter(p => p.status === 'pending').length} pending
-          </span>
-        )}
-
+    <div className="admin-map-panel">
+      <div className="admin-map-header">
+        <div className="admin-map-title">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          Clients
+        </div>
+        <div className="admin-map-legend">
+          {geocoding
+            ? <span className="admin-map-locating">Locating…</span>
+            : <>
+                <span className="admin-map-leg"><span className="admin-map-dot confirmed" />{confirmedCount} confirmed</span>
+                <span className="admin-map-leg"><span className="admin-map-dot pending" />{pendingCount} pending</span>
+              </>
+          }
+        </div>
         {googleMapsUrl && (
           <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="admin-map-route-btn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-            Plan route
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+            Route
           </a>
         )}
       </div>
-
-      {show && <div ref={containerRef} className="admin-map-canvas" />}
+      <div ref={containerRef} className="admin-map-canvas">
+        {geocoding && (
+          <div className="admin-map-loading">
+            <span>Locating clients…</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

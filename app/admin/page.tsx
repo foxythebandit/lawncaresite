@@ -102,22 +102,24 @@ export default async function AdminPage({
         <AdminSearch defaultValue={search} filter={filter} />
       </div>
 
-      <AdminMap bookings={all.map(b => ({
-        id: b.id,
-        name: b.name,
-        address: b.address,
-        status: b.status,
-        price_per_visit: b.price_per_visit ?? null,
-      }))} />
+      <div className="admin-body">
+        <div className="admin-list">
+          {filtered.length === 0 ? (
+            <div className="admin-empty">
+              {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
+            </div>
+          ) : (
+            filtered.map(b => <BookingCard key={b.id} booking={b as any} />)
+          )}
+        </div>
 
-      <div className="admin-list">
-        {filtered.length === 0 ? (
-          <div className="admin-empty">
-            {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
-          </div>
-        ) : (
-          filtered.map(b => <BookingCard key={b.id} booking={b as any} />)
-        )}
+        <AdminMap bookings={all.map(b => ({
+          id: b.id,
+          name: b.name,
+          address: b.address,
+          status: b.status,
+          price_per_visit: b.price_per_visit ?? null,
+        }))} />
       </div>
     </div>
   )
