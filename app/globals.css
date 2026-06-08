@@ -572,7 +572,12 @@ section { padding: 100px 8vw; }
   font-family: var(--font-display); font-size: 22px; color: #fff;
   margin-bottom: 24px;
 }
-.form-group { margin-bottom: 14px; }
+.form-group { margin-bottom: 14px; position: relative; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border-width: 0;
+}
 .form-group input, .form-group select {
   width: 100%; padding: 13px 16px;
   background: rgba(255,255,255,.12);

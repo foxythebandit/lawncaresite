@@ -46,19 +46,47 @@ export default function QuoteForm() {
           </p>
         </div>
       ) : (
-        <form action={action} className="cta-form">
+        <form action={action} className="cta-form" aria-describedby={state?.error ? 'form-error' : undefined}>
           <p className="form-title">Get my free quote</p>
           <div className="form-group">
-            <input type="text" name="name" placeholder="Your name" required />
+            <label htmlFor="quote-name" className="sr-only">Your name</label>
+            <input
+              id="quote-name"
+              type="text"
+              name="name"
+              placeholder="Your name"
+              autoComplete="name"
+              required
+            />
           </div>
           <div className="form-group">
-            <input type="tel" name="phone" placeholder="Phone number" required />
+            <label htmlFor="quote-phone" className="sr-only">Phone number</label>
+            <input
+              id="quote-phone"
+              type="tel"
+              name="phone"
+              placeholder="Phone number"
+              autoComplete="tel"
+              required
+            />
           </div>
           <div className="form-group">
-            <input type="text" name="postcode" placeholder="Your postcode / zip" required />
+            <label htmlFor="quote-postcode" className="sr-only">ZIP code</label>
+            <input
+              id="quote-postcode"
+              type="text"
+              name="postcode"
+              placeholder="ZIP code"
+              autoComplete="postal-code"
+              inputMode="numeric"
+              pattern="[0-9]{5}(-[0-9]{4})?"
+              title="5-digit ZIP code"
+              required
+            />
           </div>
           <div className="form-group">
-            <select name="yard_size" required defaultValue="">
+            <label htmlFor="quote-yard-size" className="sr-only">Yard size</label>
+            <select id="quote-yard-size" name="yard_size" required defaultValue="">
               <option value="" disabled>Yard size</option>
               <option value="small">Small (under 2,000 sq ft)</option>
               <option value="medium">Medium (2,000–5,000 sq ft)</option>
@@ -67,7 +95,7 @@ export default function QuoteForm() {
             </select>
           </div>
           {!state?.success && state?.error && (
-            <p style={{ color: '#ff9999', fontSize: '13px', marginBottom: '8px' }}>
+            <p id="form-error" role="alert" style={{ color: '#ff9999', fontSize: '13px', marginBottom: '8px' }}>
               {state.error}
             </p>
           )}
