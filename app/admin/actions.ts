@@ -44,6 +44,11 @@ export async function updateNotes(id: string, notes: string) {
   revalidatePath('/admin')
 }
 
+export async function deleteBooking(id: string) {
+  await getAdmin().from('bookings').delete().eq('id', id)
+  revalidatePath('/admin')
+}
+
 export async function updateStatus(id: string, status: string, confirmedDate?: string) {
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()

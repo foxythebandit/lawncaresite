@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes, markComplete } from './actions'
+import { updateStatus, updateNotes, markComplete, deleteBooking } from './actions'
 
 interface Booking {
   id: string
@@ -332,6 +332,13 @@ export default function BookingCard({ booking }: { booking: Booking }) {
               Reset to pending
             </button>
           )}
+          <button
+            className="admin-status-delete"
+            onClick={() => { if (window.confirm(`Delete ${booking.name}? This cannot be undone.`)) startTransition(() => deleteBooking(booking.id)) }}
+            disabled={pending}
+          >
+            Delete client
+          </button>
         </>
       )}
     </div>
