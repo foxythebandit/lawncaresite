@@ -333,7 +333,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </button>
           )}
           <button
-            className="admin-status-delete"
+            style={{ width: '100%', background: '#fff5f5', color: '#b03030', border: 'none', borderTop: '1px solid #fde0e0', padding: '11px', fontSize: '13px', fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer' }}
             onClick={() => { if (window.confirm(`Delete ${booking.name}? This cannot be undone.`)) startTransition(() => deleteBooking(booking.id)) }}
             disabled={pending}
           >
