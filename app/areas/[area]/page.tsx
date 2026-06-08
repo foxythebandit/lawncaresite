@@ -120,7 +120,7 @@ export default async function AreaPage({ params }: { params: Promise<{ area: str
             { icon: '⚡', label: 'Electric equipment', sub: 'No gas, no fumes, no noise' },
             { icon: '💲', label: 'Fixed pricing', sub: 'Locked in before we show up' },
             { icon: '📍', label: `Zip codes served`, sub: data.zip },
-            { icon: '📅', label: 'No contracts', sub: 'Cancel or pause anytime' },
+            { icon: '⚡', label: 'Same-day quotes', sub: 'Fixed price before we arrive' },
           ].map(c => (
             <div key={c.label} style={{ background: '#fff', border: '1px solid var(--rule)', borderRadius: 14, padding: '20px' }}>
               <div style={{ fontSize: 24, marginBottom: 8 }}>{c.icon}</div>
