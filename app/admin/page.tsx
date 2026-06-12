@@ -2,13 +2,14 @@ import { getBookings } from './actions'
 import BookingCard from './BookingCard'
 import AdminSearch from './AdminSearch'
 import AdminMap from './AdminMap'
+import CalendarView from './CalendarView'
 
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; search?: string }>
+  searchParams: Promise<{ filter?: string; search?: string; view?: string }>
 }) {
-  const { filter = 'all', search = '' } = await searchParams
+  const { filter = 'all', search = '', view = 'list' } = await searchParams
   const all = await getBookings()
 
   const now = new Date()
@@ -77,40 +78,63 @@ export default async function AdminPage({
       </div>
 
       <div className="admin-toolbar">
-        <div className="admin-filters">
-          {[
-            { key: 'all',       label: 'All'       },
-            { key: 'pending',   label: 'Pending'   },
-            { key: 'confirmed', label: 'Confirmed' },
-            { key: 'week',      label: 'This week' },
-          ].map(f => (
-            <a key={f.key} href={`/admin?filter=${f.key}${q ? `&search=${encodeURIComponent(q)}` : ''}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
-              {f.label}
-            </a>
-          ))}
+        {view !== 'calendar' && (
+          <div className="admin-filters">
+            {[
+              { key: 'all',       label: 'All'       },
+              { key: 'pending',   label: 'Pending'   },
+              { key: 'confirmed', label: 'Confirmed' },
+              { key: 'week',      label: 'This week' },
+            ].map(f => (
+              <a key={f.key} href={`/admin?filter=${f.key}${q ? `&search=${encodeURIComponent(q)}` : ''}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
+                {f.label}
+              </a>
+            ))}
+          </div>
+        )}
+        {view === 'calendar' && <div />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {view !== 'calendar' && <AdminSearch defaultValue={search} filter={filter} />}
+          <div className="admin-view-toggle">
+            <a href={`/admin?filter=${filter}${q ? `&search=${encodeURIComponent(q)}` : ''}`} className={`admin-view-btn${view !== 'calendar' ? ' active' : ''}`}>List</a>
+            <a href={`/admin?view=calendar`} className={`admin-view-btn${view === 'calendar' ? ' active' : ''}`}>Calendar</a>
+          </div>
         </div>
-        <AdminSearch defaultValue={search} filter={filter} />
       </div>
 
-      <div className="admin-body" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '12px', padding: '12px 16px 24px', alignItems: 'start' }}>
-        <div className="admin-list">
-          {filtered.length === 0 ? (
-            <div className="admin-empty">
-              {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
-            </div>
-          ) : (
-            filtered.map(b => <BookingCard key={b.id} booking={b as any} />)
-          )}
-        </div>
-
-        <AdminMap bookings={all.map(b => ({
+      {view === 'calendar' ? (
+        <CalendarView bookings={all.map(b => ({
           id: b.id,
           name: b.name,
           address: b.address,
+          confirmed_date: b.confirmed_date ?? null,
+          preferred_date: b.preferred_date ?? null,
+          confirmed_time: b.confirmed_time ?? null,
           status: b.status,
           price_per_visit: b.price_per_visit ?? null,
+          phone: b.phone,
         }))} />
-      </div>
+      ) : (
+        <div className="admin-body" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '12px', padding: '12px 16px 24px', alignItems: 'start' }}>
+          <div className="admin-list">
+            {filtered.length === 0 ? (
+              <div className="admin-empty">
+                {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
+              </div>
+            ) : (
+              filtered.map(b => <BookingCard key={b.id} booking={b as any} />)
+            )}
+          </div>
+
+          <AdminMap bookings={all.map(b => ({
+            id: b.id,
+            name: b.name,
+            address: b.address,
+            status: b.status,
+            price_per_visit: b.price_per_visit ?? null,
+          }))} />
+        </div>
+      )}
     </>
   )
 }
