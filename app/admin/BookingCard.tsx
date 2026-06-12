@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes, markComplete, deleteBooking } from './actions'
+import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink } from './actions'
 
 interface Booking {
   id: string
@@ -74,6 +74,11 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const today = new Date().toISOString().split('T')[0]
+  const [paymentLink, setPaymentLink] = useState<string | null>(null)
+  const [paymentLinkError, setPaymentLinkError] = useState('')
+  const [generatingLink, setGeneratingLink] = useState(false)
+  const [copied, setCopied] = useState(false)
+
   const [completing, setCompleting] = useState(false)
   const [completeDate, setCompleteDate] = useState(today)
   const [completeAmount, setCompleteAmount] = useState(booking.price_per_visit ?? 0)
@@ -289,10 +294,49 @@ export default function BookingCard({ booking }: { booking: Booking }) {
           )}
 
           {booking.status === 'confirmed' && !completing && (
-            <div className="admin-card-status-btns">
-              <button className="admin-status-complete" onClick={() => setCompleting(true)} disabled={pending}>
+            <div className="admin-card-status-btns" style={{ flexDirection: 'column', gap: 8 }}>
+              <button
+                className="admin-status-complete"
+                onClick={() => setCompleting(true)}
+                disabled={pending}
+              >
                 ✓ Mark complete
               </button>
+              <button
+                className="admin-action-stripe"
+                disabled={pending || generatingLink}
+                onClick={async () => {
+                  setGeneratingLink(true)
+                  setPaymentLinkError('')
+                  const amount = booking.amount_charged ?? booking.price_per_visit ?? 0
+                  const result = await createPaymentLink(booking.id, amount, booking.name, booking.address)
+                  setGeneratingLink(false)
+                  if ('error' in result) { setPaymentLinkError(result.error); return }
+                  setPaymentLink(result.url)
+                }}
+              >
+                {generatingLink ? 'Generating…' : '$ Send payment link'}
+              </button>
+              {paymentLinkError && <p style={{ fontSize: 12, color: '#c0392b', margin: 0 }}>{paymentLinkError}</p>}
+              {paymentLink && (
+                <div className="admin-payment-link-box">
+                  <span className="admin-payment-link-url">{paymentLink}</span>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <button
+                      className="admin-payment-link-copy"
+                      onClick={() => { navigator.clipboard.writeText(paymentLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                    >
+                      {copied ? 'Copied!' : 'Copy link'}
+                    </button>
+                    <a
+                      className="admin-payment-link-sms"
+                      href={`sms:${booking.phone}&body=Hi ${booking.name.split(' ')[0]}, here's your QuietGreen payment link: ${paymentLink}`}
+                    >
+                      Text to client
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

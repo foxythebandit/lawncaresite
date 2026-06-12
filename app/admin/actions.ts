@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
+import Stripe from 'stripe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'declined', 'completed'])
@@ -212,4 +213,37 @@ export async function getBookings() {
     .select('*')
     .order('created_at', { ascending: false })
   return data ?? []
+}
+
+export async function createPaymentLink(
+  bookingId: string,
+  amountDollars: number,
+  customerName: string,
+  address: string,
+): Promise<{ url: string } | { error: string }> {
+  if (!UUID_RE.test(bookingId)) return { error: 'Invalid booking ID' }
+  if (!process.env.STRIPE_SECRET_KEY) return { error: 'Stripe not configured' }
+
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+  const amountCents = Math.round(amountDollars * 100)
+
+  try {
+    const price = await stripe.prices.create({
+      currency: 'usd',
+      unit_amount: amountCents,
+      product_data: {
+        name: `QuietGreen lawn service — ${address}`,
+      },
+    })
+
+    const link = await stripe.paymentLinks.create({
+      line_items: [{ price: price.id, quantity: 1 }],
+      metadata: { booking_id: bookingId, customer_name: customerName },
+    })
+
+    return { url: link.url }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error'
+    return { error: msg }
+  }
 }

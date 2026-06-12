@@ -1656,6 +1656,35 @@ footer {
   cursor: pointer; transition: background .15s;
 }
 .admin-status-complete:hover { background: #d4e0ff; }
+.admin-action-stripe {
+  width: 100%; background: #f0f0ff; color: #5433ff; border: none;
+  padding: 13px; font-size: 13px; font-weight: 500; font-family: var(--font-body);
+  cursor: pointer; transition: background .15s;
+}
+.admin-action-stripe:hover { background: #e2e0ff; }
+.admin-action-stripe:disabled { opacity: .55; cursor: default; }
+.admin-payment-link-box {
+  background: var(--green-pale); border: 1px solid var(--green-light);
+  border-radius: 8px; padding: 10px 12px;
+  font-size: 12px;
+}
+.admin-payment-link-url {
+  display: block; word-break: break-all; color: var(--ink-soft); margin-bottom: 2px;
+}
+.admin-payment-link-copy, .admin-payment-link-sms {
+  flex: 1; padding: 7px 10px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; font-family: var(--font-body);
+  cursor: pointer; text-align: center; text-decoration: none;
+  transition: background .15s;
+}
+.admin-payment-link-copy {
+  background: var(--green-deep); color: #fff; border: none;
+}
+.admin-payment-link-copy:hover { background: var(--green-mid); }
+.admin-payment-link-sms {
+  background: #fff; color: var(--green-deep); border: 1px solid var(--green-light);
+}
+.admin-payment-link-sms:hover { background: var(--green-pale); }
 .admin-status-reset {
   width: 100%; background: var(--green-pale); color: var(--ink-soft);
   border-top: 1px solid var(--rule);
