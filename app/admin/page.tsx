@@ -1,4 +1,4 @@
-import { getBookings, logout } from './actions'
+import { getBookings } from './actions'
 import BookingCard from './BookingCard'
 import AdminSearch from './AdminSearch'
 import AdminMap from './AdminMap'
@@ -48,17 +48,7 @@ export default async function AdminPage({
   const monthlyRecurring  = confirmedBookings.reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
 
   return (
-    <div className="admin-wrap">
-      <header className="admin-header">
-        <div className="admin-header-logo">
-          <span className="logo-dot" style={{ background: 'var(--green-bright)', width: 9, height: 9, borderRadius: '50%', display: 'inline-block' }} />
-          <span>QuietGreen</span>
-        </div>
-        <form action={logout}>
-          <button type="submit" className="admin-logout">Sign out</button>
-        </form>
-      </header>
-
+    <>
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{pendingCount}</span>
@@ -121,6 +111,6 @@ export default async function AdminPage({
           price_per_visit: b.price_per_visit ?? null,
         }))} />
       </div>
-    </div>
+    </>
   )
 }

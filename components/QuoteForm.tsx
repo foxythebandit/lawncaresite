@@ -42,7 +42,7 @@ export default function QuoteForm() {
         <div className="cta-form">
           <p className="form-title">We&apos;ll be in touch soon!</p>
           <p style={{ color: 'rgba(255,255,255,.7)', fontSize: '15px', lineHeight: '1.6', marginTop: '8px' }}>
-            Thanks for reaching out. We&apos;ll call or text within 2 hours.
+            Thanks for reaching out. We&apos;ll call or text as soon as possible.
           </p>
         </div>
       ) : (
@@ -102,7 +102,7 @@ export default function QuoteForm() {
           <button type="submit" className="form-submit" disabled={isPending}>
             {isPending ? 'Sending…' : 'Get my free quote →'}
           </button>
-          <p className="form-disclaimer">We&apos;ll call or text within 2 hours. No spam, ever.</p>
+          <p className="form-disclaimer">We&apos;ll call or text you as soon as possible. No spam, ever.</p>
         </form>
       )}
     </section>

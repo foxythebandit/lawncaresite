@@ -128,7 +128,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
             <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#4a5e54">
               <strong style="color:#1a3a2a">Payment:</strong> You won't be charged today. An invoice will be sent to this email address once the job is complete.
             </div>
-            <p style="font-size:13px;color:#4a5e54;margin:0">Questions? Reply to this email or text us any time.</p>
+            <p style="font-size:13px;color:#4a5e54;margin:0">Questions? Reply to this email or email us any time.</p>
           </div>
         </div>
       `,

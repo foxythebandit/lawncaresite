@@ -1458,6 +1458,15 @@ footer {
 }
 .admin-logout:hover { background: rgba(255,255,255,.2); }
 
+.admin-nav { display: flex; align-items: center; gap: 2px; }
+.admin-nav-tab {
+  color: rgba(255,255,255,.55); padding: 6px 14px; border-radius: 100px;
+  font-size: 13px; text-decoration: none; transition: background .15s, color .15s;
+  font-family: var(--font-body);
+}
+.admin-nav-tab:hover { background: rgba(255,255,255,.1); color: rgba(255,255,255,.85); }
+.admin-nav-tab.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 500; }
+
 .admin-stats {
   display: flex; align-items: center; justify-content: center; gap: 0;
   padding: 14px 20px; background: #fff; border-bottom: 1px solid var(--rule);
