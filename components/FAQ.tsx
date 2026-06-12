@@ -1,5 +1,9 @@
 const faqs = [
   {
+    q: "How do I pay?",
+    a: "We invoice you after each visit — no payment upfront. You'll get a text with a link to pay by card. Most customers set up autopay so it's completely hands-off. We accept all major credit and debit cards.",
+  },
+  {
     q: "What's included in every visit?",
     a: "Every service includes a full mow, crisp edging along all beds, paths, and driveways, blowing all clippings off hard surfaces, and a complete cleanup before we leave. There are no half-measures — the yard looks finished, not just cut.",
   },
