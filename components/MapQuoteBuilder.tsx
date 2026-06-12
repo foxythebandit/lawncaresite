@@ -2,6 +2,8 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { DayPicker } from 'react-day-picker'
+import 'react-day-picker/style.css'
 import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 
@@ -142,7 +144,7 @@ export default function MapQuoteBuilder() {
   const [bookingName,   setBookingName]   = useState('')
   const [bookingPhone,  setBookingPhone]  = useState('')
   const [bookingEmail,  setBookingEmail]  = useState('')
-  const [bookingDate,   setBookingDate]   = useState('')
+  const [bookingDate,   setBookingDate]   = useState<Date | undefined>(undefined)
   const [bookingStatus,    setBookingStatus]    = useState<'idle' | 'submitting' | 'success'>('idle')
   const [bookingError,     setBookingError]     = useState('')
   const [mapScreenshot,    setMapScreenshot]    = useState('')
@@ -544,7 +546,7 @@ export default function MapQuoteBuilder() {
     setBookingStatus('submitting'); setBookingError('')
     const result = await submitBooking({
       name: bookingName, phone: bookingPhone, email: bookingEmail,
-      preferred_date: bookingDate, address,
+      preferred_date: bookingDate ? bookingDate.toLocaleDateString('en-CA') : '', address,
       sq_ft: lawnSqFt, frequency: FREQ[freq].label,
       price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice,
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
@@ -828,7 +830,7 @@ export default function MapQuoteBuilder() {
                         <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
                       </svg>
                     </button>
-                    <p className="mapq-cta-note">Pay when the job is done · we'll confirm within 2 hours</p>
+                    <p className="mapq-cta-note">Pay when the job is done · we'll confirm as soon as possible</p>
                     <p className="mapq-cta-note" style={{ marginTop: 6 }}>On your first visit, we&apos;ll measure the actual mowed area and adjust your price if needed.</p>
 
                     <button className="mapq-link mapq-reset" onClick={handleReset}>Start over</button>
@@ -966,8 +968,17 @@ export default function MapQuoteBuilder() {
                       <input id="booking-email" type="email" placeholder="jane@example.com" autoComplete="email" value={bookingEmail} onChange={e => setBookingEmail(e.target.value)} />
                     </div>
                     <div className="booking-field">
-                      <label htmlFor="booking-date">Preferred first visit <span className="booking-optional">optional</span></label>
-                      <input id="booking-date" type="date" min={new Date(Math.max(new Date('2025-07-02').getTime(), Date.now() + 86400000)).toISOString().split('T')[0]} value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
+                      <label>Preferred first visit <span className="booking-optional">optional</span></label>
+                      <div className="booking-daypicker-wrap">
+                        <DayPicker
+                          mode="single"
+                          selected={bookingDate}
+                          onSelect={setBookingDate}
+                          disabled={{ before: (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(0,0,0,0); return d })() }}
+                          startMonth={(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d })()}
+                          classNames={{ root: 'booking-daypicker' }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -979,7 +990,7 @@ export default function MapQuoteBuilder() {
                       : 'Request this visit →'}
                   </button>
                 </form>
-                <p className="booking-note">No payment now · we&apos;ll confirm within 2 hours</p>
+                <p className="booking-note">No payment now · we&apos;ll confirm as soon as possible</p>
               </>
             )}
           </div>
