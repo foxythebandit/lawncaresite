@@ -60,20 +60,20 @@ export default async function AdminPage({
           <span className="admin-stat-label">Confirmed</span>
         </div>
         <div className="admin-stat-divider" />
-        <div className="admin-stat">
+        <a href="/admin/route" className="admin-stat admin-stat-link">
           <span className="admin-stat-val">{weekCount}</span>
-          <span className="admin-stat-label">This week</span>
-        </div>
+          <span className="admin-stat-label">This week ↗</span>
+        </a>
         <div className="admin-stat-divider" />
-        <div className="admin-stat">
+        <a href="/admin/revenue" className="admin-stat admin-stat-link">
           <span className="admin-stat-val admin-stat-money">${totalFirstVisit.toLocaleString()}</span>
-          <span className="admin-stat-label">First-visit rev</span>
-        </div>
+          <span className="admin-stat-label">First-visit rev ↗</span>
+        </a>
         <div className="admin-stat-divider" />
-        <div className="admin-stat">
+        <a href="/admin/revenue" className="admin-stat admin-stat-link">
           <span className="admin-stat-val admin-stat-money">${monthlyRecurring.toLocaleString()}</span>
-          <span className="admin-stat-label">Monthly rate</span>
-        </div>
+          <span className="admin-stat-label">Monthly rate ↗</span>
+        </a>
       </div>
 
       <div className="admin-toolbar">
