@@ -830,7 +830,7 @@ export default function MapQuoteBuilder() {
                         <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
                       </svg>
                     </button>
-                    <p className="mapq-cta-note">Pay when the job is done · we'll confirm as soon as possible</p>
+                    <p className="mapq-cta-note">No payment now · we&apos;ll text you a Stripe link after your first visit</p>
                     <p className="mapq-cta-note" style={{ marginTop: 6 }}>On your first visit, we&apos;ll measure the actual mowed area and adjust your price if needed.</p>
 
                     <button className="mapq-link mapq-reset" onClick={handleReset}>Start over</button>
@@ -931,7 +931,7 @@ export default function MapQuoteBuilder() {
                   <circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/>
                 </svg>
                 <h3>Request locked in.</h3>
-                <p>We&apos;ll reach out to confirm your date.</p>
+                <p>We&apos;ll confirm your date shortly. After your first visit we&apos;ll text you a Stripe payment link — no payment needed now.</p>
                 <button className="booking-success-btn" onClick={closeBooking}>Done</button>
               </div>
             ) : (
@@ -990,7 +990,7 @@ export default function MapQuoteBuilder() {
                       : 'Request this visit →'}
                   </button>
                 </form>
-                <p className="booking-note">No payment now · we&apos;ll confirm as soon as possible</p>
+                <p className="booking-note">No payment now · we&apos;ll text you a Stripe link after your first visit</p>
               </>
             )}
           </div>

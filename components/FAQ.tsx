@@ -1,7 +1,7 @@
 const faqs = [
   {
     q: "How do I pay?",
-    a: "We invoice you after each visit — no payment upfront. You'll get a text with a link to pay by card. Most customers set up autopay so it's completely hands-off. We accept all major credit and debit cards.",
+    a: "We use Stripe — after each visit you'll get a text with a secure payment link. Click it, pay by card, done. Most customers save their card so future visits are charged automatically. No payment is ever required upfront.",
   },
   {
     q: "What's included in every visit?",
