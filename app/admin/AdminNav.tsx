@@ -16,11 +16,11 @@ export default function AdminNav() {
 
   return (
     <header className="admin-header">
-      <div className="admin-header-logo">
+      <Link href="/admin" className="admin-header-logo">
         <span className="logo-dot" style={{ background: 'var(--green-bright)', width: 9, height: 9, borderRadius: '50%', display: 'inline-block' }} />
         <span>QuietGreen</span>
-      </div>
-      <nav className="admin-nav">
+      </Link>
+      <div className="admin-nav">
         {tabs.map(t => {
           const active = t.href === '/admin' ? path === '/admin' : path.startsWith(t.href)
           return (
@@ -29,7 +29,7 @@ export default function AdminNav() {
             </Link>
           )
         })}
-      </nav>
+      </div>
       <form action={logout}>
         <button type="submit" className="admin-logout">Sign out</button>
       </form>
