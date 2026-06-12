@@ -1,9 +1,16 @@
+import Image from 'next/image'
+
 export default function Nav() {
   return (
     <nav>
       <a href="#" className="nav-logo">
-        <div className="logo-dot" />
-        QuietGreen
+        <Image
+          src="/quietgreen-logo-full.svg"
+          alt="QuietGreen"
+          width={160}
+          height={37}
+          priority
+        />
       </a>
       <ul className="nav-links">
         <li><a href="#how">How it works</a></li>

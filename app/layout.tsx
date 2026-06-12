@@ -17,6 +17,11 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
+  icons: {
+    icon: '/quietgreen-favicon.svg',
+    shortcut: '/quietgreen-favicon.svg',
+    apple: '/quietgreen-favicon.svg',
+  },
   title: 'QuietGreen — Electric Lawn Care in Austin, TX',
   description:
     'Battery-powered lawn mowing in Austin, TX. No noise, no fumes, fixed pricing. Get an instant quote and book online — available as soon as tomorrow.',

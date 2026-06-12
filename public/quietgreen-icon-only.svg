@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 108" width="88" height="108">
+  <!-- Full detail icon with stem — for large format use -->
+
+  <!-- Leaf -->
+  <path d="M40 0 C55 12 72 28 72 48 C72 68 58 82 40 88 C22 82 8 68 8 48 C8 28 25 12 40 0 Z" fill="#2d6a4f"/>
+
+  <!-- Center vein -->
+  <line x1="40" y1="8" x2="40" y2="82" stroke="#3d8a63" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Stem -->
+  <path d="M40 88 C40 94 38 100 35 104" stroke="#2d6a4f" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+  <!-- Bolt -->
+  <path d="M46 24 L34 50 L43 50 L34 70 L52 42 L43 42 Z" fill="#b7e4c7"/>
+
+  <!-- Dot -->
+  <circle cx="63" cy="22" r="8" fill="#52b788"/>
+  <circle cx="63" cy="22" r="4" fill="#f0faf4"/>
+</svg>

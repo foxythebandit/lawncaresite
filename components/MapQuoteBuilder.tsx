@@ -967,7 +967,7 @@ export default function MapQuoteBuilder() {
                     </div>
                     <div className="booking-field">
                       <label htmlFor="booking-date">Preferred first visit <span className="booking-optional">optional</span></label>
-                      <input id="booking-date" type="date" min={new Date(Date.now() + 86400000).toISOString().split('T')[0]} value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
+                      <input id="booking-date" type="date" min={new Date(Math.max(new Date('2025-07-02').getTime(), Date.now() + 86400000)).toISOString().split('T')[0]} value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
                     </div>
                   </div>
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" width="88" height="88">
+  <!-- Favicon variant — simplified for small sizes -->
+  <!-- No center vein, thicker bolt, larger dot -->
+
+  <!-- Leaf -->
+  <path d="M40 0 C55 12 72 28 72 48 C72 68 58 82 40 88 C22 82 8 68 8 48 C8 28 25 12 40 0 Z" fill="#2d6a4f"/>
+
+  <!-- Bolt — 15% thicker than full logo -->
+  <path d="M48 22 L33 52 L44 52 L33 72 L55 40 L44 40 Z" fill="#b7e4c7"/>
+
+  <!-- Dot — enlarged, no vein -->
+  <circle cx="63" cy="20" r="11" fill="#52b788"/>
+  <circle cx="63" cy="20" r="5.5" fill="#f0faf4"/>
+</svg>
