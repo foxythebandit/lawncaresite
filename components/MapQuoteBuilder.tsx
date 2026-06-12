@@ -999,8 +999,8 @@ export default function MapQuoteBuilder() {
 
       <p className="mapq-text-fallback">
         Prefer to talk to a person?{' '}
-        <a href="sms:6823528260&body=Hi%2C%20I%27d%20like%20a%20quote%20for%20my%20lawn%20at%20">
-          Text us your address
+        <a href="mailto:hello@quietgreen.co?subject=Quote%20Request&body=Hi%2C%20I%27d%20like%20a%20quote%20for%20my%20lawn%20at%20">
+          Email us your address
         </a>{' '}
         and we'll send you a price.
       </p>
