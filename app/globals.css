@@ -63,7 +63,7 @@ nav {
 
 /* ── HERO ── */
 .hero {
-  min-height: 88vh;
+  min-height: 70vh;
   position: relative;
   padding-top: 68px;
   overflow: visible;
@@ -73,7 +73,7 @@ nav {
 .hero-right {
   position: absolute !important;
   inset: 0 !important;
-  min-height: 100vh;
+  min-height: 70vh;
 }
 .hero-overlay {
   position: absolute;
@@ -93,9 +93,9 @@ nav {
 .hero-left {
   position: relative;
   z-index: 1;
-  min-height: calc(100vh - 68px);
-  display: flex; flex-direction: column; justify-content: center;
-  padding: 40px 8vw 100px 8vw;
+  min-height: calc(70vh - 68px);
+  display: flex; flex-direction: column; justify-content: flex-start;
+  padding: 60px 8vw 80px 8vw;
   max-width: 600px;
 }
 .hero-badge {
