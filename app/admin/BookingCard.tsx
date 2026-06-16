@@ -26,6 +26,7 @@ interface Booking {
   amount_charged: number | null
   payment_method: string | null
   next_visit_date: string | null
+  payment_link: string | null
 }
 
 function timeAgo(dateStr: string) {
@@ -294,15 +295,17 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </div>
           )}
 
-          {booking.status === 'confirmed' && !completing && (
+          {(booking.status === 'confirmed' || booking.status === 'completed') && !completing && (
             <div className="admin-card-status-btns" style={{ flexDirection: 'column', gap: 8 }}>
-              <button
-                className="admin-status-complete"
-                onClick={() => setCompleting(true)}
-                disabled={pending}
-              >
-                ✓ Mark complete
-              </button>
+              {booking.status === 'confirmed' && (
+                <button
+                  className="admin-status-complete"
+                  onClick={() => setCompleting(true)}
+                  disabled={pending}
+                >
+                  ✓ Mark complete
+                </button>
+              )}
               <button
                 className="admin-action-stripe"
                 disabled={pending || generatingLink}
@@ -319,19 +322,19 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                 {generatingLink ? 'Generating…' : '$ Send payment link'}
               </button>
               {paymentLinkError && <p style={{ fontSize: 12, color: '#c0392b', margin: 0 }}>{paymentLinkError}</p>}
-              {paymentLink && (
+              {(paymentLink || booking.payment_link) && (
                 <div className="admin-payment-link-box">
-                  <span className="admin-payment-link-url">{paymentLink}</span>
+                  <span className="admin-payment-link-url">{paymentLink || booking.payment_link}</span>
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                     <button
                       className="admin-payment-link-copy"
-                      onClick={() => { navigator.clipboard.writeText(paymentLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+                      onClick={() => { navigator.clipboard.writeText(paymentLink || booking.payment_link!); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
                     >
                       {copied ? 'Copied!' : 'Copy link'}
                     </button>
                     <a
                       className="admin-payment-link-sms"
-                      href={`sms:${booking.phone}&body=Hi ${booking.name.split(' ')[0]}, here's your QuietGreen payment link: ${paymentLink}`}
+                      href={`sms:${booking.phone}&body=Hi ${booking.name.split(' ')[0]}, here's your QuietGreen payment link: ${paymentLink || booking.payment_link}`}
                     >
                       Text to client
                     </a>

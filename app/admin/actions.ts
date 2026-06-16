@@ -241,6 +241,8 @@ export async function createPaymentLink(
       metadata: { booking_id: bookingId, customer_name: customerName },
     })
 
+    await getAdmin().from('bookings').update({ payment_link: link.url }).eq('id', bookingId)
+
     return { url: link.url }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
