@@ -50,6 +50,13 @@ const reviews = [
     loc: 'Google Review',
     avatarBg: 'var(--green-deep)',
   },
+  {
+    text: '"Incredible ideal — incredible job!"',
+    initials: 'AC',
+    name: 'Asher Chrane',
+    loc: 'Google Review',
+    avatarBg: '#40916c',
+  },
 ]
 
 const SHOWN = 3
@@ -87,7 +94,7 @@ export default function Testimonials() {
         )}
         <a
           className="testi-google-link"
-          href="https://g.page/r/YOUR_GOOGLE_PLACE_ID/review"
+          href="https://www.google.com/maps?cid=16548750209261991744"
           target="_blank"
           rel="noopener noreferrer"
         >
