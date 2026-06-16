@@ -22,6 +22,8 @@ export interface BookingData {
   first_visit_price: number
   overgrowth_fee:    number
   last_mow:          string
+  distance_miles?:   number
+  distance_fee?:     number
   map_screenshot?:   string
 }
 
@@ -112,6 +114,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
                 <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Lawn size</td><td style="padding:5px 0;font-size:13px;text-align:right">${data.sq_ft?.toLocaleString()} sq ft</td></tr>
                 <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Frequency</td><td style="padding:5px 0;font-size:13px;text-align:right">${h(data.frequency)}</td></tr>
                 <tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Ongoing price</td><td style="padding:5px 0;font-size:13px;text-align:right">$${data.price_per_visit}/visit</td></tr>
+                ${data.distance_fee ? `<tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">Travel (${data.distance_miles} mi)</td><td style="padding:5px 0;font-size:13px;text-align:right">+$${data.distance_fee}</td></tr>` : ''}
                 ${data.overgrowth_fee ? `<tr><td style="padding:5px 0;color:#4a5e54;font-size:13px">First-visit cleanup</td><td style="padding:5px 0;font-size:13px;text-align:right;color:#c08000">+$${data.overgrowth_fee}</td></tr>` : ''}
                 <tr style="border-top:1px solid #e0ede6"><td style="padding:10px 0 5px;font-weight:600;font-size:14px">First visit total</td><td style="padding:10px 0 5px;font-weight:600;font-size:14px;text-align:right">$${data.first_visit_price}</td></tr>
               </table>

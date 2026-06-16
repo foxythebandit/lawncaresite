@@ -39,6 +39,11 @@ const LAST_MOW_WEEKS: Record<string, number> = {
   thisweek: 0.5, biweekly: 2.5, month: 4, overdue: 9,
 }
 
+/* ── Constants ────────────────────────────────────────── */
+// 807 E 47th St, Austin TX
+const OFFICE_LAT = 30.3049
+const OFFICE_LNG = -97.7184
+
 /* ── Helpers ──────────────────────────────────────────── */
 function uid() { return Math.random().toString(36).slice(2, 8) }
 
@@ -47,6 +52,21 @@ function calcPrice(sqFt: number): number {
   if (sqFt <= 5000)  return 65  + Math.round((sqFt - 2000)  * 0.018)
   if (sqFt <= 12000) return 119 + Math.round((sqFt - 5000)  * 0.013)
   return                      210 + Math.round((sqFt - 12000) * 0.009)
+}
+
+function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3958.8
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function calcDistanceFee(miles: number): { fee: number; label: string } {
+  if (miles <= 5)  return { fee: 0,  label: '' }
+  if (miles <= 10) return { fee: 8,  label: `Travel (${miles.toFixed(1)} mi)` }
+  if (miles <= 15) return { fee: 15, label: `Travel (${miles.toFixed(1)} mi)` }
+  return                  { fee: 22, label: `Travel (${miles.toFixed(1)} mi)` }
 }
 
 function getSeasonInfo(month: number) {
@@ -140,6 +160,7 @@ export default function MapQuoteBuilder() {
   const [showManualSqFt,  setShowManualSqFt]  = useState(false)
   const [manualSqFtInput, setManualSqFtInput] = useState('')
 
+  const [jobLatLng,     setJobLatLng]     = useState<{ lat: number; lng: number } | null>(null)
   const [showBooking,   setShowBooking]   = useState(false)
   const [bookingName,   setBookingName]   = useState('')
   const [bookingPhone,  setBookingPhone]  = useState('')
@@ -461,6 +482,7 @@ export default function MapQuoteBuilder() {
       const data = await res.json()
       if (!data.length) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
       const lat = +data[0].lat, lon = +data[0].lon
+      setJobLatLng({ lat, lng: lon })
       mapRef.current.flyTo({ center: [lon, lat], zoom: 18, duration: 2000 })
       // Fetch parcel boundary in parallel with the fly animation
       getParcel(address, lat, lon).then(parcel => {
@@ -516,7 +538,7 @@ export default function MapQuoteBuilder() {
       map.flyTo({ center: [-98.5, 39.8], zoom: 4, duration: 1200 })
     }
     setStep('idle'); setAddress(''); setError(''); setSuggestions([])
-    setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek')
+    setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek'); setJobLatLng(null)
   }, [stopDraw])
 
   /* ─── Booking modal ─────────────────────────────────── */
@@ -531,9 +553,11 @@ export default function MapQuoteBuilder() {
   const season         = getSeasonInfo(new Date().getMonth())
   const mowWeeks       = LAST_MOW_WEEKS[lastMow] ?? 0.5
   const { fee: overgrowthFee, label: overgrowthLabel } = calcOvergrowthFee(mowWeeks, season.multiplier)
+  const jobMiles       = jobLatLng ? haversineMiles(OFFICE_LAT, OFFICE_LNG, jobLatLng.lat, jobLatLng.lng) : 0
+  const { fee: distanceFee, label: distanceLabel } = calcDistanceFee(jobMiles)
   const basePrice      = lawnSqFt ? calcPrice(lawnSqFt) : 0
   const discount       = FREQ[freq].discount
-  const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) : 0
+  const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) + distanceFee : 0
   const firstVisitPrice = ongoingPrice + overgrowthFee
   const isDone         = step === 'done' || step === 'editing'
 
@@ -550,11 +574,12 @@ export default function MapQuoteBuilder() {
       sq_ft: lawnSqFt, frequency: FREQ[freq].label,
       price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice,
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
+      distance_miles: Math.round(jobMiles * 10) / 10, distance_fee: distanceFee,
       map_screenshot: mapScreenshot,
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setBookingStatus('success') }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
-  }, [bookingName, bookingPhone, bookingEmail, bookingDate, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow])
+  }, [bookingName, bookingPhone, bookingEmail, bookingDate, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee])
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
@@ -784,7 +809,12 @@ export default function MapQuoteBuilder() {
                       <div className="mapq-price-row"><span>Base rate</span><span>${basePrice}</span></div>
                       {discount > 0 && (
                         <div className="mapq-price-row mapq-price-discount">
-                          <span>{FREQ[freq].label} discount</span><span>–${basePrice - ongoingPrice}</span>
+                          <span>{FREQ[freq].label} discount</span><span>–${Math.round(basePrice * discount / 100)}</span>
+                        </div>
+                      )}
+                      {distanceFee > 0 && (
+                        <div className="mapq-price-row" style={{ color: 'rgba(255,255,255,.6)' }}>
+                          <span>{distanceLabel}</span><span>+${distanceFee}</span>
                         </div>
                       )}
                       {overgrowthFee > 0 && (
