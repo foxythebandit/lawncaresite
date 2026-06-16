@@ -12,25 +12,39 @@ const Stars = () => (
 
 const reviews = [
   {
-    text: '"I work from home and used to dread Tuesdays. Now I genuinely don\'t notice when they\'re here. The lawn looks incredible and my 9am calls are safe."',
-    initials: 'SL',
-    name: 'Sarah L.',
-    loc: 'Lakeview — weekly maintenance',
+    text: '"Finally a lawn service that doesn\'t wake up the whole street. Showed up on time, did a great job, and actually cleaned up after himself. The electric equipment is noticeably quieter — my dog didn\'t even bark. Booking again for next month."',
+    initials: 'JG',
+    name: 'Jordan Guild',
+    loc: 'Google Review',
     avatarBg: 'var(--green-mid)',
   },
   {
-    text: '"Finally switched from our old company. No fumes, no noise, and they actually clean up after themselves. My neighbour asked for the number before they\'d even left."',
-    initials: 'MR',
-    name: 'Marcus R.',
-    loc: 'Riverside — bi-weekly service',
+    text: '"Quiet Green really stands out when it comes to lawn care service. I\'ve tried many different lawn services over the years but Quiet Green delivered the best mowing by far. Their crew was super friendly and they use electric mowers — I\'m happy and so is the environment. I will 100% continue to use Quiet Green."',
+    initials: 'JB',
+    name: 'Jeremy Burris',
+    loc: 'Google Review',
     avatarBg: 'var(--green-bright)',
   },
   {
-    text: '"We have a newborn. The fact that I can put her down for a nap without worrying about a gas blower waking her up is worth every penny of the premium."',
-    initials: 'JP',
-    name: 'Jenny P.',
-    loc: 'Northside — monthly full service',
+    text: '"Quiet Green goes above and beyond. They have truly done an amazing job with my home\'s landscape. If you are looking for a great company, you found it here! On time, honest, and reasonably priced."',
+    initials: 'KC',
+    name: 'Keagen Crawford',
+    loc: 'Google Review',
     avatarBg: '#2d6a4f',
+  },
+  {
+    text: '"Amazing service! Paxton took care of our lawn and did a great job mowing. He was professional, easy to work with, showed up on time, and left everything looking clean and well taken care of. Would definitely recommend him to anyone needing lawn care!!"',
+    initials: 'C',
+    name: 'Caelan',
+    loc: 'Google Review',
+    avatarBg: '#52b788',
+  },
+  {
+    text: '"Paxton provided outstanding service from start to finish. He was professional, friendly, attentive, and made sure everything was handled efficiently. It\'s clear he genuinely cares about his customers and takes pride in his work. Highly recommend working with Paxton!"',
+    initials: 'JP',
+    name: 'Joah Pinkston',
+    loc: 'Google Review',
+    avatarBg: 'var(--green-deep)',
   },
 ]
 
