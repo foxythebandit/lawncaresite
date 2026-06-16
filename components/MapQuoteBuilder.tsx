@@ -63,10 +63,10 @@ function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number):
 }
 
 function calcDistanceFee(miles: number): { fee: number; label: string } {
-  if (miles <= 5)  return { fee: 0,  label: '' }
-  if (miles <= 10) return { fee: 8,  label: `Travel (${miles.toFixed(1)} mi)` }
-  if (miles <= 15) return { fee: 15, label: `Travel (${miles.toFixed(1)} mi)` }
-  return                  { fee: 22, label: `Travel (${miles.toFixed(1)} mi)` }
+  if (miles <= 10) return { fee: 0,  label: '' }
+  if (miles <= 15) return { fee: 10, label: `Travel (${miles.toFixed(1)} mi)` }
+  if (miles <= 20) return { fee: 18, label: `Travel (${miles.toFixed(1)} mi)` }
+  return                  { fee: 28, label: `Travel (${miles.toFixed(1)} mi)` }
 }
 
 function getSeasonInfo(month: number) {
