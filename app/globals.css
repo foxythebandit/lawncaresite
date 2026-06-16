@@ -552,6 +552,21 @@ section { padding: 100px 8vw; }
 }
 .testi-name { font-size: 13px; font-weight: 500; color: var(--ink); }
 .testi-loc { font-size: 12px; color: var(--ink-soft); margin-top: 1px; }
+.testi-actions { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 32px; flex-wrap: wrap; }
+.testi-more-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--green-deep); color: #fff; border: none;
+  padding: 11px 22px; border-radius: 100px; font-size: 14px; font-weight: 500;
+  font-family: var(--font-body); cursor: pointer; transition: background .15s;
+}
+.testi-more-btn:hover { background: var(--green-mid); }
+.testi-google-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 14px; color: var(--ink-soft); text-decoration: none;
+  border: 1.5px solid var(--rule); padding: 10px 20px; border-radius: 100px;
+  transition: border-color .15s, color .15s;
+}
+.testi-google-link:hover { border-color: var(--green-mid); color: var(--green-deep); }
 
 /* ── CTA ── */
 .cta-section {
