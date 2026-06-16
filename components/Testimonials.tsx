@@ -51,11 +51,32 @@ const reviews = [
     avatarBg: 'var(--green-deep)',
   },
   {
+    text: '"They\'ve been taking care of our yard for a few weeks now, and it always surprises me how clean and quiet the service is!! Our yard stays looking great, and we never have any complaints about the noise. Thanks guys!"',
+    initials: 'AL',
+    name: 'Andre Lacy',
+    loc: 'Google Review',
+    avatarBg: '#40916c',
+  },
+  {
     text: '"Incredible ideal — incredible job!"',
     initials: 'AC',
     name: 'Asher Chrane',
     loc: 'Google Review',
-    avatarBg: '#40916c',
+    avatarBg: '#52b788',
+  },
+  {
+    text: '"Paxton always does good work."',
+    initials: 'TW',
+    name: 'Taylor Waddell',
+    loc: 'Google Review',
+    avatarBg: '#1b4332',
+  },
+  {
+    text: '"Finally switched from our old company. No fumes, no noise, and they actually clean up after themselves. My neighbour asked for the number before they\'d even left."',
+    initials: 'RC',
+    name: 'Richard Cervantes',
+    loc: 'Google Review',
+    avatarBg: 'var(--green-mid)',
   },
 ]
 
