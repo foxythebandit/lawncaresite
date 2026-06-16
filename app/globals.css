@@ -695,10 +695,7 @@ section { padding: 100px 8vw; }
 
 /* react-day-picker themed to QuietGreen */
 .booking-daypicker-wrap {
-  border: 1.5px solid var(--rule);
-  border-radius: 12px;
-  overflow: hidden;
-  background: #fff;
+  /* no box — calendar floats on the card background */
 }
 .booking-daypicker {
   --rdp-accent-color: var(--green-deep);
@@ -707,11 +704,22 @@ section { padding: 100px 8vw; }
   --rdp-outside-opacity: .35;
   font-family: var(--font-body);
   font-size: 13px;
-  padding: 12px 14px;
+  padding: 4px 0;
   width: 100%;
 }
-.booking-daypicker .rdp-month_caption { font-size: 13px; font-weight: 600; color: var(--ink); padding-bottom: 8px; }
-.booking-daypicker .rdp-weekday { font-size: 11px; color: var(--ink-soft); font-weight: 500; }
+.booking-daypicker .rdp-month_caption {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  padding-bottom: 8px;
+  justify-content: center;
+}
+.booking-daypicker .rdp-caption_label { color: var(--ink); font-size: 14px; font-weight: 600; }
+.booking-daypicker .rdp-months { width: 100%; }
+.booking-daypicker .rdp-month { width: 100%; }
+.booking-daypicker .rdp-month_grid { width: 100%; }
+.booking-daypicker .rdp-weekdays { display: grid; grid-template-columns: repeat(7,1fr); }
+.booking-daypicker .rdp-week { display: grid; grid-template-columns: repeat(7,1fr); }
+.booking-daypicker .rdp-day { display: flex; justify-content: center; }
+.booking-daypicker .rdp-weekday { font-size: 11px; color: var(--ink-soft); font-weight: 500; text-align: center; }
 .booking-daypicker .rdp-day_button {
   width: 34px; height: 34px;
   border-radius: 8px;
