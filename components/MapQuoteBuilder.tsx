@@ -27,7 +27,7 @@ const FREQ: Record<Frequency, { label: string; sub: string; discount: number }> 
 
 const SECT_COLORS = ['#52b788', '#74c9a0', '#2d9e6b', '#38a878', '#95dbb8']
 
-const MOWER_CURSOR = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='38' height='28' viewBox='0 0 38 28'><line x1='10' y1='14' x2='3' y2='4' stroke='white' stroke-width='1.5' stroke-linecap='round'/><line x1='3' y1='4' x2='8' y2='4' stroke='white' stroke-width='1.5' stroke-linecap='round'/><rect x='7' y='11' width='23' height='8' rx='2.5' fill='%2352b788' stroke='white' stroke-width='1'/><path d='M30,12 L36,10.5 L36,15.5 Z' fill='%2395dbb8'/><circle cx='26' cy='22' r='4.5' fill='%231a3a2a' stroke='white' stroke-width='1'/><circle cx='26' cy='22' r='1.8' fill='%2352b788'/><circle cx='11' cy='22' r='5' fill='%231a3a2a' stroke='white' stroke-width='1'/><circle cx='11' cy='22' r='2' fill='%2352b788'/><rect x='13' y='13.5' width='9' height='3' rx='1' fill='%231a3a2a'/><rect x='14' y='14' width='6' height='2' rx='0.5' fill='%2395dbb8'/></svg>") 36 13, crosshair`
+const MOWER_CURSOR = 'crosshair'
 
 const LAST_MOW_OPTS = [
   { key: 'thisweek', label: 'This week',  sub: '0–7 days'  },

@@ -1,13 +1,25 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useEffect } from 'react'
 import { submitQuote, type QuoteState } from '@/app/actions/submit-quote'
+
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void
+  }
+}
 
 export default function QuoteForm() {
   const [state, action, isPending] = useActionState<QuoteState, FormData>(
     submitQuote,
     null
   )
+
+  useEffect(() => {
+    if (state?.success && typeof window.fbq === 'function') {
+      window.fbq('track', 'Lead')
+    }
+  }, [state?.success])
 
   return (
     <section className="cta-section" id="quote">
@@ -47,7 +59,18 @@ export default function QuoteForm() {
         </div>
       ) : (
         <form action={action} className="cta-form" aria-describedby={state?.error ? 'form-error' : undefined}>
-          <p className="form-title">Get my free quote</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              background: '#52b788', color: '#fff',
+              fontSize: '11px', fontWeight: '700', letterSpacing: '.06em', textTransform: 'uppercase',
+              padding: '4px 10px', borderRadius: '100px',
+            }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              Free · 60 seconds
+            </span>
+          </div>
+          <p className="form-title">Get your instant quote</p>
           <div className="form-group">
             <label htmlFor="quote-name" className="sr-only">Your name</label>
             <input
