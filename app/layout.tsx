@@ -52,6 +52,23 @@ export default function RootLayout({
       <body>
         {children}
         <Analytics />
+        <Script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=AW-18401747819"
+          strategy="afterInteractive"
+        />
+        <Script
+          id="google-ads-tag"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', 'AW-18401747819');
+            `,
+          }}
+        />
         {process.env.NEXT_PUBLIC_META_PIXEL_ID && (
           <>
             <Script
