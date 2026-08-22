@@ -17,9 +17,9 @@ export default function Home() {
       <Hero />
       <TrustBar />
       <MapQuoteBuilder />
+      <Testimonials />
       <HowItWorks />
       <WhyElectric />
-      <Testimonials />
       <FAQ />
       <Footer />
     </>
