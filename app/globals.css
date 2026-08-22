@@ -55,10 +55,10 @@ nav {
 .nav-actions { display: flex; align-items: center; gap: 20px; }
 .nav-phone {
   display: flex; align-items: center; gap: 7px;
-  font-size: 17px; font-weight: 700; color: var(--ink);
-  text-decoration: none; letter-spacing: .01em; white-space: nowrap;
+  font-size: 14px; font-weight: 500; color: var(--ink);
+  text-decoration: none; letter-spacing: .02em; white-space: nowrap;
 }
-.nav-phone svg { width: 18px; height: 18px; color: var(--green-bright); }
+.nav-phone svg { width: 16px; height: 16px; color: var(--green-bright); }
 .nav-phone:hover { color: var(--green-mid); }
 .nav-cta {
   background: var(--green-mid); color: #fff;
