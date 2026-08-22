@@ -3,7 +3,7 @@ import Image from 'next/image'
 export default function Nav() {
   return (
     <nav>
-      <a href="#" className="nav-logo">
+      <a href="/" className="nav-logo">
         <Image
           src="/quietgreen-logo-full.svg"
           alt="QuietGreen"
@@ -13,10 +13,10 @@ export default function Nav() {
         />
       </a>
       <ul className="nav-links">
-        <li><a href="#how">How it works</a></li>
-        <li><a href="#why">Why electric</a></li>
-        <li><a href="#reviews">Reviews</a></li>
-        <li><a href="#faq">FAQ</a></li>
+        <li><a href="/#how">How it works</a></li>
+        <li><a href="/#why">Why electric</a></li>
+        <li><a href="/#reviews">Reviews</a></li>
+        <li><a href="/#faq">FAQ</a></li>
       </ul>
       <div className="nav-actions">
         <a href="tel:+16823528260" className="nav-phone" aria-label="Call (682) 352-8260">
@@ -25,7 +25,7 @@ export default function Nav() {
           </svg>
           <span className="nav-phone-text">(682) 352-8260</span>
         </a>
-        <a href="#map-quote" className="nav-cta">See your price</a>
+        <a href="/#map-quote" className="nav-cta">See your price</a>
       </div>
     </nav>
   )

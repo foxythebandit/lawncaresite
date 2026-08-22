@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import Nav from '@/components/Nav'
 
 interface AreaData {
   name: string
@@ -123,15 +124,7 @@ export default async function AreaPage({ params }: { params: Promise<{ area: str
   return (
     <main style={{ background: 'var(--off-white)', minHeight: '100vh', paddingTop: 68 }}>
 
-      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 5vw', height: 68, background: 'rgba(247,246,242,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid var(--rule)' }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--green-deep)', textDecoration: 'none' }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--green-bright)', display: 'inline-block' }} />
-          QuietGreen
-        </Link>
-        <Link href="/#quote" style={{ background: 'var(--green-mid)', color: '#fff', padding: '10px 22px', borderRadius: 100, fontSize: 14, fontWeight: 500, textDecoration: 'none' }}>
-          Get a quote
-        </Link>
-      </nav>
+      <Nav />
 
       {/* Hero */}
       <section style={{ background: 'var(--green-deep)', padding: '80px 8vw 72px', color: '#fff' }}>
