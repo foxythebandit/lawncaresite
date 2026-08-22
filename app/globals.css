@@ -52,6 +52,13 @@ nav {
   transition: color .2s;
 }
 .nav-links a:hover { color: var(--green-mid); }
+.nav-actions { display: flex; align-items: center; gap: 20px; }
+.nav-phone {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 500; color: var(--green-deep);
+  text-decoration: none; letter-spacing: .02em; white-space: nowrap;
+}
+.nav-phone:hover { color: var(--green-mid); }
 .nav-cta {
   background: var(--green-mid); color: #fff;
   padding: 10px 22px; border-radius: 100px;
@@ -1828,6 +1835,8 @@ footer {
 
   /* ── Nav ── */
   .nav-links { display: none; }
+  .nav-actions { gap: 14px; }
+  .nav-phone-text { display: none; }
 
   /* ── Hero overlay: stronger vertical fade for text legibility ── */
   .hero-overlay {
