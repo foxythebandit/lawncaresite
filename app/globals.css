@@ -377,6 +377,9 @@ section { padding: 100px 8vw; }
 }
 .included-item svg { width: 15px; height: 15px; color: var(--green-bright); flex-shrink: 0; }
 .included-sep { display: none; }
+.included-row.included-row--standalone {
+  margin: 0; padding: 56px 8vw; border-radius: 0;
+}
 
 /* ── FAQ ── */
 .faq { background: var(--off-white); }
@@ -1876,6 +1879,9 @@ footer {
     margin-left: -6vw; margin-right: -6vw;
     margin-bottom: -64px;
     padding: 44px 6vw;
+  }
+  .included-row.included-row--standalone {
+    margin: 0; padding: 44px 6vw;
   }
   .included-items { flex-direction: column; align-items: flex-start; gap: 4px; }
   .included-sep { display: none; }
