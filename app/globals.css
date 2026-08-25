@@ -349,7 +349,7 @@ section { padding: 100px 8vw; }
   margin-right: -8vw;
   margin-bottom: -100px;
   padding: 72px 8vw;
-  background: var(--green-pale);
+  background: var(--off-white);
   border-top: 1px solid var(--green-light);
   border-radius: 0;
   display: flex;
