@@ -54,17 +54,18 @@ export default function RootLayout({
         <Analytics />
         <Script
           async
-          src="https://www.googletagmanager.com/gtag/js?id=AW-18401747819"
+          src="https://www.googletagmanager.com/gtag/js?id=G-RCG8V5DEXX"
           strategy="afterInteractive"
         />
         <Script
-          id="google-ads-tag"
+          id="google-tag"
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
+              gtag('config', 'G-RCG8V5DEXX');
               gtag('config', 'AW-18401747819');
             `,
           }}
