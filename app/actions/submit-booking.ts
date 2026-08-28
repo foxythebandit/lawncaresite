@@ -90,7 +90,8 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
       : 'No preference'
 
     await resend.emails.send({
-      from: 'QuietGreen Bookings <hello@quietgreen.co>',
+      // TODO: switch to hello@quietgreen.co once the domain is verified at resend.com/domains
+      from: 'QuietGreen Bookings <onboarding@resend.dev>',
       to:   'paxonearth.22@gmail.com',
       subject: `New booking — ${data.name} · ${data.address}`,
       html: `

@@ -42,7 +42,8 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
   if (process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY)
     await resend.emails.send({
-      from: 'QuietGreen Leads <hello@quietgreen.co>',
+      // TODO: switch to hello@quietgreen.co once the domain is verified at resend.com/domains
+      from: 'QuietGreen Leads <onboarding@resend.dev>',
       to: 'paxonearth.22@gmail.com',
       subject: `New quote lead — ${phone}`,
       html: `
