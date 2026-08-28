@@ -6,6 +6,7 @@ import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/style.css'
 import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
+import { submitLead }   from '@/app/actions/submit-lead'
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
@@ -159,6 +160,11 @@ export default function MapQuoteBuilder() {
 
   const [showManualSqFt,  setShowManualSqFt]  = useState(false)
   const [manualSqFtInput, setManualSqFtInput] = useState('')
+
+  const [leadUnlocked, setLeadUnlocked] = useState(false)
+  const [leadPhone,    setLeadPhone]    = useState('')
+  const [leadStatus,   setLeadStatus]   = useState<'idle' | 'submitting'>('idle')
+  const [leadError,    setLeadError]    = useState('')
 
   const [jobLatLng,     setJobLatLng]     = useState<{ lat: number; lng: number } | null>(null)
   const [showBooking,   setShowBooking]   = useState(false)
@@ -539,7 +545,18 @@ export default function MapQuoteBuilder() {
     }
     setStep('idle'); setAddress(''); setError(''); setSuggestions([])
     setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek'); setJobLatLng(null)
+    setLeadUnlocked(false); setLeadPhone(''); setLeadStatus('idle'); setLeadError('')
   }, [stopDraw])
+
+  /* ─── Lead capture (unlock price) ───────────────────── */
+  const handleLeadSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLeadStatus('submitting'); setLeadError('')
+    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt })
+      .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
+    if (result.success) { setLeadUnlocked(true); setLeadStatus('idle') }
+    else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
+  }, [leadPhone, address, lawnSqFt])
 
   /* ─── Booking modal ─────────────────────────────────── */
   useEffect(() => {
@@ -560,6 +577,10 @@ export default function MapQuoteBuilder() {
   const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) + distanceFee : 0
   const firstVisitPrice = ongoingPrice + overgrowthFee
   const isDone         = step === 'done' || step === 'editing'
+
+  useEffect(() => {
+    if (showBooking && !bookingPhone && leadPhone) setBookingPhone(leadPhone)
+  }, [showBooking, bookingPhone, leadPhone])
 
   const closeBooking = useCallback(() => {
     setShowBooking(false); setBookingStatus('idle'); setBookingError(''); setMapScreenshot('')
@@ -779,89 +800,113 @@ export default function MapQuoteBuilder() {
                       </div>
                     )}
 
-                    <div className="mapq-freq-label">How often?</div>
-                    <div className="mapq-freq-row">
-                      {(Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([key, f]) => (
-                        <button key={key} className={`mapq-freq-btn ${freq === key ? 'selected' : ''}`} onClick={() => setFreq(key)}>
-                          <span className="mapq-freq-name">{f.label}</span>
-                          <span className="mapq-freq-sub">{f.sub}</span>
-                          {f.discount > 0 && <span className="mapq-freq-discount">–{f.discount}%</span>}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Season-aware overgrowth selector */}
-                    <div className="mapq-season-tag">
-                      <span className="mapq-season-dot" style={{ background: season.color }} />
-                      <span>{season.name} — {season.note}</span>
-                    </div>
-                    <div className="mapq-freq-label">When was it last mowed?</div>
-                    <div className="mapq-last-mow-grid">
-                      {LAST_MOW_OPTS.map(opt => (
-                        <button key={opt.key} className={`mapq-cond-btn ${lastMow === opt.key ? 'selected' : ''}`} onClick={() => setLastMow(opt.key)}>
-                          <span className="mapq-cond-name">{opt.label}</span>
-                          <span className="mapq-cond-sub">{opt.sub}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="mapq-price-rows">
-                      <div className="mapq-price-row"><span>Base rate</span><span>${basePrice}</span></div>
-                      {discount > 0 && (
-                        <div className="mapq-price-row mapq-price-discount">
-                          <span>{FREQ[freq].label} discount</span><span>–${Math.round(basePrice * discount / 100)}</span>
-                        </div>
-                      )}
-                      {distanceFee > 0 && (
-                        <div className="mapq-price-row" style={{ color: 'rgba(255,255,255,.6)' }}>
-                          <span>{distanceLabel}</span><span>+${distanceFee}</span>
-                        </div>
-                      )}
-                      {overgrowthFee > 0 && (
-                        <div className="mapq-price-row mapq-price-overgrowth">
-                          <span>{overgrowthLabel} <span className="mapq-price-once">(first visit only)</span></span>
-                          <span>+${overgrowthFee}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mapq-price-total">
-                      <div>
-                        <div className="mapq-price-val">${ongoingPrice}</div>
-                        <div className="mapq-price-per">
-                          per visit · fixed{overgrowthFee > 0 ? ` · first visit $${firstVisitPrice}` : ''}
-                        </div>
+                    {!leadUnlocked ? (
+                      <div className="mapq-lead-gate">
+                        <p className="mapq-lead-gate-text">Enter your phone to unlock your price — no commitment, no spam.</p>
+                        <form onSubmit={handleLeadSubmit} className="mapq-lead-form">
+                          <input
+                            className="mapq-input"
+                            type="tel"
+                            placeholder="(512) 555-0100"
+                            value={leadPhone}
+                            onChange={e => setLeadPhone(e.target.value)}
+                            required
+                            autoComplete="tel"
+                            aria-label="Phone number"
+                          />
+                          <button type="submit" className="mapq-btn-primary" disabled={leadStatus === 'submitting'}>
+                            {leadStatus === 'submitting' ? <span className="mapq-spinner" /> : 'Unlock price →'}
+                          </button>
+                        </form>
+                        {leadError && <p className="mapq-error">{leadError}</p>}
                       </div>
-                      <div className="mapq-eco-badge">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
-                          <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
-                        </svg>
-                        Zero emissions
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="mapq-freq-label">How often?</div>
+                        <div className="mapq-freq-row">
+                          {(Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([key, f]) => (
+                            <button key={key} className={`mapq-freq-btn ${freq === key ? 'selected' : ''}`} onClick={() => setFreq(key)}>
+                              <span className="mapq-freq-name">{f.label}</span>
+                              <span className="mapq-freq-sub">{f.sub}</span>
+                              {f.discount > 0 && <span className="mapq-freq-discount">–{f.discount}%</span>}
+                            </button>
+                          ))}
+                        </div>
 
-                    <button className="mapq-cta" onClick={() => {
-                      const map = mapRef.current
-                      if (!map) { setShowBooking(true); return }
-                      map.triggerRepaint()
-                      map.once('render', () => {
-                        const src = map.getCanvas()
-                        const offscreen = document.createElement('canvas')
-                        offscreen.width = src.width
-                        offscreen.height = src.height
-                        offscreen.getContext('2d')?.drawImage(src, 0, 0)
-                        setMapScreenshot(offscreen.toDataURL('image/jpeg', 0.8))
-                        setShowBooking(true)
-                      })
-                    }}>
-                      Book this visit
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-                      </svg>
-                    </button>
-                    <p className="mapq-cta-note">No payment now · we&apos;ll text you a Stripe link after your first visit</p>
-                    <p className="mapq-cta-note" style={{ marginTop: 6 }}>On your first visit, we&apos;ll measure the actual mowed area and adjust your price if needed.</p>
+                        {/* Season-aware overgrowth selector */}
+                        <div className="mapq-season-tag">
+                          <span className="mapq-season-dot" style={{ background: season.color }} />
+                          <span>{season.name} — {season.note}</span>
+                        </div>
+                        <div className="mapq-freq-label">When was it last mowed?</div>
+                        <div className="mapq-last-mow-grid">
+                          {LAST_MOW_OPTS.map(opt => (
+                            <button key={opt.key} className={`mapq-cond-btn ${lastMow === opt.key ? 'selected' : ''}`} onClick={() => setLastMow(opt.key)}>
+                              <span className="mapq-cond-name">{opt.label}</span>
+                              <span className="mapq-cond-sub">{opt.sub}</span>
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="mapq-price-rows">
+                          <div className="mapq-price-row"><span>Base rate</span><span>${basePrice}</span></div>
+                          {discount > 0 && (
+                            <div className="mapq-price-row mapq-price-discount">
+                              <span>{FREQ[freq].label} discount</span><span>–${Math.round(basePrice * discount / 100)}</span>
+                            </div>
+                          )}
+                          {distanceFee > 0 && (
+                            <div className="mapq-price-row" style={{ color: 'rgba(255,255,255,.6)' }}>
+                              <span>{distanceLabel}</span><span>+${distanceFee}</span>
+                            </div>
+                          )}
+                          {overgrowthFee > 0 && (
+                            <div className="mapq-price-row mapq-price-overgrowth">
+                              <span>{overgrowthLabel} <span className="mapq-price-once">(first visit only)</span></span>
+                              <span>+${overgrowthFee}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mapq-price-total">
+                          <div>
+                            <div className="mapq-price-val">${ongoingPrice}</div>
+                            <div className="mapq-price-per">
+                              per visit · fixed{overgrowthFee > 0 ? ` · first visit $${firstVisitPrice}` : ''}
+                            </div>
+                          </div>
+                          <div className="mapq-eco-badge">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
+                              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+                            </svg>
+                            Zero emissions
+                          </div>
+                        </div>
+
+                        <button className="mapq-cta" onClick={() => {
+                          const map = mapRef.current
+                          if (!map) { setShowBooking(true); return }
+                          map.triggerRepaint()
+                          map.once('render', () => {
+                            const src = map.getCanvas()
+                            const offscreen = document.createElement('canvas')
+                            offscreen.width = src.width
+                            offscreen.height = src.height
+                            offscreen.getContext('2d')?.drawImage(src, 0, 0)
+                            setMapScreenshot(offscreen.toDataURL('image/jpeg', 0.8))
+                            setShowBooking(true)
+                          })
+                        }}>
+                          Book this visit
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                          </svg>
+                        </button>
+                        <p className="mapq-cta-note">No payment now · we&apos;ll text you a Stripe link after your first visit</p>
+                        <p className="mapq-cta-note" style={{ marginTop: 6 }}>On your first visit, we&apos;ll measure the actual mowed area and adjust your price if needed.</p>
+                      </>
+                    )}
 
                     <button className="mapq-link mapq-reset" onClick={handleReset}>Start over</button>
                   </div>
