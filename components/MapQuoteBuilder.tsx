@@ -48,10 +48,10 @@ const OFFICE_LNG = -97.7184
 function uid() { return Math.random().toString(36).slice(2, 8) }
 
 function calcPrice(sqFt: number): number {
-  if (sqFt <= 2000)  return 65
-  if (sqFt <= 5000)  return 65  + Math.round((sqFt - 2000)  * 0.018)
-  if (sqFt <= 12000) return 119 + Math.round((sqFt - 5000)  * 0.013)
-  return                      210 + Math.round((sqFt - 12000) * 0.009)
+  if (sqFt <= 2000)  return 45
+  if (sqFt <= 5000)  return 45  + Math.round((sqFt - 2000)  * 0.018)
+  if (sqFt <= 12000) return 99  + Math.round((sqFt - 5000)  * 0.013)
+  return                      190 + Math.round((sqFt - 12000) * 0.009)
 }
 
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
