@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
 
 function getSupabase() {
   return createClient(
@@ -10,7 +11,7 @@ function getSupabase() {
   )
 }
 
-export interface BookingData {
+export interface BookingData extends Attribution {
   name:              string
   phone:             string
   email:             string
@@ -76,6 +77,12 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     overgrowth_fee:     data.overgrowth_fee || null,
     last_mow:           data.last_mow,
     map_screenshot_url: screenshotUrl,
+    gclid:              data.gclid || null,
+    utm_source:         data.utm_source || null,
+    utm_medium:         data.utm_medium || null,
+    utm_campaign:       data.utm_campaign || null,
+    utm_term:           data.utm_term || null,
+    utm_content:        data.utm_content || null,
   })
 
   if (error) {
@@ -88,6 +95,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     const preferredDate = data.preferred_date
       ? new Date(data.preferred_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
       : 'No preference'
+    const source = formatAttributionLabel(data)
 
     await resend.emails.send({
       // TODO: switch to hello@quietgreen.co once the domain is verified at resend.com/domains
@@ -107,6 +115,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
               ${data.email ? `<tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Email</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="mailto:${h(data.email)}" style="color:#1a3a2a">${h(data.email)}</a></td></tr>` : ''}
               <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Address</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(data.address)}</td></tr>
               <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Preferred date</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(preferredDate)}</td></tr>
+              ${source ? `<tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Source</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(source)}</td></tr>` : ''}
             </table>
 
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:16px 20px;margin-bottom:20px">

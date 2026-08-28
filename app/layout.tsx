@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { DM_Serif_Display, DM_Sans } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import Script from 'next/script'
+import AttributionCapture from '@/components/AttributionCapture'
 import './globals.css'
 
 const dmSerifDisplay = DM_Serif_Display({
@@ -50,6 +51,7 @@ export default function RootLayout({
       className={`${dmSerifDisplay.variable} ${dmSans.variable}`}
     >
       <body>
+        <AttributionCapture />
         {children}
         <Analytics />
         <Script

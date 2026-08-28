@@ -2,6 +2,7 @@
 
 import { useTransition, useState, useRef } from 'react'
 import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink } from './actions'
+import { formatAttributionLabel } from '@/lib/attribution'
 
 interface Booking {
   id: string
@@ -27,6 +28,12 @@ interface Booking {
   payment_method: string | null
   next_visit_date: string | null
   payment_link: string | null
+  gclid: string | null
+  utm_source: string | null
+  utm_medium: string | null
+  utm_campaign: string | null
+  utm_term: string | null
+  utm_content: string | null
 }
 
 function timeAgo(dateStr: string) {
@@ -88,6 +95,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const previewNextDate = calcNextDate(completeDate || today, booking.frequency)
 
   const status = STATUS_STYLES[booking.status] ?? STATUS_STYLES.pending
+  const source = formatAttributionLabel(booking)
 
   function doConfirm() {
     setConfirmingDate(false)
@@ -159,6 +167,12 @@ export default function BookingCard({ booking }: { booking: Booking }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               <span>{booking.sq_ft?.toLocaleString()} sq ft · {booking.frequency}</span>
             </div>
+            {source && (
+              <div className="admin-card-row">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                <span>{source}</span>
+              </div>
+            )}
             {booking.overgrowth_fee ? (
               <div className="admin-card-row admin-card-row-warning">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>

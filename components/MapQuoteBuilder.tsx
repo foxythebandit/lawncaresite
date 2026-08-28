@@ -7,6 +7,7 @@ import 'react-day-picker/style.css'
 import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 import { submitLead }   from '@/app/actions/submit-lead'
+import { getAttribution } from '@/lib/attribution'
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
@@ -552,7 +553,7 @@ export default function MapQuoteBuilder() {
   const handleLeadSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     setLeadStatus('submitting'); setLeadError('')
-    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt })
+    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, ...getAttribution() })
       .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setLeadUnlocked(true); setLeadStatus('idle') }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
@@ -597,6 +598,7 @@ export default function MapQuoteBuilder() {
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
       distance_miles: Math.round(jobMiles * 10) / 10, distance_fee: distanceFee,
       map_screenshot: mapScreenshot,
+      ...getAttribution(),
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setBookingStatus('success') }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }

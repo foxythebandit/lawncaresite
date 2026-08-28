@@ -215,6 +215,20 @@ export async function getBookings() {
   return data ?? []
 }
 
+export async function getLeads() {
+  const { data } = await getAdmin()
+    .from('leads')
+    .select('*')
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function deleteLead(id: string) {
+  if (!UUID_RE.test(id)) return
+  await getAdmin().from('leads').delete().eq('id', id)
+  revalidatePath('/admin/leads')
+}
+
 export async function createPaymentLink(
   bookingId: string,
   amountDollars: number,

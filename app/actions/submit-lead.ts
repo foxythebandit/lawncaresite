@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
 
 function getSupabase() {
   return createClient(
@@ -16,7 +17,7 @@ function h(s: string | null | undefined) {
 
 const PHONE_RE = /^[\d\s()+-]{7,}$/
 
-export interface LeadData {
+export interface LeadData extends Attribution {
   phone:   string
   address: string
   sq_ft:   number | null
@@ -33,6 +34,12 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
     phone,
     address: data.address || null,
     sq_ft: data.sq_ft,
+    gclid: data.gclid || null,
+    utm_source: data.utm_source || null,
+    utm_medium: data.utm_medium || null,
+    utm_campaign: data.utm_campaign || null,
+    utm_term: data.utm_term || null,
+    utm_content: data.utm_content || null,
   })
 
   if (error) {
@@ -40,6 +47,7 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
   }
 
   if (process.env.RESEND_API_KEY) {
+    const source = formatAttributionLabel(data)
     const resend = new Resend(process.env.RESEND_API_KEY)
     await resend.emails.send({
       // TODO: switch to hello@quietgreen.co once the domain is verified at resend.com/domains
@@ -56,6 +64,7 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
               <tr><td style="padding:6px 0;color:#4a5e54;font-size:13px;width:100px">Phone</td><td style="padding:6px 0;font-size:14px;font-weight:500"><a href="tel:${h(phone)}" style="color:#1a3a2a">${h(phone)}</a></td></tr>
               ${data.address ? `<tr><td style="padding:6px 0;color:#4a5e54;font-size:13px">Address</td><td style="padding:6px 0;font-size:14px;font-weight:500">${h(data.address)}</td></tr>` : ''}
               ${data.sq_ft ? `<tr><td style="padding:6px 0;color:#4a5e54;font-size:13px">Lawn size</td><td style="padding:6px 0;font-size:14px;font-weight:500">${data.sq_ft.toLocaleString()} sq ft</td></tr>` : ''}
+              ${source ? `<tr><td style="padding:6px 0;color:#4a5e54;font-size:13px">Source</td><td style="padding:6px 0;font-size:14px;font-weight:500">${h(source)}</td></tr>` : ''}
             </table>
             <p style="margin:0;color:#8a978f;font-size:12px">They unlocked a price but haven't booked yet — this is a soft lead, not a confirmed booking.</p>
           </div>
