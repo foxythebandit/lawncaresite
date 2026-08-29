@@ -4,7 +4,31 @@ export interface ParcelResult {
   coordinates: [number, number][]
 }
 
-export async function getParcel(address: string, lat: number, lon: number): Promise<ParcelResult | null> {
+// Free, no-key county GIS parcel layers — tried before falling back to paid Regrid.
+const COUNTY_SOURCES = [
+  { name: 'Travis',     url: 'https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/EXTERNAL_tcad_parcel/FeatureServer/0/query' },
+  { name: 'Williamson', url: 'https://gis.wilco.org/arcgis/rest/services/public/county_wcad_parcels/MapServer/0/query' },
+]
+
+async function queryCountyParcel(url: string, lat: number, lon: number): Promise<ParcelResult | null> {
+  const qs = new URLSearchParams({
+    geometry: `${lon},${lat}`,
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    outSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    returnGeometry: 'true',
+    f: 'geojson',
+  })
+  const res = await fetch(`${url}?${qs}`, { next: { revalidate: 86400 } })
+  if (!res.ok) return null
+  const data = await res.json()
+  const ring: [number, number][] | undefined = data?.features?.[0]?.geometry?.coordinates?.[0]
+  if (!ring || ring.length < 3) return null
+  return { coordinates: ring }
+}
+
+async function getParcelFromRegrid(address: string, lat: number, lon: number): Promise<ParcelResult | null> {
   const token = process.env.REGRID_TOKEN
   if (!token) return null
 
@@ -47,4 +71,16 @@ export async function getParcel(address: string, lat: number, lon: number): Prom
     console.error('[Regrid] error:', err)
     return null
   }
+}
+
+export async function getParcel(address: string, lat: number, lon: number): Promise<ParcelResult | null> {
+  for (const source of COUNTY_SOURCES) {
+    try {
+      const result = await queryCountyParcel(source.url, lat, lon)
+      if (result) return result
+    } catch (err) {
+      console.error(`[${source.name} County GIS] error:`, err)
+    }
+  }
+  return getParcelFromRegrid(address, lat, lon)
 }
