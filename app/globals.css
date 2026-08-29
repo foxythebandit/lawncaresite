@@ -1810,6 +1810,17 @@ footer {
 .admin-confirm-date-input:focus { border-color: var(--green-bright); }
 .admin-confirm-date-row { display: flex; gap: 8px; }
 .admin-confirm-date-row .admin-confirm-date-input { flex: 1; min-width: 0; }
+.admin-time-window-row { display: flex; gap: 8px; }
+.admin-time-window-btn {
+  flex: 1; border: 1px solid var(--green-light); border-radius: 8px;
+  padding: 9px 10px; font-size: 13px; font-family: var(--font-body);
+  color: var(--ink-soft); background: #fff; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.admin-time-window-btn:hover { border-color: var(--green-bright); }
+.admin-time-window-btn.selected {
+  background: var(--green-deep); border-color: var(--green-deep); color: #fff;
+}
 .admin-confirm-date-btns {
   display: flex; gap: 8px;
 }

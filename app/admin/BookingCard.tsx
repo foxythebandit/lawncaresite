@@ -50,6 +50,7 @@ function formatDate(dateStr: string) {
 }
 
 function formatTime(t: string) {
+  if (!/^\d{1,2}:\d{2}$/.test(t)) return t // "Morning" / "Afternoon" — pass through as-is
   const [h, m] = t.split(':').map(Number)
   const ampm = h >= 12 ? 'PM' : 'AM'
   const hr = h % 12 || 12
@@ -156,7 +157,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   {booking.confirmed_date
                     ? <>
                         <strong>Confirmed:</strong> {formatDate(booking.confirmed_date)}
-                        {booking.confirmed_time && <> at {formatTime(booking.confirmed_time)}</>}
+                        {booking.confirmed_time && <> · {formatTime(booking.confirmed_time)}</>}
                       </>
                     : <><span style={{ color: 'var(--ink-soft)' }}>Preferred:</span> {formatDate(booking.preferred_date!)}</>
                   }
@@ -282,21 +283,25 @@ export default function BookingCard({ booking }: { booking: Booking }) {
 
           {booking.status === 'pending' && confirmingDate && (
             <div className="admin-confirm-date-panel">
-              <label className="admin-confirm-date-label">Date &amp; arrival time (optional)</label>
-              <div className="admin-confirm-date-row">
-                <input
-                  type="date"
-                  className="admin-confirm-date-input"
-                  value={pickedDate}
-                  onChange={e => setPickedDate(e.target.value)}
-                />
-                <input
-                  type="time"
-                  className="admin-confirm-date-input"
-                  value={pickedTime}
-                  onChange={e => setPickedTime(e.target.value)}
-                  style={{ maxWidth: 130 }}
-                />
+              <label className="admin-confirm-date-label">Date</label>
+              <input
+                type="date"
+                className="admin-confirm-date-input"
+                value={pickedDate}
+                onChange={e => setPickedDate(e.target.value)}
+              />
+              <label className="admin-confirm-date-label">Arrival window</label>
+              <div className="admin-time-window-row">
+                {(['Morning', 'Afternoon', ''] as const).map(opt => (
+                  <button
+                    key={opt || 'none'}
+                    type="button"
+                    className={`admin-time-window-btn ${pickedTime === opt ? 'selected' : ''}`}
+                    onClick={() => setPickedTime(opt)}
+                  >
+                    {opt || 'No preference'}
+                  </button>
+                ))}
               </div>
               <div className="admin-confirm-date-btns">
                 <button className="admin-confirm-date-send" onClick={doConfirm} disabled={pending}>
@@ -397,7 +402,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                 </div>
               </div>
               <div className="admin-complete-next-hint">
-                Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}{booking.confirmed_time ? ` at ${formatTime(booking.confirmed_time)}` : ''}</strong>
+                Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}{booking.confirmed_time ? ` · ${formatTime(booking.confirmed_time)}` : ''}</strong>
               </div>
               <div className="admin-confirm-date-btns">
                 <button className="admin-confirm-date-send" onClick={doMarkComplete} disabled={pending}>

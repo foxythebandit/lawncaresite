@@ -14,6 +14,12 @@ function h(s: string | null | undefined) {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function formatTimeLabel(t: string) {
+  if (!/^\d{1,2}:\d{2}$/.test(t)) return t // "Morning" / "Afternoon" — pass through as-is
+  const [hr, m] = t.split(':').map(Number)
+  return `${hr % 12 || 12}:${String(m).padStart(2, '0')} ${hr >= 12 ? 'PM' : 'AM'}`
+}
+
 function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -114,7 +120,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
             ${scheduledDate ? `
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px;margin-bottom:20px">
               <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Scheduled for</p>
-              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}${scheduledTime ? ` at ${h(scheduledTime)}` : ''}</p>
+              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}${scheduledTime ? ` · ${h(formatTimeLabel(scheduledTime))}` : ''}</p>
             </div>` : ''}
             <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#4a5e54">
               <p style="margin:0 0 4px">${h(booking.address)}</p>
