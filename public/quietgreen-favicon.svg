@@ -1,10 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" width="88" height="88">
-  <!-- Dark green rounded square background -->
-  <rect width="88" height="88" rx="20" fill="#1a3a2a"/>
+  <!-- Dark green background — a true circle (rx = half the box) so it fills any
+       circular crop (e.g. Google's search result favicon chip) with no gaps -->
+  <rect width="88" height="88" rx="44" fill="#1a3a2a"/>
 
-  <!-- Bright green leaf, sized to fill the square -->
-  <path d="M44 6 C58 16 74 32 74 50 C74 68 61 80 44 84 C27 80 14 68 14 50 C14 32 30 16 44 6 Z" fill="#52b788"/>
-
-  <!-- White bolt, readable at small sizes -->
-  <path d="M50 26 L37 52 L46 52 L37 68 L56 42 L47 42 Z" fill="#fff"/>
+  <!-- Bright green leaf + white bolt, scaled up to reach closer to the circle's edge -->
+  <g transform="translate(44,44) scale(1.1) translate(-44,-44)">
+    <path d="M44 6 C58 16 74 32 74 50 C74 68 61 80 44 84 C27 80 14 68 14 50 C14 32 30 16 44 6 Z" fill="#52b788"/>
+    <path d="M50 26 L37 52 L46 52 L37 68 L56 42 L47 42 Z" fill="#fff"/>
+  </g>
 </svg>
