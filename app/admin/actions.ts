@@ -139,7 +139,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
           </div>
         </div>
       `,
-    }).catch(() => {})
+    }).catch((err: unknown) => { console.error('[Resend] confirmed email failed:', err) })
   }
 
   if (status === 'declined') {
@@ -163,7 +163,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
           </div>
         </div>
       `,
-    }).catch(() => {})
+    }).catch((err: unknown) => { console.error('[Resend] declined email failed:', err) })
   }
 }
 
