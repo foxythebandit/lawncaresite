@@ -46,6 +46,9 @@ const LAST_MOW_WEEKS: Record<string, number> = {
 const OFFICE_LAT = 30.3049
 const OFFICE_LNG = -97.7184
 
+const LEAD_CONSENT_TEXT =
+  "I agree to receive calls and texts from QuietGreen about my quote at the number above, including by autodialer. Consent isn't required to make a purchase. Msg & data rates may apply. Reply STOP to opt out."
+
 /* ── Helpers ──────────────────────────────────────────── */
 function uid() { return Math.random().toString(36).slice(2, 8) }
 
@@ -164,6 +167,7 @@ export default function MapQuoteBuilder() {
 
   const [leadUnlocked, setLeadUnlocked] = useState(false)
   const [leadPhone,    setLeadPhone]    = useState('')
+  const [leadConsent,  setLeadConsent]  = useState(false)
   const [leadStatus,   setLeadStatus]   = useState<'idle' | 'submitting'>('idle')
   const [leadError,    setLeadError]    = useState('')
 
@@ -546,18 +550,19 @@ export default function MapQuoteBuilder() {
     }
     setStep('idle'); setAddress(''); setError(''); setSuggestions([])
     setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek'); setJobLatLng(null)
-    setLeadUnlocked(false); setLeadPhone(''); setLeadStatus('idle'); setLeadError('')
+    setLeadUnlocked(false); setLeadPhone(''); setLeadConsent(false); setLeadStatus('idle'); setLeadError('')
   }, [stopDraw])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
   const handleLeadSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!leadConsent) { setLeadError('Please check the box to consent to being contacted.'); return }
     setLeadStatus('submitting'); setLeadError('')
-    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, ...getAttribution() })
+    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, ...getAttribution() })
       .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setLeadUnlocked(true); setLeadStatus('idle') }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
-  }, [leadPhone, address, lawnSqFt])
+  }, [leadPhone, leadConsent, address, lawnSqFt])
 
   /* ─── Booking modal ─────────────────────────────────── */
   useEffect(() => {
@@ -816,6 +821,16 @@ export default function MapQuoteBuilder() {
                             autoComplete="tel"
                             aria-label="Phone number"
                           />
+                          <label className="mapq-consent-row">
+                            <input
+                              type="checkbox"
+                              className="mapq-consent-checkbox"
+                              checked={leadConsent}
+                              onChange={e => setLeadConsent(e.target.checked)}
+                              required
+                            />
+                            <span className="mapq-consent-text">{LEAD_CONSENT_TEXT}</span>
+                          </label>
                           <button type="submit" className="mapq-btn-primary" disabled={leadStatus === 'submitting'}>
                             {leadStatus === 'submitting' ? <span className="mapq-spinner" /> : 'Unlock price →'}
                           </button>

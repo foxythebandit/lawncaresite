@@ -1080,6 +1080,22 @@ footer {
 .mapq-lead-form { display: flex; flex-direction: column; gap: 10px; }
 .mapq-lead-form .mapq-input { padding-left: 16px; }
 
+.mapq-consent-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.mapq-consent-checkbox {
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  margin-top: 2px;
+  accent-color: var(--green-bright);
+  cursor: pointer;
+}
+.mapq-consent-text {
+  font-size: 11.5px; line-height: 1.55; color: rgba(255,255,255,.5);
+}
+
 .mapq-freq-label {
   font-size: 11px; font-weight: 500; letter-spacing: .08em;
   text-transform: uppercase; color: rgba(255,255,255,.35);

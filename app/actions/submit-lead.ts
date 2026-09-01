@@ -18,15 +18,20 @@ function h(s: string | null | undefined) {
 const PHONE_RE = /^[\d\s()+-]{7,}$/
 
 export interface LeadData extends Attribution {
-  phone:   string
-  address: string
-  sq_ft:   number | null
+  phone:       string
+  address:     string
+  sq_ft:       number | null
+  consent:     boolean
+  consentText: string
 }
 
 export async function submitLead(data: LeadData): Promise<{ success: boolean; error?: string }> {
   const phone = data.phone.trim()
   if (!PHONE_RE.test(phone)) {
     return { success: false, error: 'Please enter a valid phone number.' }
+  }
+  if (!data.consent) {
+    return { success: false, error: 'Please check the box to consent to being contacted.' }
   }
 
   const supabase = getSupabase()
@@ -40,6 +45,9 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
     utm_campaign: data.utm_campaign || null,
     utm_term: data.utm_term || null,
     utm_content: data.utm_content || null,
+    consent: true,
+    consent_text: data.consentText,
+    consented_at: new Date().toISOString(),
   })
 
   if (error) {
