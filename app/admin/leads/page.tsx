@@ -2,6 +2,8 @@ import { getLeads, getBookings } from '../actions'
 import { formatAttributionLabel } from '@/lib/attribution'
 import LeadRow from './LeadRow'
 
+export const dynamic = 'force-dynamic'
+
 function normalizePhone(p: string) {
   return p.replace(/\D/g, '').slice(-10)
 }

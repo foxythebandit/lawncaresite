@@ -1,5 +1,7 @@
 import { getBookings } from '../actions'
 
+export const dynamic = 'force-dynamic'
+
 function formatTime(t: string) {
   const [h, m] = t.split(':').map(Number)
   const ampm = h >= 12 ? 'PM' : 'AM'

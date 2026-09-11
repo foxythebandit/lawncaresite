@@ -1,5 +1,7 @@
 import { getBookings } from '../actions'
 
+export const dynamic = 'force-dynamic'
+
 function monthKey(dateStr: string) {
   return dateStr.slice(0, 7)
 }
