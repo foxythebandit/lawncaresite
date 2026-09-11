@@ -64,7 +64,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
   }
 
   const supabase = getSupabase()
-  const { error } = await supabase.from('bookings').insert({
+  const { data: inserted, error } = await supabase.from('bookings').insert({
     name:               data.name.trim(),
     phone:              data.phone.trim(),
     email:              data.email.trim() || null,
@@ -83,7 +83,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     utm_campaign:       data.utm_campaign || null,
     utm_term:           data.utm_term || null,
     utm_content:        data.utm_content || null,
-  })
+  }).select('id').single()
 
   if (error) {
     return { success: false, error: 'Something went wrong. Please try again.' }
@@ -141,7 +141,10 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
           </div>
         </div>
       `,
-    }).catch((err: unknown) => { console.error('Resend error:', err) })
+    }).catch(async (err: unknown) => {
+      console.error('Resend error:', err)
+      await supabase.from('bookings').update({ notify_failed: true }).eq('id', inserted.id)
+    })
   }
 
   return { success: true }

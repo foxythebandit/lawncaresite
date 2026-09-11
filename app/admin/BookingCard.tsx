@@ -34,6 +34,7 @@ interface Booking {
   utm_campaign: string | null
   utm_term: string | null
   utm_content: string | null
+  notify_failed: boolean
 }
 
 function timeAgo(dateStr: string) {
@@ -127,6 +128,11 @@ export default function BookingCard({ booking }: { booking: Booking }) {
 
       <button className="admin-card-summary" onClick={() => setExpanded(e => !e)}>
         <span className={`admin-badge ${status.className}`}>{status.label}</span>
+        {booking.notify_failed && (
+          <span className="admin-badge admin-badge-warning" title="The new-booking notification email failed to send">
+            ⚠ Notify failed
+          </span>
+        )}
         <span className="admin-card-summary-name">{booking.name}</span>
         <span className="admin-card-summary-addr">{booking.address}</span>
         {booking.price_per_visit && (

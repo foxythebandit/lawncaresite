@@ -1661,6 +1661,7 @@ footer {
 .admin-badge-confirmed { background: #e8f8ee; color: #1a6b38; }
 .admin-badge-declined  { background: #fdf0f0; color: #b03030; }
 .admin-badge-completed { background: #e8f0ff; color: #2b4ab0; }
+.admin-badge-warning   { background: #fdf0f0; color: #b03030; margin-left: 6px; }
 
 .admin-card-body {
   padding: 4px 18px 16px; display: flex; flex-direction: column; gap: 8px;
