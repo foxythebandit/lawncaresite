@@ -8,6 +8,7 @@ import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 import { submitLead }   from '@/app/actions/submit-lead'
 import { getAttribution } from '@/lib/attribution'
+import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown } from '@/lib/gtag'
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
@@ -338,6 +339,7 @@ export default function MapQuoteBuilder() {
     stopDraw()
     savePolygon(pts)
     setStep('done')
+    trackQuoteLawnTraced()
   }, [stopDraw, savePolygon])
 
   const startDraw = useCallback(() => {
@@ -494,6 +496,7 @@ export default function MapQuoteBuilder() {
       if (!data.length) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
       const lat = +data[0].lat, lon = +data[0].lon
       setJobLatLng({ lat, lng: lon })
+      trackQuoteAddressFound()
       mapRef.current.flyTo({ center: [lon, lat], zoom: 18, duration: 2000 })
       // Fetch parcel boundary in parallel with the fly animation
       getParcel(address, lat, lon).then(parcel => {
@@ -526,6 +529,7 @@ export default function MapQuoteBuilder() {
     setShowManualSqFt(false)
     setManualSqFtInput('')
     setStep('done')
+    trackQuoteLawnTraced()
   }, [manualSqFtInput, stopDraw])
 
   /* ─── Edit mode ──────────────────────────────────────── */
@@ -560,7 +564,7 @@ export default function MapQuoteBuilder() {
     setLeadStatus('submitting'); setLeadError('')
     const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, ...getAttribution() })
       .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setLeadUnlocked(true); setLeadStatus('idle') }
+    if (result.success) { setLeadUnlocked(true); setLeadStatus('idle'); trackQuoteShown() }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
   }, [leadPhone, leadConsent, address, lawnSqFt])
 
