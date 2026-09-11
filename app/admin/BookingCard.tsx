@@ -389,6 +389,14 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                     >
                       Text to client
                     </a>
+                    {booking.email && (
+                      <a
+                        className="admin-payment-link-sms"
+                        href={`mailto:${booking.email}?subject=${encodeURIComponent('Your QuietGreen payment link')}&body=${encodeURIComponent(`Hi ${booking.name.split(' ')[0]}, here's your QuietGreen payment link: ${paymentLink || booking.payment_link}`)}`}
+                      >
+                        Email to client
+                      </a>
+                    )}
                   </div>
                 </div>
               )}
