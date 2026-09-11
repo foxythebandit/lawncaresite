@@ -190,12 +190,17 @@ export default function MapQuoteBuilder() {
       try {
       const ml = (await import('maplibre-gl')).default
       if (!alive || !mapDivRef.current) return
+      const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
       const map = new ml.Map({
         container: mapDivRef.current,
         style: {
           version: 8,
           sources: {
-            satellite: { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19 },
+            // Mapbox Satellite (sharper, more current) when a token is configured;
+            // falls back to Esri World Imagery otherwise — see .env.local.example.
+            satellite: mapboxToken
+              ? { type: 'raster', tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mapboxToken}`], tileSize: 512, maxzoom: 22 }
+              : { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19 },
             labels:    { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'], tileSize: 256 },
           },
           layers: [
