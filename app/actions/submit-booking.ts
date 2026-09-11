@@ -4,13 +4,6 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
 
-function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-}
-
 export interface BookingData extends Attribution {
   name:              string
   phone:             string
@@ -42,13 +35,17 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     return { success: false, error: 'Please enter a valid email address.' }
   }
 
+  // Service-role client: booking rows are only readable by 'authenticated'
+  // requests under RLS, so the public/anon client can insert but can't
+  // .select() the row back — use the admin client for both steps.
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  )
+
   // Upload map screenshot to Supabase Storage
   let screenshotUrl: string | null = null
   if (data.map_screenshot) {
-    const adminClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SECRET_KEY!
-    )
     const base64 = data.map_screenshot.split(',')[1]
     if (base64) {
       const buffer = Buffer.from(base64, 'base64')
@@ -63,8 +60,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     }
   }
 
-  const supabase = getSupabase()
-  const { data: inserted, error } = await supabase.from('bookings').insert({
+  const { data: inserted, error } = await adminClient.from('bookings').insert({
     name:               data.name.trim(),
     phone:              data.phone.trim(),
     email:              data.email.trim() || null,
@@ -143,7 +139,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
       `,
     }).catch(async (err: unknown) => {
       console.error('Resend error:', err)
-      await supabase.from('bookings').update({ notify_failed: true }).eq('id', inserted.id)
+      await adminClient.from('bookings').update({ notify_failed: true }).eq('id', inserted.id)
     })
   }
 
