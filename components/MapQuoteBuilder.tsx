@@ -495,6 +495,10 @@ export default function MapQuoteBuilder() {
     setSuggestions([])
     setError('')
     setStep('searching')
+    // Deferred a frame — calling this synchronously in the same tick as the
+    // setStep above gets silently dropped (the state-driven re-render right
+    // after appears to cancel a scrollIntoView queued in the same handler).
+    requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
     try {
       const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`, { headers: { 'Accept-Language': 'en' } })
       const data = await res.json()
@@ -502,12 +506,23 @@ export default function MapQuoteBuilder() {
       const lat = +data[0].lat, lon = +data[0].lon
       setJobLatLng({ lat, lng: lon })
       trackQuoteAddressFound()
-      mapRef.current.flyTo({ center: [lon, lat], zoom: 18, duration: 2000 })
+
+      const map = mapRef.current
+      // Snap out to a wide, zoomed-out view over the address first (instant,
+      // no animation) so the flyTo below always starts from a wide shot and
+      // swoops in to the house — regardless of whatever zoom level the map
+      // was left at from a previous search.
+      map.jumpTo({ center: [lon, lat], zoom: 9 })
+      // Drive the "drawing" step off the animation actually finishing rather
+      // than a hardcoded timer, so it can never fire early/late if the
+      // duration below ever changes.
+      map.once('moveend', () => { startDraw(); setStep('drawing') })
+      map.flyTo({ center: [lon, lat], zoom: 18, duration: 4200 })
+
       // Fetch parcel boundary in parallel with the fly animation
       getParcel(address, lat, lon).then(parcel => {
         if (parcel) drawParcelBoundary(parcel.coordinates)
       })
-      setTimeout(() => { startDraw(); setStep('drawing') }, 2200)
     } catch {
       setError('Search failed. Please try again.')
       setStep('idle')
