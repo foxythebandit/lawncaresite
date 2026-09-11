@@ -61,7 +61,7 @@ export default async function AdminPage({
           <span className="admin-stat-label">Confirmed</span>
         </div>
         <div className="admin-stat-divider" />
-        <a href={`/admin?filter=week${q ? `&search=${encodeURIComponent(q)}` : ''}`} className="admin-stat admin-stat-link">
+        <a href="/admin/week" className="admin-stat admin-stat-link">
           <span className="admin-stat-val">{weekCount}</span>
           <span className="admin-stat-label">This week ↗</span>
         </a>

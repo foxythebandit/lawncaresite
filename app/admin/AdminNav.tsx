@@ -12,6 +12,7 @@ export default function AdminNav() {
     { href: '/admin',         label: 'Clients' },
     { href: '/admin/leads',   label: 'Leads'   },
     { href: '/admin/revenue', label: 'Revenue' },
+    { href: '/admin/week',    label: 'Week'    },
     { href: '/admin/route',   label: 'Today'   },
   ]
 

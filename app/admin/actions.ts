@@ -176,12 +176,29 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
 
 export async function markComplete(
   id: string,
-  data: { completed_at: string; amount_charged: number; payment_method: string }
+  data: { completed_at: string; amount_charged: number; payment_method: string; one_time?: boolean }
 ) {
   if (!UUID_RE.test(id)) return
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
   if (!booking) return
+
+  const oneTime = data.one_time ?? booking.one_time ?? false
+
+  if (oneTime) {
+    await db.from('bookings').update({
+      status: 'completed',
+      completed_at: data.completed_at,
+      amount_charged: data.amount_charged,
+      payment_method: data.payment_method,
+      one_time: true,
+      next_visit_date: null,
+    }).eq('id', id)
+
+    revalidatePath('/admin')
+    revalidatePath('/admin/revenue')
+    return
+  }
 
   const base = new Date(data.completed_at)
   const freq = (booking.frequency ?? '').toLowerCase()
@@ -218,6 +235,7 @@ export async function markComplete(
   })
 
   revalidatePath('/admin')
+  revalidatePath('/admin/revenue')
 }
 
 export async function getBookings() {

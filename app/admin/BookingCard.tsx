@@ -94,6 +94,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const [completeDate, setCompleteDate] = useState(today)
   const [completeAmount, setCompleteAmount] = useState(booking.price_per_visit ?? 0)
   const [completePayment, setCompletePayment] = useState('Stripe')
+  const [completeOneTime, setCompleteOneTime] = useState(booking.one_time)
 
   const previewNextDate = calcNextDate(completeDate || today, booking.frequency)
 
@@ -111,6 +112,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
       completed_at: completeDate,
       amount_charged: completeAmount,
       payment_method: completePayment,
+      one_time: completeOneTime,
     }))
   }
 
@@ -431,12 +433,26 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   </select>
                 </div>
               </div>
-              <div className="admin-complete-next-hint">
-                Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}{booking.confirmed_time ? ` · ${formatTime(booking.confirmed_time)}` : ''}</strong>
-              </div>
+              <label className="admin-onetime-toggle" style={{ padding: '2px 0 10px' }}>
+                <input
+                  type="checkbox"
+                  checked={completeOneTime}
+                  onChange={e => setCompleteOneTime(e.target.checked)}
+                />
+                One-time visit — no follow-up needed
+              </label>
+              {completeOneTime ? (
+                <div className="admin-complete-next-hint">
+                  No follow-up will be scheduled and no reminder email will go out.
+                </div>
+              ) : (
+                <div className="admin-complete-next-hint">
+                  Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}{booking.confirmed_time ? ` · ${formatTime(booking.confirmed_time)}` : ''}</strong>
+                </div>
+              )}
               <div className="admin-confirm-date-btns">
                 <button className="admin-confirm-date-send" onClick={doMarkComplete} disabled={pending}>
-                  ✓ Save &amp; schedule next
+                  {completeOneTime ? '✓ Save (one-time)' : '✓ Save & schedule next'}
                 </button>
                 <button className="admin-confirm-date-cancel" onClick={() => setCompleting(false)} disabled={pending}>
                   Cancel
