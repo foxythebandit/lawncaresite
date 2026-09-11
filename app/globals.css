@@ -1586,13 +1586,15 @@ footer {
 /* ── Admin map panel ── */
 .admin-map-panel {
   position: sticky; top: 12px;
+  height: calc(100vh - 24px);
+  display: flex; flex-direction: column;
   border: 1px solid var(--rule); border-radius: 14px;
   overflow: hidden; background: #fff;
 }
 .admin-map-header {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 14px; border-bottom: 1px solid var(--rule);
-  background: #fff;
+  background: #fff; flex-shrink: 0;
 }
 .admin-map-title {
   display: flex; align-items: center; gap: 5px;
@@ -1622,7 +1624,8 @@ footer {
 }
 .admin-map-route-btn:hover { background: #daf0e4; color: var(--green-deep); }
 .admin-map-canvas {
-  height: 420px; width: 100%; display: block; position: relative;
+  flex: 1; width: 100%; display: block; position: relative;
+  min-height: 0;
   background: #f0f0ec;
 }
 .admin-map-loading {
@@ -1662,6 +1665,15 @@ footer {
 .admin-badge-declined  { background: #fdf0f0; color: #b03030; }
 .admin-badge-completed { background: #e8f0ff; color: #2b4ab0; }
 .admin-badge-warning   { background: #fdf0f0; color: #b03030; margin-left: 6px; }
+.admin-badge-onetime   { background: #f0f0ec; color: var(--ink-soft); margin-left: 6px; }
+
+.admin-onetime-toggle {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--ink-soft);
+  padding: 4px 0 2px;
+  cursor: pointer;
+}
+.admin-onetime-toggle input { accent-color: var(--green-mid); cursor: pointer; }
 
 .admin-card-body {
   padding: 4px 18px 16px; display: flex; flex-direction: column; gap: 8px;
@@ -1720,6 +1732,14 @@ footer {
   cursor: pointer; transition: background .15s;
 }
 .admin-status-complete:hover { background: #d4e0ff; }
+.admin-status-already-done {
+  width: 100%; background: #fff; color: var(--ink-soft); border: none;
+  border-top: 1px solid var(--rule);
+  padding: 10px; font-size: 12px; font-weight: 500; font-family: var(--font-body);
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.admin-status-already-done:hover { background: #f0f0ec; color: var(--green-deep); }
+.admin-status-already-done:disabled { opacity: .55; cursor: default; }
 .admin-action-stripe {
   width: 100%; background: #f0f0ff; color: #5433ff; border: none;
   padding: 13px; font-size: 13px; font-weight: 500; font-family: var(--font-body);
@@ -1953,6 +1973,33 @@ footer {
   padding: 10px 8px; border-bottom: 1px solid var(--rule); color: var(--ink);
 }
 .admin-revenue-table tr:last-child td { border-bottom: none; }
+
+.admin-expected-total {
+  font-family: var(--font-display); font-size: 28px; color: var(--green-deep);
+  margin-bottom: 18px;
+}
+.admin-expected-total span {
+  font-family: var(--font-body); font-size: 13px; font-weight: 400;
+  color: var(--ink-soft); margin-left: 8px;
+}
+.admin-expected-bars { display: flex; flex-direction: column; gap: 10px; }
+.admin-expected-bar-row {
+  display: grid; grid-template-columns: 140px 1fr 80px;
+  align-items: center; gap: 10px;
+}
+.admin-expected-bar-name {
+  font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.admin-expected-bar-track {
+  height: 10px; background: var(--green-pale); border-radius: 100px; overflow: hidden;
+}
+.admin-expected-bar-fill {
+  height: 100%; background: var(--green-bright); border-radius: 100px;
+}
+.admin-expected-bar-val {
+  font-size: 12px; font-weight: 600; color: var(--green-mid); text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Admin Today/Route page ── */
 .admin-route-all-btn {

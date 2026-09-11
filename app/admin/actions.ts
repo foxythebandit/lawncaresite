@@ -81,6 +81,13 @@ export async function deleteBooking(id: string) {
   revalidatePath('/admin')
 }
 
+export async function setOneTime(id: string, oneTime: boolean) {
+  if (!UUID_RE.test(id)) return
+  await getAdmin().from('bookings').update({ one_time: oneTime }).eq('id', id)
+  revalidatePath('/admin')
+  revalidatePath('/admin/revenue')
+}
+
 export async function updateStatus(id: string, status: string, confirmedDate?: string, confirmedTime?: string) {
   if (!UUID_RE.test(id) || !ALLOWED_STATUSES.has(status)) return
   const db = getAdmin()

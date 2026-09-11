@@ -111,8 +111,12 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
 
     initMap()
 
+    const onResize = () => mapInstanceRef.current?.invalidateSize()
+    window.addEventListener('resize', onResize)
+
     return () => {
       mounted = false
+      window.removeEventListener('resize', onResize)
       mapInstanceRef.current?.remove()
       mapInstanceRef.current = null
     }
@@ -152,7 +156,7 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
           </a>
         )}
       </div>
-      <div ref={containerRef} className="admin-map-canvas" style={{ height: '420px', width: '100%', display: 'block' }}>
+      <div ref={containerRef} className="admin-map-canvas">
         {geocoding && (
           <div className="admin-map-loading">
             <span>Locating clients…</span>

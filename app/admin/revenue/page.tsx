@@ -16,6 +16,14 @@ function formatDate(dateStr: string) {
   })
 }
 
+function visitsPerYear(frequency: string | null): number {
+  const f = (frequency ?? '').toLowerCase()
+  if (f.includes('bi'))    return 26
+  if (f.includes('week'))  return 52
+  if (f.includes('month')) return 12
+  return 12
+}
+
 export default async function RevenuePage() {
   const all = await getBookings()
 
@@ -36,6 +44,24 @@ export default async function RevenuePage() {
   const confirmedMRR = all
     .filter(b => b.status === 'confirmed' && b.price_per_visit)
     .reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
+
+  // One active recurring relationship per phone — the current confirmed booking,
+  // not the historical completed rows markComplete leaves behind.
+  const recurringByPhone = new Map<string, typeof all[number]>()
+  for (const b of all) {
+    if (b.status !== 'confirmed' || b.one_time || !b.frequency || !b.price_per_visit) continue
+    recurringByPhone.set(b.phone, b)
+  }
+  const recurringClients = [...recurringByPhone.values()]
+    .map(b => ({
+      name: b.name,
+      frequency: b.frequency as string,
+      annual: (b.price_per_visit ?? 0) * visitsPerYear(b.frequency),
+    }))
+    .sort((a, b) => b.annual - a.annual)
+
+  const expectedAnnualTotal = recurringClients.reduce((s, c) => s + c.annual, 0)
+  const maxAnnual = Math.max(...recurringClients.map(c => c.annual), 1)
 
   // SVG chart dimensions
   const chartW = 560
@@ -111,6 +137,31 @@ export default async function RevenuePage() {
                 )
               })}
             </svg>
+          )}
+        </div>
+
+        <div className="admin-revenue-card" style={{ marginTop: 12 }}>
+          <div className="admin-revenue-card-title">Expected Annual Revenue — Recurring Customers</div>
+          {recurringClients.length === 0 ? (
+            <div className="admin-empty" style={{ padding: '40px 20px' }}>No active recurring customers yet.</div>
+          ) : (
+            <>
+              <div className="admin-expected-total">
+                ${expectedAnnualTotal.toLocaleString()}
+                <span> / year across {recurringClients.length} recurring customer{recurringClients.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="admin-expected-bars">
+                {recurringClients.map(c => (
+                  <div className="admin-expected-bar-row" key={c.name + c.frequency}>
+                    <span className="admin-expected-bar-name">{c.name}</span>
+                    <div className="admin-expected-bar-track">
+                      <div className="admin-expected-bar-fill" style={{ width: `${(c.annual / maxAnnual) * 100}%` }} />
+                    </div>
+                    <span className="admin-expected-bar-val">${c.annual.toLocaleString()}/yr</span>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

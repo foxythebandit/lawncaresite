@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink } from './actions'
+import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime } from './actions'
 import { formatAttributionLabel } from '@/lib/attribution'
 
 interface Booking {
@@ -35,6 +35,7 @@ interface Booking {
   utm_term: string | null
   utm_content: string | null
   notify_failed: boolean
+  one_time: boolean
 }
 
 function timeAgo(dateStr: string) {
@@ -133,6 +134,11 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             ⚠ Notify failed
           </span>
         )}
+        {booking.one_time && (
+          <span className="admin-badge admin-badge-onetime" title="Marked as a one-time service">
+            One-time
+          </span>
+        )}
         <span className="admin-card-summary-name">{booking.name}</span>
         <span className="admin-card-summary-addr">{booking.address}</span>
         {booking.price_per_visit && (
@@ -174,6 +180,15 @@ export default function BookingCard({ booking }: { booking: Booking }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               <span>{booking.sq_ft?.toLocaleString()} sq ft · {booking.frequency}</span>
             </div>
+            <label className="admin-onetime-toggle">
+              <input
+                type="checkbox"
+                checked={booking.one_time}
+                onChange={e => startTransition(() => setOneTime(booking.id, e.target.checked))}
+                disabled={pending}
+              />
+              One-time service (exclude from recurring revenue)
+            </label>
             {source && (
               <div className="admin-card-row">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
@@ -276,15 +291,24 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             )}
           </div>
 
-          {booking.status === 'pending' && !confirmingDate && (
-            <div className="admin-card-status-btns">
-              <button className="admin-status-confirm" onClick={() => setConfirmingDate(true)} disabled={pending}>
-                ✓ Confirm
+          {booking.status === 'pending' && !confirmingDate && !completing && (
+            <>
+              <div className="admin-card-status-btns">
+                <button className="admin-status-confirm" onClick={() => setConfirmingDate(true)} disabled={pending}>
+                  ✓ Confirm
+                </button>
+                <button className="admin-status-decline" onClick={() => { if (window.confirm(`Decline ${booking.name}'s booking?`)) startTransition(() => updateStatus(booking.id, 'declined')) }} disabled={pending}>
+                  ✗ Decline
+                </button>
+              </div>
+              <button
+                className="admin-status-already-done"
+                onClick={() => setCompleting(true)}
+                disabled={pending}
+              >
+                Already did this job → Mark complete
               </button>
-              <button className="admin-status-decline" onClick={() => { if (window.confirm(`Decline ${booking.name}'s booking?`)) startTransition(() => updateStatus(booking.id, 'declined')) }} disabled={pending}>
-                ✗ Decline
-              </button>
-            </div>
+            </>
           )}
 
           {booking.status === 'pending' && confirmingDate && (
@@ -369,7 +393,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </div>
           )}
 
-          {booking.status === 'confirmed' && completing && (
+          {(booking.status === 'confirmed' || booking.status === 'pending') && completing && (
             <div className="admin-complete-panel">
               <div className="admin-complete-panel-title">Mark job complete</div>
               <div className="admin-complete-fields">
