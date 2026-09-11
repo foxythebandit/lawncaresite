@@ -1102,6 +1102,17 @@ export default function MapQuoteBuilder() {
         </a>{' '}
         and we'll send you a price.
       </p>
+
+      {isDrawing && ptCount >= 3 && (
+        <div className="mapq-mobile-draw-bar">
+          <button className="mapq-btn-primary" onClick={handleFinish} style={{ flex: 1 }}>
+            Finish ✓
+          </button>
+          <button className="mapq-btn-ghost" onClick={handleFinishAndAdd} style={{ flex: 1 }}>
+            + Add zone
+          </button>
+        </div>
+      )}
     </section>
   )
 }

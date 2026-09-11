@@ -1284,6 +1284,11 @@ footer {
 }
 .mapq-map { width: 100%; height: 100%; }
 
+/* Mobile-only fixed bar so Finish/Add-zone stay reachable while the
+   map is scrolled into view below the step panel (panel isn't sticky
+   on mobile — see .mapq-panel in the max-width:900px block). */
+.mapq-mobile-draw-bar { display: none; }
+
 /* Map overlays */
 .mapq-curtain {
   position: absolute; inset: 0; z-index: 1000;
@@ -1894,6 +1899,13 @@ footer {
   .mapq-grid { grid-template-columns: 1fr; }
   .mapq-panel { position: static; }
   .mapq-map-border { height: 380px; }
+  .mapq-mobile-draw-bar {
+    display: flex; gap: 10px;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 2000;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--green-deep);
+    box-shadow: 0 -6px 24px rgba(0,0,0,.35);
+  }
 
   /* ── Global spacing ── */
   section { padding: 64px 6vw; }
