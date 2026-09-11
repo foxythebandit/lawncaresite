@@ -149,6 +149,7 @@ export default function MapQuoteBuilder() {
   const addressWrapRef  = useRef<HTMLDivElement>(null)
 
   const [step,        setStep]        = useState<AppStep>('idle')
+  const [showIdleCurtain, setShowIdleCurtain] = useState(false)
   const [address,     setAddress]     = useState('')
   const [error,       setError]       = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -215,6 +216,18 @@ export default function MapQuoteBuilder() {
       })
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
       mapRef.current = map
+
+      // Intro: hold the wide continental view for a beat so it's visible
+      // loading in, then swoop into the service area before the "enter your
+      // address" prompt fades in over it — instead of that prompt covering
+      // the map from the very first frame.
+      map.once('load', () => {
+        setTimeout(() => {
+          if (!mapRef.current) return
+          mapRef.current.once('moveend', () => setShowIdleCurtain(true))
+          mapRef.current.flyTo({ center: [OFFICE_LNG, OFFICE_LAT], zoom: 10.5, duration: 1800 })
+        }, 1000)
+      })
       } catch { /* map unavailable — user sees the static fallback UI */ }
     })()
     return () => { alive = false; cancelAnimationFrame(rafRef.current); mapRef.current?.remove(); mapRef.current = null }
@@ -960,7 +973,7 @@ export default function MapQuoteBuilder() {
           {/* ── Map ── */}
           <div className="mapq-map-wrap">
             <div className="mapq-map-border" style={{ position: 'relative' }}>
-              {step === 'idle' && (
+              {step === 'idle' && showIdleCurtain && (
                 <div className="mapq-curtain">
                   <div className="mapq-curtain-icon">
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(82,183,136,.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
