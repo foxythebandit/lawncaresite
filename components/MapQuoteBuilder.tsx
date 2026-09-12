@@ -149,7 +149,6 @@ export default function MapQuoteBuilder() {
   const addressWrapRef  = useRef<HTMLDivElement>(null)
 
   const [step,        setStep]        = useState<AppStep>('idle')
-  const [showIdleCurtain, setShowIdleCurtain] = useState(false)
   const [address,     setAddress]     = useState('')
   const [error,       setError]       = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -218,14 +217,10 @@ export default function MapQuoteBuilder() {
       mapRef.current = map
 
       // Intro: hold the wide continental view for a beat so it's visible
-      // loading in, then swoop into the service area before the "enter your
-      // address" prompt fades in over it — instead of that prompt covering
-      // the map from the very first frame.
+      // loading in, then swoop into the service area.
       map.once('load', () => {
         setTimeout(() => {
-          if (!mapRef.current) return
-          mapRef.current.once('moveend', () => setShowIdleCurtain(true))
-          mapRef.current.flyTo({ center: [OFFICE_LNG, OFFICE_LAT], zoom: 10.5, duration: 1800 })
+          mapRef.current?.flyTo({ center: [OFFICE_LNG, OFFICE_LAT], zoom: 10.5, duration: 1800 })
         }, 1000)
       })
       } catch { /* map unavailable — user sees the static fallback UI */ }
@@ -973,23 +968,10 @@ export default function MapQuoteBuilder() {
           {/* ── Map ── */}
           <div className="mapq-map-wrap">
             <div className="mapq-map-border" style={{ position: 'relative' }}>
-              {step === 'idle' && showIdleCurtain && (
-                <div className="mapq-curtain">
-                  <div className="mapq-curtain-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(82,183,136,.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                    </svg>
-                  </div>
-                  <p className="mapq-curtain-text">Enter your address<br/>to load your property</p>
-                </div>
-              )}
-
               {step === 'searching' && (
-                <div className="mapq-curtain">
-                  <div className="mapq-curtain-icon">
-                    <span className="mapq-spinner" style={{ width: 28, height: 28, borderWidth: 3, borderTopColor: 'var(--green-bright)' }} />
-                  </div>
-                  <p className="mapq-curtain-text">Flying to your property…</p>
+                <div className="mapq-flying-pill">
+                  <span className="mapq-spinner" style={{ width: 14, height: 14, borderWidth: 2, borderTopColor: 'var(--green-bright)' }} />
+                  Flying to your property…
                 </div>
               )}
 

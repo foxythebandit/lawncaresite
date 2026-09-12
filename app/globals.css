@@ -1290,29 +1290,23 @@ footer {
 .mapq-mobile-draw-bar { display: none; }
 
 /* Map overlays */
-.mapq-curtain {
-  position: absolute; inset: 0; z-index: 1000;
-  background: rgba(18,42,28,.82);
-  backdrop-filter: blur(6px);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 16px;
-  border-radius: 20px;
-  animation: mapqCurtainIn .6s ease both;
+.mapq-flying-pill {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 1001;
+  background: rgba(18,42,28,.9);
+  border: 1px solid rgba(82,183,136,.4);
+  border-radius: 100px; padding: 10px 20px;
+  display: flex; align-items: center; gap: 10px;
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  font-size: 13px; color: #fff; font-weight: 500;
+  font-family: var(--font-body);
+  box-shadow: 0 4px 20px rgba(0,0,0,.35);
+  animation: mapqFadeIn .3s ease both;
 }
-@keyframes mapqCurtainIn {
-  from { opacity: 0; backdrop-filter: blur(0); }
-  to   { opacity: 1; backdrop-filter: blur(6px); }
-}
-.mapq-curtain-icon {
-  width: 80px; height: 80px; border-radius: 50%;
-  background: rgba(82,183,136,.12);
-  border: 1px solid rgba(82,183,136,.25);
-  display: flex; align-items: center; justify-content: center;
-}
-.mapq-curtain-text {
-  font-size: 16px; line-height: 1.65;
-  color: rgba(255,255,255,.55);
-  text-align: center;
+@keyframes mapqFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 .mapq-draw-pill {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
