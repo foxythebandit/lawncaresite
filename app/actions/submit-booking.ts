@@ -9,6 +9,8 @@ export interface BookingData extends Attribution {
   phone:             string
   email:             string
   preferred_date:    string
+  preferred_time?:   string
+  notes?:            string
   address:           string
   sq_ft:             number | null
   frequency:         string
@@ -31,7 +33,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
   if (!data.name.trim() || !data.phone.trim()) {
     return { success: false, error: 'Name and phone number are required.' }
   }
-  if (data.email && !EMAIL_RE.test(data.email)) {
+  if (!data.email.trim() || !EMAIL_RE.test(data.email)) {
     return { success: false, error: 'Please enter a valid email address.' }
   }
 
@@ -65,6 +67,8 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     phone:              data.phone.trim(),
     email:              data.email.trim() || null,
     preferred_date:     data.preferred_date || null,
+    preferred_time:     data.preferred_time || null,
+    customer_notes:     data.notes?.trim() || null,
     address:            data.address,
     sq_ft:              data.sq_ft,
     frequency:          data.frequency,
@@ -110,9 +114,15 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
               <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px;width:140px">Phone</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="tel:${h(data.phone)}" style="color:#1a3a2a">${h(data.phone)}</a></td></tr>
               ${data.email ? `<tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Email</td><td style="padding:8px 0;font-size:14px;font-weight:500"><a href="mailto:${h(data.email)}" style="color:#1a3a2a">${h(data.email)}</a></td></tr>` : ''}
               <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Address</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(data.address)}</td></tr>
-              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Preferred date</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(preferredDate)}</td></tr>
+              <tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Preferred date</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(preferredDate)}${data.preferred_time ? ` · ${h(data.preferred_time)}` : ''}</td></tr>
               ${source ? `<tr><td style="padding:8px 0;color:#4a5e54;font-size:13px">Source</td><td style="padding:8px 0;font-size:14px;font-weight:500">${h(source)}</td></tr>` : ''}
             </table>
+
+            ${data.notes ? `
+            <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 16px;margin-bottom:20px">
+              <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Note from customer</p>
+              <p style="margin:0;font-size:13px;color:#1a3a2a;white-space:pre-wrap">${h(data.notes)}</p>
+            </div>` : ''}
 
             <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:16px 20px;margin-bottom:20px">
               <p style="margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Quote details</p>

@@ -178,6 +178,8 @@ export default function MapQuoteBuilder() {
   const [bookingPhone,  setBookingPhone]  = useState('')
   const [bookingEmail,  setBookingEmail]  = useState('')
   const [bookingDate,   setBookingDate]   = useState<Date | undefined>(undefined)
+  const [bookingTimeWindow, setBookingTimeWindow] = useState('')
+  const [bookingNotes,  setBookingNotes]  = useState('')
   const [bookingStatus,    setBookingStatus]    = useState<'idle' | 'submitting' | 'success'>('idle')
   const [bookingError,     setBookingError]     = useState('')
   const [mapScreenshot,    setMapScreenshot]    = useState('')
@@ -629,7 +631,8 @@ export default function MapQuoteBuilder() {
     setBookingStatus('submitting'); setBookingError('')
     const result = await submitBooking({
       name: bookingName, phone: bookingPhone, email: bookingEmail,
-      preferred_date: bookingDate ? bookingDate.toLocaleDateString('en-CA') : '', address,
+      preferred_date: bookingDate ? bookingDate.toLocaleDateString('en-CA') : '',
+      preferred_time: bookingTimeWindow, notes: bookingNotes, address,
       sq_ft: lawnSqFt, frequency: FREQ[freq].label,
       price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice,
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
@@ -639,7 +642,7 @@ export default function MapQuoteBuilder() {
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setBookingStatus('success') }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
-  }, [bookingName, bookingPhone, bookingEmail, bookingDate, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee])
+  }, [bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee])
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
@@ -1075,8 +1078,8 @@ export default function MapQuoteBuilder() {
                       <input id="booking-phone" type="tel" placeholder="(512) 555-0100" required autoComplete="tel" value={bookingPhone} onChange={e => setBookingPhone(e.target.value)} />
                     </div>
                     <div className="booking-field">
-                      <label htmlFor="booking-email">Email <span className="booking-optional">optional</span></label>
-                      <input id="booking-email" type="email" placeholder="jane@example.com" autoComplete="email" value={bookingEmail} onChange={e => setBookingEmail(e.target.value)} />
+                      <label htmlFor="booking-email">Email</label>
+                      <input id="booking-email" type="email" placeholder="jane@example.com" required autoComplete="email" value={bookingEmail} onChange={e => setBookingEmail(e.target.value)} />
                     </div>
                     <div className="booking-field">
                       <label>Preferred first visit <span className="booking-optional">optional</span></label>
@@ -1090,6 +1093,31 @@ export default function MapQuoteBuilder() {
                           classNames={{ root: 'booking-daypicker' }}
                         />
                       </div>
+                    </div>
+                    <div className="booking-field">
+                      <label>Arrival window <span className="booking-optional">optional</span></label>
+                      <div className="admin-time-window-row">
+                        {(['Morning', 'Afternoon', ''] as const).map(opt => (
+                          <button
+                            key={opt || 'none'}
+                            type="button"
+                            className={`admin-time-window-btn ${bookingTimeWindow === opt ? 'selected' : ''}`}
+                            onClick={() => setBookingTimeWindow(opt)}
+                          >
+                            {opt || 'No preference'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="booking-field">
+                      <label htmlFor="booking-notes">Notes <span className="booking-optional">optional</span></label>
+                      <textarea
+                        id="booking-notes"
+                        placeholder="Gate code, dog in yard, anything we should know…"
+                        rows={3}
+                        value={bookingNotes}
+                        onChange={e => setBookingNotes(e.target.value)}
+                      />
                     </div>
                   </div>
 

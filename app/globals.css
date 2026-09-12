@@ -694,15 +694,16 @@ section { padding: 100px 8vw; }
   letter-spacing: .03em; text-transform: uppercase;
 }
 .booking-optional { font-weight: 400; opacity: .55; text-transform: none; letter-spacing: 0; }
-.booking-field input {
+.booking-field input, .booking-field textarea {
   padding: 11px 14px;
   border: 1.5px solid var(--rule);
   border-radius: 10px;
-  font-size: 14px; font-family: var(--font-body);
+  font-size: 16px; font-family: var(--font-body);
   color: var(--ink); background: #fff;
   outline: none; transition: border-color .2s;
 }
-.booking-field input:focus { border-color: var(--green-bright); }
+.booking-field input:focus, .booking-field textarea:focus { border-color: var(--green-bright); }
+.booking-field textarea { resize: vertical; min-height: 60px; }
 
 /* react-day-picker themed to QuietGreen */
 .booking-daypicker-wrap {
@@ -1813,6 +1814,16 @@ footer {
   border-radius: 8px; padding: 8px 12px;
 }
 .admin-complete-next-hint strong { color: var(--green-deep); }
+
+.admin-customer-note {
+  border-top: 1px solid var(--rule); padding: 12px 16px;
+  background: var(--green-pale);
+}
+.admin-customer-note-label {
+  display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--green-mid); margin-bottom: 4px; font-weight: 600;
+}
+.admin-customer-note p { margin: 0; font-size: 13px; color: var(--ink); white-space: pre-wrap; }
 
 .admin-notes-wrap {
   border-top: 1px solid var(--rule); padding: 12px 16px 4px;

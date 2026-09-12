@@ -11,6 +11,7 @@ interface Booking {
   email: string | null
   address: string
   preferred_date: string | null
+  preferred_time: string | null
   confirmed_date: string | null
   confirmed_time: string | null
   sq_ft: number | null
@@ -23,6 +24,7 @@ interface Booking {
   created_at: string
   map_screenshot_url: string | null
   notes: string | null
+  customer_notes: string | null
   completed_at: string | null
   amount_charged: number | null
   payment_method: string | null
@@ -173,7 +175,10 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                         <strong>Confirmed:</strong> {formatDate(booking.confirmed_date)}
                         {booking.confirmed_time && <> · {formatTime(booking.confirmed_time)}</>}
                       </>
-                    : <><span style={{ color: 'var(--ink-soft)' }}>Preferred:</span> {formatDate(booking.preferred_date!)}</>
+                    : <>
+                        <span style={{ color: 'var(--ink-soft)' }}>Preferred:</span> {formatDate(booking.preferred_date!)}
+                        {booking.preferred_time && <> · {formatTime(booking.preferred_time)}</>}
+                      </>
                   }
                 </span>
               </div>
@@ -247,6 +252,14 @@ export default function BookingCard({ booking }: { booking: Booking }) {
               <span>{timeAgo(booking.created_at)}</span>
               <a href={`/admin/client/${encodeURIComponent(booking.phone)}`} className="admin-card-history-link">View history →</a>
             </div>
+
+            {/* Customer's own note from booking */}
+            {booking.customer_notes && (
+              <div className="admin-customer-note">
+                <span className="admin-customer-note-label">Note from customer</span>
+                <p>{booking.customer_notes}</p>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="admin-notes-wrap">
