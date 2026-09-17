@@ -115,7 +115,7 @@ export default async function AdminPage({
           phone: b.phone,
         }))} />
       ) : (
-        <div className="admin-body" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '12px', padding: '12px 16px 24px', alignItems: 'start' }}>
+        <div className="admin-body" style={{ padding: '12px 16px 324px' }}>
           <div className="admin-list">
             {filtered.length === 0 ? (
               <div className="admin-empty">
