@@ -9,8 +9,28 @@ function trackEvent(name: string, params?: Record<string, unknown>) {
   window.gtag('event', name, params)
 }
 
+/**
+ * Fires when "Find my property" successfully resolves an address: the GA4
+ * funnel event, plus a virtual pageview (same technique as trackQuoteShown
+ * below) so this step shows up as its own page in GA4/Ads reporting. The
+ * address bar briefly shows /#find-property as proof, then reverts.
+ */
 export function trackQuoteAddressFound() {
   trackEvent('quote_address_found')
+
+  if (typeof window === 'undefined') return
+  const previousUrl = window.location.pathname + window.location.search + window.location.hash
+
+  window.history.pushState({}, '', '/#find-property')
+  trackEvent('page_view', {
+    page_title: document.title,
+    page_location: window.location.origin + '/#find-property',
+    page_path: '/#find-property',
+  })
+
+  setTimeout(() => {
+    window.history.pushState({}, '', previousUrl || '/')
+  }, 1000)
 }
 
 export function trackQuoteLawnTraced() {
