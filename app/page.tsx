@@ -7,7 +7,6 @@ import WhyElectric from '@/components/WhyElectric'
 import Testimonials from '@/components/Testimonials'
 import FAQ from '@/components/FAQ'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
-import IncludedBand from '@/components/IncludedBand'
 import Founder from '@/components/Founder'
 import Footer from '@/components/Footer'
 
@@ -19,7 +18,6 @@ export default function Home() {
       <Hero />
       <TrustBar />
       <MapQuoteBuilder />
-      <IncludedBand />
       <Founder />
       <Testimonials />
       <HowItWorks />

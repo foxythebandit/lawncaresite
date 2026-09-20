@@ -936,6 +936,17 @@ export default function MapQuoteBuilder() {
                           </div>
                         </div>
 
+                        <div className="mapq-includes-row">
+                          {['Full mow', 'Crisp edging', 'Clipping blowdown', 'Complete cleanup'].map(item => (
+                            <span key={item} className="mapq-includes-item">
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M2 8.5l4 4 8-8" />
+                              </svg>
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+
                         <button className="mapq-cta" onClick={() => {
                           const map = mapRef.current
                           if (!map) { setShowBooking(true); return }
