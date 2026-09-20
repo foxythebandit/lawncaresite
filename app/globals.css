@@ -267,6 +267,37 @@ section { padding: 100px 8vw; }
   color: var(--ink-soft); max-width: 520px;
 }
 
+/* ── FOUNDER ── */
+.founder-section { background: var(--off-white); }
+.founder-grid {
+  display: grid; grid-template-columns: 380px 1fr; gap: 72px; align-items: center;
+  max-width: 1100px; margin: 0 auto;
+}
+.founder-photo-wrap { position: relative; }
+.founder-photo-frame {
+  aspect-ratio: 4 / 5; border-radius: 18px; overflow: hidden;
+  box-shadow: 0 30px 60px rgba(26,58,42,.18);
+}
+.founder-photo-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.founder-photo-badge {
+  position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
+  background: var(--green-deep); color: #fff;
+  padding: 8px 18px; border-radius: 100px;
+  font-size: 12px; font-weight: 500; letter-spacing: .02em; white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(26,58,42,.3);
+  display: flex; align-items: center; gap: 6px;
+}
+.founder-photo-badge svg { color: var(--green-bright); flex-shrink: 0; }
+.founder-copy h2.section-h2 em { color: var(--green-bright); font-style: italic; }
+.founder-copy .section-sub { margin-bottom: 16px; max-width: 52ch; }
+.founder-signoff {
+  font-family: var(--font-display); font-style: italic;
+  font-size: 19px; color: var(--green-deep); margin: 10px 0 26px;
+}
+.founder-stats { display: flex; gap: 32px; padding-top: 22px; border-top: 1px solid var(--green-light); }
+.founder-stat-num { font-family: var(--font-display); font-size: 26px; color: var(--green-deep); line-height: 1; }
+.founder-stat-label { font-size: 12px; color: var(--ink-soft); margin-top: 4px; }
+
 /* ── HOW IT WORKS ── */
 .how-two-col {
   display: grid;
@@ -1900,6 +1931,9 @@ footer {
   .hero { grid-template-columns: 1fr; min-height: 0; overflow: hidden; }
   .hero-right { min-height: 0; }
   .why-grid, .testi-grid, .steps { grid-template-columns: 1fr; }
+  .founder-grid { grid-template-columns: 1fr; gap: 40px; }
+  .founder-photo-frame { max-width: 320px; margin: 0 auto; }
+  .founder-stats { flex-wrap: wrap; row-gap: 16px; }
   .cta-section { grid-template-columns: 1fr; gap: 40px; padding: 64px 6vw; }
   .how-two-col { grid-template-columns: 1fr; gap: 48px; }
   .faq-grid { grid-template-columns: 1fr; gap: 32px; }
