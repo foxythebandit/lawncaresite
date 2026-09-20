@@ -14,6 +14,7 @@ export interface BookingData extends Attribution {
   address:           string
   sq_ft:             number | null
   frequency:         string
+  one_time?:         boolean
   price_per_visit:   number
   first_visit_price: number
   overgrowth_fee:    number
@@ -72,6 +73,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     address:            data.address,
     sq_ft:              data.sq_ft,
     frequency:          data.frequency,
+    one_time:           data.one_time ?? false,
     price_per_visit:    data.price_per_visit,
     first_visit_price:  data.first_visit_price,
     overgrowth_fee:     data.overgrowth_fee || null,

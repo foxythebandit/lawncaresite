@@ -1096,7 +1096,7 @@ footer {
   margin-bottom: 10px;
 }
 .mapq-freq-row {
-  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  display: grid; grid-template-columns: 1fr 1fr;
   gap: 8px; margin-bottom: 20px;
 }
 .mapq-freq-btn {

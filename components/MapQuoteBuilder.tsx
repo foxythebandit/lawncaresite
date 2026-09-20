@@ -12,7 +12,7 @@ import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown } from '@
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
-type Frequency = 'monthly' | 'biweekly' | 'weekly'
+type Frequency = 'onetime' | 'monthly' | 'biweekly' | 'weekly'
 
 interface Section {
   id: string
@@ -23,6 +23,7 @@ interface Section {
 
 /* ── Constants ────────────────────────────────────────── */
 const FREQ: Record<Frequency, { label: string; sub: string; discount: number }> = {
+  onetime:  { label: 'One-time', sub: 'Single visit', discount: 0  },
   monthly:  { label: 'Monthly',   sub: '1× / month',  discount: 0  },
   biweekly: { label: 'Bi-weekly', sub: '2× / month',  discount: 10 },
   weekly:   { label: 'Weekly',    sub: '4× / month',  discount: 15 },
@@ -633,7 +634,7 @@ export default function MapQuoteBuilder() {
       name: bookingName, phone: bookingPhone, email: bookingEmail,
       preferred_date: bookingDate ? bookingDate.toLocaleDateString('en-CA') : '',
       preferred_time: bookingTimeWindow, notes: bookingNotes, address,
-      sq_ft: lawnSqFt, frequency: FREQ[freq].label,
+      sq_ft: lawnSqFt, frequency: FREQ[freq].label, one_time: freq === 'onetime',
       price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice,
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
       distance_miles: Math.round(jobMiles * 10) / 10, distance_fee: distanceFee,
