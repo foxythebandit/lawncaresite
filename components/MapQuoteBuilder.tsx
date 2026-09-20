@@ -56,8 +56,8 @@ function uid() { return Math.random().toString(36).slice(2, 8) }
 function calcPrice(sqFt: number): number {
   if (sqFt <= 2000)  return 60
   if (sqFt <= 5000)  return 60  + Math.round((sqFt - 2000)  * 0.018)
-  if (sqFt <= 12000) return 114 + Math.round((sqFt - 5000)  * 0.013)
-  return                      205 + Math.round((sqFt - 12000) * 0.009)
+  if (sqFt <= 12000) return 100 + Math.round((sqFt - 5000)  * 0.013)
+  return                      191 + Math.round((sqFt - 12000) * 0.009)
 }
 
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {

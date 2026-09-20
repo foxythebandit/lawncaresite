@@ -24,6 +24,13 @@ export default function TrustBar() {
         </svg>
         Serving Austin, TX
       </div>
+      <div className="trust-divider" />
+      <div className="trust-item reveal" data-delay="400">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2l8 4v6c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z" />
+        </svg>
+        Licensed &amp; insured
+      </div>
     </div>
   )
 }
