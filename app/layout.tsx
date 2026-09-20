@@ -20,9 +20,18 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   icons: {
-    icon: '/quietgreen-favicon.svg',
-    shortcut: '/quietgreen-favicon.svg',
-    apple: '/quietgreen-favicon.svg',
+    // Google Search/Ads doesn't support SVG favicons and wants >=48px —
+    // lead with PNG/ICO so it actually picks one up instead of falling
+    // back to a generic globe icon. SVG still listed for browsers that
+    // prefer it.
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48', type: 'image/x-icon' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/quietgreen-favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/apple-icon.png',
   },
   title: 'QuietGreen — Electric Lawn Care in Austin, TX',
   description:
