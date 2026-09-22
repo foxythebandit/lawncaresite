@@ -40,6 +40,8 @@ interface Booking {
   notify_failed: boolean
   one_time: boolean
   last_reminder_sent_at: string | null
+  manual_quote: boolean
+  lawn_size_bucket: string | null
 }
 
 function timeAgo(dateStr: string) {
@@ -162,6 +164,11 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
             One-time
           </span>
         )}
+        {booking.manual_quote && (
+          <span className="admin-badge admin-badge-manual" title="Came in through the 'We'll do the measuring' form — needs sizing and a price">
+            Manual quote
+          </span>
+        )}
         <span className="admin-card-summary-name">{booking.name}</span>
         <span className="admin-card-summary-addr">{booking.address}</span>
         {booking.price_per_visit && (
@@ -204,7 +211,11 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
             )}
             <div className="admin-card-row">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span>{booking.sq_ft?.toLocaleString()} sq ft · {booking.frequency} · ${booking.price_per_visit}/visit</span>
+              <span>
+                {booking.manual_quote && !booking.sq_ft
+                  ? `Lawn size: ${booking.lawn_size_bucket ?? 'not specified'} — needs quote`
+                  : `${booking.sq_ft?.toLocaleString()} sq ft · ${booking.frequency} · $${booking.price_per_visit}/visit`}
+              </span>
               {!editingService && (
                 <button
                   type="button"

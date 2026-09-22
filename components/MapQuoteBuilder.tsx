@@ -504,7 +504,8 @@ export default function MapQuoteBuilder() {
   /* ─── Address search ─────────────────────────────────── */
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
-    if (!address.trim() || !mapRef.current) return
+    if (!address.trim()) { setError('Enter your address to find your property.'); return }
+    if (!mapRef.current) return
     setSuggestions([])
     setError('')
     setStep('searching')
@@ -732,7 +733,7 @@ export default function MapQuoteBuilder() {
                         </div>
                       )}
                     </div>
-                    <button type="submit" className="mapq-btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={step === 'searching' || !address.trim()}>
+                    <button type="submit" className="mapq-btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={step === 'searching'}>
                       {step === 'searching' ? <><span className="mapq-spinner" /> Flying there…</> : 'Find my property →'}
                     </button>
                     {error && <p className="mapq-error">{error}</p>}
@@ -759,6 +760,12 @@ export default function MapQuoteBuilder() {
                   <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
                   <span className="mapq-first-visit-promo-text">Your first visit — applied automatically below</span>
                 </div>
+
+                {!isDrawing && !isDone && (
+                  <p className="mapq-hint" style={{ marginTop: 10, marginBottom: 0 }}>
+                    Tap each corner of your lawn on the map to trace it — takes about 30 seconds.
+                  </p>
+                )}
 
                 {isDrawing && (
                   <div style={{ marginTop: 14 }}>
@@ -1022,6 +1029,19 @@ export default function MapQuoteBuilder() {
                 <div className="mapq-draw-pill">
                   <span className="mapq-pulse-dot" />
                   {ptCount < 3 ? 'Click to place points — trace your lawn' : `${ptCount} points · hit Finish to close`}
+                </div>
+              )}
+
+              {step === 'idle' && (
+                <div className="mapq-map-placeholder">
+                  <svg width="110" height="84" viewBox="0 0 110 84" fill="none">
+                    <rect x="4" y="4" width="102" height="76" rx="8" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.12)" strokeWidth="1.5"/>
+                    <polygon points="28,58 28,30 55,20 82,30 82,58" fill="rgba(82,183,136,.18)" stroke="var(--green-bright)" strokeWidth="2" strokeDasharray="4 3" strokeLinejoin="round"/>
+                    <circle cx="82" cy="30" r="11" fill="var(--green-bright)"/>
+                    <path d="M77 30l3.5 3.5L88 26" stroke="#1a3a2a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                  </svg>
+                  <p className="mapq-map-placeholder-title">This takes about 30 seconds</p>
+                  <p className="mapq-map-placeholder-sub">Enter your address above and we&apos;ll fly you right to your property.</p>
                 </div>
               )}
 
