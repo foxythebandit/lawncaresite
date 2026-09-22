@@ -28,6 +28,20 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
   const [geocoding, setGeocoding] = useState(true)
   const didGeocode = useRef(false)
 
+  // Hidden by default, revealed on hover (mouse) or click (touch/pin open)
+  const [hovering, setHovering] = useState(false)
+  const [pinned,   setPinned]   = useState(false)
+  const open = hovering || pinned
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleEnter = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    setHovering(true)
+  }
+  const handleLeave = () => {
+    closeTimer.current = setTimeout(() => setHovering(false), 200)
+  }
+
   // Geocode on mount
   useEffect(() => {
     if (didGeocode.current) return
@@ -134,7 +148,25 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
   return (
     <>
     <link rel="stylesheet" href="/leaflet.css" />
-    <div className="admin-map-panel">
+
+    <button
+      type="button"
+      className={`admin-map-fab ${open ? 'admin-map-fab-hidden' : ''}`}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onClick={() => setPinned(p => !p)}
+      aria-label="Show client map"
+      aria-expanded={open}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      {!geocoding && pins.length > 0 && <span className="admin-map-fab-badge">{pins.length}</span>}
+    </button>
+
+    <div
+      className={`admin-map-panel ${open ? 'admin-map-panel-open' : ''}`}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
       <div className="admin-map-header">
         <div className="admin-map-title">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -155,6 +187,14 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
             Route
           </a>
         )}
+        <button
+          type="button"
+          className="admin-map-close"
+          onClick={() => { setPinned(false); setHovering(false) }}
+          aria-label="Hide map"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <div ref={containerRef} className="admin-map-canvas">
         {geocoding && (

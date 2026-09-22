@@ -1587,8 +1587,28 @@ footer {
 .admin-list { display: flex; flex-direction: column; gap: 10px; }
 .admin-empty { text-align: center; padding: 48px 20px; color: var(--ink-soft); font-size: 15px; }
 
-/* ── Admin map panel — locked to the bottom of the screen so it never
-   reshuffles as the client list above it grows/shrinks ── */
+/* ── Admin map: hidden by default, revealed by hovering (or tapping,
+   which pins it open) the floating map button ── */
+.admin-map-fab {
+  position: fixed; right: 20px; bottom: 20px; z-index: 101;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--green-deep); color: #fff; border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(26,58,42,.35);
+  transition: transform .2s, opacity .2s, box-shadow .2s;
+}
+.admin-map-fab:hover { box-shadow: 0 8px 26px rgba(26,58,42,.45); transform: scale(1.05); }
+.admin-map-fab-hidden { opacity: 0; transform: scale(.8); pointer-events: none; }
+.admin-map-fab-badge {
+  position: absolute; top: -3px; right: -3px;
+  min-width: 18px; height: 18px; padding: 0 4px; border-radius: 100px;
+  background: var(--green-bright); color: var(--green-deep);
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--off-white);
+}
+
 .admin-map-panel {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
   height: 300px;
@@ -1596,6 +1616,15 @@ footer {
   border-top: 1px solid var(--rule);
   overflow: hidden; background: #fff;
   box-shadow: 0 -8px 28px rgba(0,0,0,.18);
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .25s ease, opacity .2s ease;
+}
+.admin-map-panel-open {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 .admin-map-header {
   display: flex; align-items: center; gap: 8px;
@@ -1629,6 +1658,14 @@ footer {
   border-radius: 100px; transition: background .15s;
 }
 .admin-map-route-btn:hover { background: #daf0e4; color: var(--green-deep); }
+.admin-map-close {
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; color: var(--ink-soft); cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.admin-map-close:hover { background: var(--rule); color: var(--ink); }
 .admin-map-canvas {
   flex: 1; width: 100%; display: block; position: relative;
   min-height: 0;
