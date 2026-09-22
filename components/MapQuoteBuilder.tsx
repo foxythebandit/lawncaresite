@@ -9,6 +9,7 @@ import { getParcel }    from '@/app/actions/get-parcel'
 import { submitLead }   from '@/app/actions/submit-lead'
 import { getAttribution } from '@/lib/attribution'
 import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown } from '@/lib/gtag'
+import ManualQuoteForm from './ManualQuoteForm'
 
 /* ── Types ────────────────────────────────────────────── */
 type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
@@ -679,6 +680,9 @@ export default function MapQuoteBuilder() {
             Trace your lawn.{' '}
             <em style={{ color: 'var(--green-bright)', fontStyle: 'italic' }}>Get your price.</em>
           </h2>
+          <div style={{ marginTop: 18 }}>
+            <ManualQuoteForm />
+          </div>
         </div>
 
         <div className="mapq-grid">
@@ -762,9 +766,23 @@ export default function MapQuoteBuilder() {
                 </div>
 
                 {!isDrawing && !isDone && (
-                  <p className="mapq-hint" style={{ marginTop: 10, marginBottom: 0 }}>
-                    Tap each corner of your lawn on the map to trace it — takes about 30 seconds.
-                  </p>
+                  <div className="mapq-trace-demo-row" style={{ marginTop: 10 }}>
+                    <svg className="mapq-trace-demo" width="52" height="40" viewBox="0 0 52 40" fill="none">
+                      <rect x="1" y="1" width="50" height="38" rx="5" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.12)" strokeWidth="1"/>
+                      <polygon
+                        className="mapq-trace-demo-poly"
+                        points="13,28 13,13 26,7 39,13 39,28"
+                        pathLength={1}
+                        fill="none" stroke="var(--green-bright)" strokeWidth="2" strokeLinejoin="round"
+                      />
+                      {[[13,28,0],[13,13,.3],[26,7,.6],[39,13,.9],[39,28,1.2]].map(([cx,cy,delay], i) => (
+                        <circle key={i} className="mapq-trace-dot" style={{ animationDelay: `${delay}s` }} cx={cx} cy={cy} r="2.6" fill="var(--green-bright)"/>
+                      ))}
+                    </svg>
+                    <p className="mapq-hint" style={{ margin: 0 }}>
+                      Tap each corner of your lawn on the map to trace it — takes about 30 seconds.
+                    </p>
+                  </div>
                 )}
 
                 {isDrawing && (
