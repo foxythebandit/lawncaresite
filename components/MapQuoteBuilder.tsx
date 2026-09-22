@@ -674,13 +674,10 @@ export default function MapQuoteBuilder() {
       <div className="mapq-inner">
         <div className="mapq-header">
           <div className="section-label" style={{ color: 'var(--green-bright)' }}>Instant Quote</div>
-          <h2 className="section-h2" style={{ color: '#fff', marginBottom: 14 }}>
+          <h2 className="section-h2" style={{ color: '#fff', marginBottom: 0 }}>
             Trace your lawn.{' '}
             <em style={{ color: 'var(--green-bright)', fontStyle: 'italic' }}>Get your price.</em>
           </h2>
-          <p className="section-sub" style={{ color: 'rgba(255,255,255,.5)', margin: '0 auto', textAlign: 'center', maxWidth: 480 }}>
-            Enter your address, trace your lawn on the satellite map, and get a fixed price instantly — no estimates, no surprises.
-          </p>
         </div>
 
         <div className="mapq-grid">
@@ -756,6 +753,11 @@ export default function MapQuoteBuilder() {
               <div className="mapq-step-body">
                 <div className={`mapq-step-title ${isDrawing ? 'active' : ''}`}>
                   Trace your lawn
+                </div>
+
+                <div className="mapq-first-visit-promo" style={{ marginTop: 12, marginBottom: 0 }}>
+                  <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
+                  <span className="mapq-first-visit-promo-text">Your first visit — applied automatically below</span>
                 </div>
 
                 {isDrawing && (
