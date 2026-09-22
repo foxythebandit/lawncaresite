@@ -8,6 +8,7 @@ interface Lead {
   phone: string
   address: string | null
   sq_ft: number | null
+  map_screenshot_url: string | null
 }
 
 export default function LeadRow({
@@ -23,6 +24,17 @@ export default function LeadRow({
   return (
     <div className={`admin-card ${pending ? 'admin-card-loading' : ''}`}>
       <div className="admin-card-summary" style={{ cursor: 'default' }}>
+        {lead.map_screenshot_url && (
+          <a
+            href={lead.map_screenshot_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="admin-lead-thumb"
+            title="Open traced lawn photo"
+          >
+            <img src={lead.map_screenshot_url} alt="Traced lawn" />
+          </a>
+        )}
         <span className={`admin-badge ${converted ? 'admin-badge-confirmed' : 'admin-badge-pending'}`}>
           {converted ? 'Booked' : 'Lead only'}
         </span>

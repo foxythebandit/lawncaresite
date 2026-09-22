@@ -1,5 +1,6 @@
 import { getBookings } from '../../actions'
 import Link from 'next/link'
+import ReminderButtons from '../../ReminderButtons'
 
 function formatDate(s: string) {
   return new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', {
@@ -40,6 +41,17 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
           {client.email && <> · <a href={`mailto:${client.email}`} style={{ color: 'var(--green-mid)', textDecoration: 'none' }}>{client.email}</a></>}
         </div>
         <div className="admin-client-addr">{client.address} · {client.sq_ft?.toLocaleString()} sq ft · {client.frequency}</div>
+        {nextVisit?.confirmed_date && (
+          <ReminderButtons
+            bookingId={nextVisit.id}
+            name={nextVisit.name}
+            phone={nextVisit.phone}
+            email={nextVisit.email}
+            confirmedDate={nextVisit.confirmed_date}
+            confirmedTime={nextVisit.confirmed_time}
+            lastReminderSentAt={nextVisit.last_reminder_sent_at}
+          />
+        )}
       </div>
 
       <div className="admin-stats">

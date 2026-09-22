@@ -18,11 +18,12 @@ function h(s: string | null | undefined) {
 const PHONE_RE = /^[\d\s()+-]{7,}$/
 
 export interface LeadData extends Attribution {
-  phone:       string
-  address:     string
-  sq_ft:       number | null
-  consent:     boolean
-  consentText: string
+  phone:          string
+  address:        string
+  sq_ft:          number | null
+  consent:        boolean
+  consentText:    string
+  map_screenshot?: string
 }
 
 export async function submitLead(data: LeadData): Promise<{ success: boolean; error?: string }> {
@@ -34,11 +35,34 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
     return { success: false, error: 'Please check the box to consent to being contacted.' }
   }
 
+  // Upload the traced-lawn map screenshot to Supabase Storage (service-role
+  // client, since the public/anon client can't write to storage)
+  let screenshotUrl: string | null = null
+  if (data.map_screenshot) {
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!
+    )
+    const base64 = data.map_screenshot.split(',')[1]
+    if (base64) {
+      const buffer = Buffer.from(base64, 'base64')
+      const filename = `lead-${Date.now()}-${crypto.randomUUID().replace(/-/g, '')}.jpg`
+      const { data: uploaded } = await adminClient.storage
+        .from('booking-maps')
+        .upload(filename, buffer, { contentType: 'image/jpeg' })
+      if (uploaded) {
+        const { data: urlData } = adminClient.storage.from('booking-maps').getPublicUrl(filename)
+        screenshotUrl = urlData.publicUrl
+      }
+    }
+  }
+
   const supabase = getSupabase()
   const { error } = await supabase.from('leads').insert({
     phone,
     address: data.address || null,
     sq_ft: data.sq_ft,
+    map_screenshot_url: screenshotUrl,
     gclid: data.gclid || null,
     utm_source: data.utm_source || null,
     utm_medium: data.utm_medium || null,
@@ -74,6 +98,11 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
               ${data.sq_ft ? `<tr><td style="padding:6px 0;color:#4a5e54;font-size:13px">Lawn size</td><td style="padding:6px 0;font-size:14px;font-weight:500">${data.sq_ft.toLocaleString()} sq ft</td></tr>` : ''}
               ${source ? `<tr><td style="padding:6px 0;color:#4a5e54;font-size:13px">Source</td><td style="padding:6px 0;font-size:14px;font-weight:500">${h(source)}</td></tr>` : ''}
             </table>
+            ${screenshotUrl ? `
+            <div style="margin-bottom:12px">
+              <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Traced lawn</p>
+              <img src="${screenshotUrl}" alt="Traced lawn" style="width:100%;border-radius:10px;border:1px solid #e0ede6;display:block"/>
+            </div>` : ''}
             <p style="margin:0;color:#8a978f;font-size:12px">They unlocked a price but haven't booked yet — this is a soft lead, not a confirmed booking.</p>
           </div>
         </div>

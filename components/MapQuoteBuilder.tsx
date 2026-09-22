@@ -29,6 +29,8 @@ const FREQ: Record<Frequency, { label: string; sub: string; discount: number }> 
   weekly:   { label: 'Weekly',    sub: '4× / month',  discount: 15 },
 }
 
+const FIRST_VISIT_DISCOUNT_PCT = 30
+
 const SECT_COLORS = ['#52b788', '#74c9a0', '#2d9e6b', '#38a878', '#95dbb8']
 
 const MOWER_CURSOR = 'crosshair'
@@ -589,15 +591,32 @@ export default function MapQuoteBuilder() {
   }, [stopDraw])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
+  const captureMapScreenshot = useCallback((): Promise<string> => {
+    return new Promise(resolve => {
+      const map = mapRef.current
+      if (!map) { resolve(''); return }
+      map.triggerRepaint()
+      map.once('render', () => {
+        const src = map.getCanvas()
+        const offscreen = document.createElement('canvas')
+        offscreen.width = src.width
+        offscreen.height = src.height
+        offscreen.getContext('2d')?.drawImage(src, 0, 0)
+        resolve(offscreen.toDataURL('image/jpeg', 0.8))
+      })
+    })
+  }, [])
+
   const handleLeadSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (!leadConsent) { setLeadError('Please check the box to consent to being contacted.'); return }
     setLeadStatus('submitting'); setLeadError('')
-    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, ...getAttribution() })
+    const screenshot = await captureMapScreenshot()
+    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined, ...getAttribution() })
       .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setLeadUnlocked(true); setLeadStatus('idle'); trackQuoteShown() }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
-  }, [leadPhone, leadConsent, address, lawnSqFt])
+  }, [leadPhone, leadConsent, address, lawnSqFt, captureMapScreenshot])
 
   /* ─── Booking modal ─────────────────────────────────── */
   useEffect(() => {
@@ -616,7 +635,8 @@ export default function MapQuoteBuilder() {
   const basePrice      = lawnSqFt ? calcPrice(lawnSqFt) : 0
   const discount       = FREQ[freq].discount
   const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) + distanceFee : 0
-  const firstVisitPrice = ongoingPrice + overgrowthFee
+  const firstVisitFullPrice = ongoingPrice + overgrowthFee
+  const firstVisitPrice = Math.round(firstVisitFullPrice * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
   const isDone         = step === 'done' || step === 'editing'
 
   useEffect(() => {
@@ -924,9 +944,7 @@ export default function MapQuoteBuilder() {
                         <div className="mapq-price-total">
                           <div>
                             <div className="mapq-price-val">${ongoingPrice}</div>
-                            <div className="mapq-price-per">
-                              per visit · fixed{overgrowthFee > 0 ? ` · first visit $${firstVisitPrice}` : ''}
-                            </div>
+                            <div className="mapq-price-per">per visit · fixed</div>
                           </div>
                           <div className="mapq-eco-badge">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -935,6 +953,14 @@ export default function MapQuoteBuilder() {
                             </svg>
                             Zero emissions
                           </div>
+                        </div>
+
+                        <div className="mapq-first-visit-promo">
+                          <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
+                          <span className="mapq-first-visit-promo-text">
+                            First visit <strong>${firstVisitPrice}</strong>
+                            <span className="mapq-first-visit-promo-was">${firstVisitFullPrice}</span>
+                          </span>
                         </div>
 
                         <div className="mapq-includes-row">
@@ -1073,9 +1099,8 @@ export default function MapQuoteBuilder() {
                     <span>{FREQ[freq].label}</span>
                     <span className="booking-dot">·</span>
                     <span>${ongoingPrice}/visit</span>
-                    {overgrowthFee > 0 && (
-                      <><span className="booking-dot">·</span><span>First visit ${firstVisitPrice}</span></>
-                    )}
+                    <span className="booking-dot">·</span>
+                    <span>First visit ${firstVisitPrice} ({FIRST_VISIT_DISCOUNT_PCT}% off)</span>
                   </div>
                 </div>
 

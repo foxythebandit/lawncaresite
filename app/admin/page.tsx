@@ -4,6 +4,32 @@ import AdminSearch from './AdminSearch'
 import AdminMap from './AdminMap'
 import CalendarView from './CalendarView'
 
+function normalizePhone(p: string) {
+  return (p ?? '').replace(/\D/g, '').slice(-10)
+}
+
+// A recurring client cycles the *same* relationship through
+// pending -> confirmed -> completed -> confirmed (next visit) -> ...
+// each transition can leave behind an old row (markComplete inserts a
+// fresh one for the next cycle), so the same person can show up as
+// several cards. Collapse to one card per phone number, preferring
+// whichever row represents their current active status.
+const STATUS_RANK: Record<string, number> = { confirmed: 0, pending: 1, completed: 2, declined: 3 }
+function dedupeByPhone<T extends { phone: string; status: string; created_at: string }>(rows: T[]): T[] {
+  const byPhone = new Map<string, T>()
+  for (const b of rows) {
+    const key = normalizePhone(b.phone) || b.created_at
+    const existing = byPhone.get(key)
+    if (!existing) { byPhone.set(key, b); continue }
+    const rNew = STATUS_RANK[b.status] ?? 9
+    const rOld = STATUS_RANK[existing.status] ?? 9
+    if (rNew < rOld || (rNew === rOld && b.created_at > existing.created_at)) {
+      byPhone.set(key, b)
+    }
+  }
+  return rows.filter(b => byPhone.get(normalizePhone(b.phone) || b.created_at) === b)
+}
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -47,6 +73,13 @@ export default async function AdminPage({
   const confirmedBookings = all.filter(b => b.status === 'confirmed')
   const totalFirstVisit   = confirmedBookings.reduce((s, b) => s + (b.first_visit_price ?? 0), 0)
   const monthlyRecurring  = confirmedBookings.reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
+
+  const visitCounts = new Map<string, number>()
+  for (const b of all) {
+    const key = normalizePhone(b.phone)
+    visitCounts.set(key, (visitCounts.get(key) ?? 0) + 1)
+  }
+  const deduped = dedupeByPhone(filtered)
 
   return (
     <>
@@ -117,12 +150,14 @@ export default async function AdminPage({
       ) : (
         <div className="admin-body" style={{ padding: '12px 16px 90px' }}>
           <div className="admin-list">
-            {filtered.length === 0 ? (
+            {deduped.length === 0 ? (
               <div className="admin-empty">
                 {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
               </div>
             ) : (
-              filtered.map(b => <BookingCard key={b.id} booking={b as any} />)
+              deduped.map(b => (
+                <BookingCard key={b.id} booking={b as any} historyCount={visitCounts.get(normalizePhone(b.phone)) ?? 1} />
+              ))
             )}
           </div>
 

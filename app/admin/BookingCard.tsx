@@ -3,6 +3,7 @@
 import { useTransition, useState, useRef } from 'react'
 import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime, updateServiceDetails } from './actions'
 import { formatAttributionLabel } from '@/lib/attribution'
+import ReminderButtons from './ReminderButtons'
 
 interface Booking {
   id: string
@@ -38,6 +39,7 @@ interface Booking {
   utm_content: string | null
   notify_failed: boolean
   one_time: boolean
+  last_reminder_sent_at: string | null
 }
 
 function timeAgo(dateStr: string) {
@@ -76,7 +78,7 @@ const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   completed: { label: 'Completed', className: 'admin-badge-completed' },
 }
 
-export default function BookingCard({ booking }: { booking: Booking }) {
+export default function BookingCard({ booking, historyCount = 1 }: { booking: Booking; historyCount?: number }) {
   const [pending, startTransition] = useTransition()
   const [expanded, setExpanded]   = useState(false)
   const [confirmingDate, setConfirmingDate] = useState(false)
@@ -312,7 +314,9 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             <div className="admin-card-row">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               <span>{timeAgo(booking.created_at)}</span>
-              <a href={`/admin/client/${encodeURIComponent(booking.phone)}`} className="admin-card-history-link">View history →</a>
+              <a href={`/admin/client/${encodeURIComponent(booking.phone)}`} className="admin-card-history-link">
+                {historyCount > 1 ? `View history (${historyCount} visits) →` : 'View history →'}
+              </a>
             </div>
 
             {/* Customer's own note from booking */}
@@ -440,6 +444,15 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   >
                     Reschedule this visit
                   </button>
+                  <ReminderButtons
+                    bookingId={booking.id}
+                    name={booking.name}
+                    phone={booking.phone}
+                    email={booking.email}
+                    confirmedDate={booking.confirmed_date}
+                    confirmedTime={booking.confirmed_time}
+                    lastReminderSentAt={booking.last_reminder_sent_at}
+                  />
                 </>
               )}
               <button
