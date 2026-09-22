@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime } from './actions'
+import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime, updateServiceDetails } from './actions'
 import { formatAttributionLabel } from '@/lib/attribution'
 
 interface Booking {
@@ -86,6 +86,12 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const [notesSaved, setNotesSaved] = useState(false)
   const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [editingService, setEditingService] = useState(false)
+  const [editFreq,  setEditFreq]  = useState(booking.frequency ?? 'Monthly')
+  const [editPrice, setEditPrice] = useState(booking.price_per_visit ?? 0)
+
+  const isReschedule = booking.status === 'confirmed'
+
   const today = new Date().toISOString().split('T')[0]
   const [paymentLink, setPaymentLink] = useState<string | null>(null)
   const [paymentLinkError, setPaymentLinkError] = useState('')
@@ -106,6 +112,17 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   function doConfirm() {
     setConfirmingDate(false)
     startTransition(() => updateStatus(booking.id, 'confirmed', pickedDate || undefined, pickedTime || undefined))
+  }
+
+  function openReschedule() {
+    setPickedDate(booking.confirmed_date ?? booking.preferred_date ?? '')
+    setPickedTime(booking.confirmed_time ?? '')
+    setConfirmingDate(true)
+  }
+
+  function saveServiceDetails() {
+    setEditingService(false)
+    startTransition(() => updateServiceDetails(booking.id, { frequency: editFreq, price_per_visit: editPrice }))
   }
 
   function doMarkComplete() {
@@ -185,8 +202,53 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             )}
             <div className="admin-card-row">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span>{booking.sq_ft?.toLocaleString()} sq ft · {booking.frequency}</span>
+              <span>{booking.sq_ft?.toLocaleString()} sq ft · {booking.frequency} · ${booking.price_per_visit}/visit</span>
+              {!editingService && (
+                <button
+                  type="button"
+                  className="admin-edit-service-link"
+                  onClick={() => { setEditFreq(booking.frequency ?? 'Monthly'); setEditPrice(booking.price_per_visit ?? 0); setEditingService(true) }}
+                >
+                  Change
+                </button>
+              )}
             </div>
+            {editingService && (
+              <div className="admin-edit-service-panel">
+                <div className="admin-complete-field">
+                  <label>Service type</label>
+                  <select
+                    value={editFreq}
+                    onChange={e => setEditFreq(e.target.value)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  >
+                    <option>One-time</option>
+                    <option>Monthly</option>
+                    <option>Bi-weekly</option>
+                    <option>Weekly</option>
+                  </select>
+                </div>
+                <div className="admin-complete-field">
+                  <label>Price per visit ($)</label>
+                  <input
+                    type="number"
+                    value={editPrice}
+                    onChange={e => setEditPrice(parseFloat(e.target.value) || 0)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div className="admin-confirm-date-btns">
+                  <button className="admin-confirm-date-send" onClick={saveServiceDetails} disabled={pending}>
+                    Save
+                  </button>
+                  <button className="admin-confirm-date-cancel" onClick={() => setEditingService(false)} disabled={pending}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <label className="admin-onetime-toggle">
               <input
                 type="checkbox"
@@ -326,7 +388,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </>
           )}
 
-          {booking.status === 'pending' && confirmingDate && (
+          {(booking.status === 'pending' || booking.status === 'confirmed') && confirmingDate && (
             <div className="admin-confirm-date-panel">
               <label className="admin-confirm-date-label">Date</label>
               <input
@@ -350,7 +412,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
               </div>
               <div className="admin-confirm-date-btns">
                 <button className="admin-confirm-date-send" onClick={doConfirm} disabled={pending}>
-                  ✓ Confirm &amp; send email
+                  {isReschedule ? '✓ Save new date & notify' : '✓ Confirm & send email'}
                 </button>
                 <button className="admin-confirm-date-cancel" onClick={() => setConfirmingDate(false)} disabled={pending}>
                   Cancel
@@ -359,16 +421,26 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </div>
           )}
 
-          {(booking.status === 'confirmed' || booking.status === 'completed') && !completing && (
+          {(booking.status === 'confirmed' || booking.status === 'completed') && !completing && !confirmingDate && (
             <div className="admin-card-status-btns" style={{ flexDirection: 'column', gap: 8 }}>
               {booking.status === 'confirmed' && (
-                <button
-                  className="admin-status-complete"
-                  onClick={() => setCompleting(true)}
-                  disabled={pending}
-                >
-                  ✓ Mark complete
-                </button>
+                <>
+                  <button
+                    className="admin-status-complete"
+                    onClick={() => setCompleting(true)}
+                    disabled={pending}
+                  >
+                    ✓ Mark complete
+                  </button>
+                  <button
+                    className="admin-status-already-done"
+                    onClick={openReschedule}
+                    disabled={pending}
+                    style={{ borderTop: 'none' }}
+                  >
+                    Reschedule this visit
+                  </button>
+                </>
               )}
               <button
                 className="admin-action-stripe"

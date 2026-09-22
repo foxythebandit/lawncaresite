@@ -1731,6 +1731,18 @@ footer {
 .admin-card-row-warning svg { color: #b07800; }
 .admin-card-link { color: var(--green-mid); text-decoration: none; }
 
+.admin-edit-service-link {
+  background: none; border: none; padding: 0; margin-left: 4px;
+  font-size: 12px; font-weight: 500; color: var(--green-mid);
+  text-decoration: underline; cursor: pointer; flex-shrink: 0;
+}
+.admin-edit-service-link:hover { color: var(--green-deep); }
+.admin-edit-service-panel {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--green-pale); border-radius: 10px;
+  padding: 12px 14px; margin: 2px 0;
+}
+
 .admin-card-screenshot { display: block; border-top: 1px solid var(--rule); position: relative; text-decoration: none; }
 .admin-card-screenshot img { width: 100%; display: block; max-height: 200px; object-fit: cover; }
 .admin-screenshot-hint { position: absolute; bottom: 8px; right: 10px; font-size: 11px; color: #fff; background: rgba(0,0,0,.45); padding: 2px 8px; border-radius: 100px; }
@@ -2080,6 +2092,17 @@ footer {
   margin-top: 6px; font-size: 12px; color: #b07800; background: #fff8e6;
   border-radius: 6px; padding: 5px 8px;
 }
+.admin-reminder-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 8px;
+}
+.admin-reminder-row .admin-route-call-btn,
+.admin-reminder-row .admin-route-sms-btn {
+  padding: 5px 12px; font-size: 12px;
+}
+.admin-reminder-status { font-size: 11px; color: var(--ink-soft); }
+.admin-reminder-ok  { color: var(--green-mid); font-weight: 500; }
+.admin-reminder-err { color: #c0392b; }
 .admin-route-actions {
   display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
 }
@@ -2087,7 +2110,9 @@ footer {
   display: block; text-align: center; text-decoration: none;
   padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500;
   font-family: var(--font-body); white-space: nowrap;
+  border: none; cursor: pointer;
 }
+.admin-route-call-btn:disabled { opacity: .5; cursor: default; }
 .admin-route-nav-btn  { background: var(--green-deep); color: #fff; }
 .admin-route-call-btn { background: #e8f8ee; color: #1a6b38; }
 .admin-route-sms-btn  { background: var(--off-white); color: var(--ink-soft); border: 1px solid var(--rule); }

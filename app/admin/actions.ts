@@ -88,6 +88,71 @@ export async function setOneTime(id: string, oneTime: boolean) {
   revalidatePath('/admin/revenue')
 }
 
+export async function updateServiceDetails(id: string, data: { frequency: string; price_per_visit: number }) {
+  if (!UUID_RE.test(id)) return
+  const frequency = data.frequency.trim()
+  if (!frequency || !Number.isFinite(data.price_per_visit) || data.price_per_visit < 0) return
+  await getAdmin().from('bookings').update({
+    frequency,
+    price_per_visit: Math.round(data.price_per_visit),
+  }).eq('id', id)
+  revalidatePath('/admin')
+  revalidatePath('/admin/revenue')
+  revalidatePath('/admin/week')
+  revalidatePath('/admin/route')
+}
+
+export async function sendReminderEmail(id: string): Promise<{ success: boolean; error?: string }> {
+  if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
+  const db = getAdmin()
+  const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
+  if (!booking) return { success: false, error: 'Booking not found.' }
+  if (!booking.email) return { success: false, error: 'No email on file for this client.' }
+  if (!booking.confirmed_date) return { success: false, error: 'No confirmed date to remind about.' }
+  if (!process.env.RESEND_API_KEY) return { success: false, error: 'Email not configured.' }
+
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  const firstName = booking.name.split(' ')[0]
+  const scheduledDate = new Date(booking.confirmed_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const scheduledTime = booking.confirmed_time
+
+  const { error } = await resend.emails.send({
+    from: 'QuietGreen <hello@quietgreen.co>',
+    to: booking.email,
+    subject: `Reminder: your QuietGreen visit is ${scheduledDate}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
+        <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0">
+          <p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Upcoming Visit</p>
+          <h1 style="color:#fff;font-size:22px;margin:0">See you soon, ${h(firstName)}.</h1>
+        </div>
+        <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
+          <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px">
+            Just a heads up — your QuietGreen visit is coming up.
+          </p>
+          <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px;margin-bottom:20px">
+            <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Scheduled for</p>
+            <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}${scheduledTime ? ` · ${h(formatTimeLabel(scheduledTime))}` : ''}</p>
+          </div>
+          <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#4a5e54">
+            <p style="margin:0">${h(booking.address)}</p>
+          </div>
+          <p style="font-size:13px;color:#4a5e54;margin:0">Questions or need to reschedule? Just reply to this email.</p>
+        </div>
+      </div>
+    `,
+  })
+
+  if (error) return { success: false, error: 'Failed to send reminder email.' }
+
+  await db.from('bookings').update({ last_reminder_sent_at: new Date().toISOString() }).eq('id', id)
+  revalidatePath('/admin')
+  revalidatePath('/admin/week')
+  revalidatePath('/admin/route')
+
+  return { success: true }
+}
+
 export async function updateStatus(id: string, status: string, confirmedDate?: string, confirmedTime?: string) {
   if (!UUID_RE.test(id) || !ALLOWED_STATUSES.has(status)) return
   const db = getAdmin()
