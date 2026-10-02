@@ -58,8 +58,8 @@ const LEAD_CONSENT_TEXT =
 function uid() { return Math.random().toString(36).slice(2, 8) }
 
 function calcPrice(sqFt: number): number {
-  if (sqFt <= 2000)  return 60
-  if (sqFt <= 5000)  return 60  + Math.round((sqFt - 2000)  * 0.018)
+  if (sqFt <= 2500)  return 65
+  if (sqFt <= 5000)  return 65  + Math.round((sqFt - 2500)  * 0.018)
   if (sqFt <= 12000) return 100 + Math.round((sqFt - 5000)  * 0.013)
   return                      191 + Math.round((sqFt - 12000) * 0.009)
 }
