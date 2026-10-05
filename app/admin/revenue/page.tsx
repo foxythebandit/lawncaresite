@@ -1,4 +1,6 @@
 import { getBookings } from '../actions'
+import CompletedJobRow from './CompletedJobRow'
+import RecurringClientRow from './RecurringClientRow'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +56,8 @@ export default async function RevenuePage() {
   }
   const recurringClients = [...recurringByPhone.values()]
     .map(b => ({
+      id: b.id as string,
+      phone: b.phone as string,
       name: b.name,
       frequency: b.frequency as string,
       annual: (b.price_per_visit ?? 0) * visitsPerYear(b.frequency),
@@ -152,13 +156,14 @@ export default async function RevenuePage() {
               </div>
               <div className="admin-expected-bars">
                 {recurringClients.map(c => (
-                  <div className="admin-expected-bar-row" key={c.name + c.frequency}>
-                    <span className="admin-expected-bar-name">{c.name}</span>
-                    <div className="admin-expected-bar-track">
-                      <div className="admin-expected-bar-fill" style={{ width: `${(c.annual / maxAnnual) * 100}%` }} />
-                    </div>
-                    <span className="admin-expected-bar-val">${c.annual.toLocaleString()}/yr</span>
-                  </div>
+                  <RecurringClientRow
+                    key={c.id}
+                    id={c.id}
+                    phone={c.phone}
+                    name={c.name}
+                    annual={c.annual}
+                    widthPct={(c.annual / maxAnnual) * 100}
+                  />
                 ))}
               </div>
             </>
@@ -180,13 +185,7 @@ export default async function RevenuePage() {
               </thead>
               <tbody>
                 {completed.map(b => (
-                  <tr key={b.id}>
-                    <td>{formatDate(b.completed_at!)}</td>
-                    <td style={{ fontWeight: 500 }}>{b.name}</td>
-                    <td style={{ color: 'var(--ink-soft)' }}>{b.address}</td>
-                    <td>{b.payment_method ?? '—'}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${(b.amount_charged ?? 0).toFixed(2)}</td>
-                  </tr>
+                  <CompletedJobRow key={b.id} job={b} />
                 ))}
               </tbody>
             </table>

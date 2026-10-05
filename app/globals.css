@@ -2156,6 +2156,34 @@ footer {
   padding: 10px 8px; border-bottom: 1px solid var(--rule); color: var(--ink);
 }
 .admin-revenue-table tr:last-child td { border-bottom: none; }
+.admin-revenue-table td:last-child { text-align: right; }
+
+.admin-revenue-row-edit, .admin-revenue-row-delete {
+  flex-shrink: 0; background: none; border: none; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-soft); transition: background .15s, color .15s;
+}
+.admin-revenue-row-edit:hover { background: var(--green-pale); color: var(--green-deep); }
+.admin-revenue-row-delete { font-size: 16px; line-height: 1; }
+.admin-revenue-row-delete:hover { background: #fdf0f0; color: #b03030; }
+.admin-revenue-row-edit:disabled, .admin-revenue-row-delete:disabled { opacity: .5; cursor: default; }
+
+.admin-revenue-edit-select, .admin-revenue-edit-input {
+  font-size: 13px; font-family: var(--font-body); color: var(--ink);
+  border: 1.5px solid var(--green-light); border-radius: 6px;
+  padding: 4px 6px; background: #fff;
+}
+.admin-revenue-edit-input { width: 80px; text-align: right; }
+.admin-revenue-row-save {
+  background: var(--green-deep); color: #fff; border: none; border-radius: 6px;
+  padding: 5px 10px; font-size: 12px; font-weight: 500; font-family: var(--font-body);
+  cursor: pointer; white-space: nowrap;
+}
+.admin-revenue-row-cancel {
+  background: none; border: none; color: var(--ink-soft); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 4px;
+}
 
 .admin-expected-total {
   font-family: var(--font-display); font-size: 28px; color: var(--green-deep);
@@ -2167,7 +2195,7 @@ footer {
 }
 .admin-expected-bars { display: flex; flex-direction: column; gap: 10px; }
 .admin-expected-bar-row {
-  display: grid; grid-template-columns: 140px 1fr 80px;
+  display: grid; grid-template-columns: 140px 1fr 80px 20px;
   align-items: center; gap: 10px;
 }
 .admin-expected-bar-name {

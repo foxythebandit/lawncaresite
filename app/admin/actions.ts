@@ -79,6 +79,20 @@ export async function deleteBooking(id: string) {
   if (!UUID_RE.test(id)) return
   await getAdmin().from('bookings').delete().eq('id', id)
   revalidatePath('/admin')
+  revalidatePath('/admin/revenue')
+  revalidatePath('/admin/week')
+  revalidatePath('/admin/route')
+}
+
+export async function updateCompletedJob(id: string, data: { amount_charged: number; payment_method: string }) {
+  if (!UUID_RE.test(id)) return
+  if (!Number.isFinite(data.amount_charged) || data.amount_charged < 0) return
+  await getAdmin().from('bookings').update({
+    amount_charged: data.amount_charged,
+    payment_method: data.payment_method.trim() || null,
+  }).eq('id', id)
+  revalidatePath('/admin')
+  revalidatePath('/admin/revenue')
 }
 
 export async function setOneTime(id: string, oneTime: boolean) {
