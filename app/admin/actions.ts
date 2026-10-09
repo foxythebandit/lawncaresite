@@ -9,6 +9,7 @@ import Stripe from 'stripe'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'declined', 'completed'])
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function h(s: string | null | undefined) {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -114,6 +115,27 @@ export async function updateServiceDetails(id: string, data: { frequency: string
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
   revalidatePath('/admin/route')
+}
+
+// Lets a booking's point-of-contact be swapped out (e.g. a renter at the
+// same address/contract hands off to a new tenant) without touching the
+// address, price, or frequency. Changing the phone deliberately splits the
+// booking off from the old tenant's history — the old tenant's past visits
+// stay under their number, future ones follow the new contact.
+export async function updateContactDetails(id: string, data: { name: string; phone: string; email: string }) {
+  if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
+  const name  = data.name.trim()
+  const phone = data.phone.trim()
+  const email = data.email.trim()
+  if (!name) return { success: false, error: 'Name is required.' }
+  if (!phone) return { success: false, error: 'Phone is required.' }
+  if (email && !EMAIL_RE.test(email)) return { success: false, error: 'Enter a valid email address.' }
+  await getAdmin().from('bookings').update({ name, phone, email: email || null }).eq('id', id)
+  revalidatePath('/admin')
+  revalidatePath('/admin/revenue')
+  revalidatePath('/admin/week')
+  revalidatePath('/admin/route')
+  return { success: true }
 }
 
 export async function sendReminderEmail(id: string): Promise<{ success: boolean; error?: string }> {
@@ -255,7 +277,7 @@ export async function updateStatus(id: string, status: string, confirmedDate?: s
 
 export async function markComplete(
   id: string,
-  data: { completed_at: string; amount_charged: number; payment_method: string; one_time?: boolean }
+  data: { completed_at: string; amount_charged: number; payment_method: string; one_time?: boolean; next_visit_date?: string }
 ) {
   if (!UUID_RE.test(id)) return
   const db = getAdmin()
@@ -279,12 +301,17 @@ export async function markComplete(
     return
   }
 
-  const base = new Date(data.completed_at)
-  const freq = (booking.frequency ?? '').toLowerCase()
-  const days = freq.includes('bi') ? 14 : freq.includes('month') ? 30 : 7
-  const nextDate = new Date(base)
-  nextDate.setDate(nextDate.getDate() + days)
-  const nextVisitDate = nextDate.toISOString().split('T')[0]
+  // next_visit_date lets the admin override the auto-scheduled date — e.g.
+  // the customer asked for a different day than the usual cadence.
+  let nextVisitDate = data.next_visit_date
+  if (!nextVisitDate) {
+    const base = new Date(data.completed_at)
+    const freq = (booking.frequency ?? '').toLowerCase()
+    const days = freq.includes('bi') ? 14 : freq.includes('month') ? 30 : 7
+    const nextDate = new Date(base)
+    nextDate.setDate(nextDate.getDate() + days)
+    nextVisitDate = nextDate.toISOString().split('T')[0]
+  }
 
   await db.from('bookings').update({
     status: 'completed',

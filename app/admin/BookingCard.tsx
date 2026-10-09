@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime, updateServiceDetails } from './actions'
+import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime, updateServiceDetails, updateContactDetails } from './actions'
 import { formatAttributionLabel } from '@/lib/attribution'
 import ReminderButtons from './ReminderButtons'
 
@@ -110,6 +110,12 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
   const [editFreq,  setEditFreq]  = useState(booking.frequency ?? 'Monthly')
   const [editPrice, setEditPrice] = useState(booking.price_per_visit ?? 0)
 
+  const [editingContact, setEditingContact] = useState(false)
+  const [editName,  setEditName]  = useState(booking.name)
+  const [editPhone, setEditPhone] = useState(booking.phone)
+  const [editEmail, setEditEmail] = useState(booking.email ?? '')
+  const [contactError, setContactError] = useState('')
+
   const isReschedule = booking.status === 'confirmed'
 
   const today = new Date().toISOString().split('T')[0]
@@ -123,8 +129,10 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
   const [completeAmount, setCompleteAmount] = useState(booking.price_per_visit ?? 0)
   const [completePayment, setCompletePayment] = useState('Stripe')
   const [completeOneTime, setCompleteOneTime] = useState(booking.one_time)
+  const [completeNextDate, setCompleteNextDate] = useState('')
 
-  const previewNextDate = calcNextDate(completeDate || today, booking.frequency)
+  const autoNextDate = calcNextDate(completeDate || today, booking.frequency)
+  const previewNextDate = completeNextDate || autoNextDate
 
   const status = STATUS_STYLES[booking.status] ?? STATUS_STYLES.pending
   const source = formatAttributionLabel(booking)
@@ -145,6 +153,15 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
     startTransition(() => updateServiceDetails(booking.id, { frequency: editFreq, price_per_visit: editPrice }))
   }
 
+  function saveContactDetails() {
+    setContactError('')
+    startTransition(async () => {
+      const result = await updateContactDetails(booking.id, { name: editName, phone: editPhone, email: editEmail })
+      if (result.success) setEditingContact(false)
+      else setContactError(result.error ?? 'Something went wrong.')
+    })
+  }
+
   function doMarkComplete() {
     setCompleting(false)
     startTransition(() => markComplete(booking.id, {
@@ -152,6 +169,7 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
       amount_charged: completeAmount,
       payment_method: completePayment,
       one_time: completeOneTime,
+      next_visit_date: completeOneTime ? undefined : previewNextDate,
     }))
   }
 
@@ -331,11 +349,66 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
             <div className="admin-card-row">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.54 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <a href={`tel:${booking.phone}`} className="admin-card-link">{booking.phone}</a>
+              {!editingContact && (
+                <button
+                  type="button"
+                  className="admin-edit-service-link"
+                  onClick={() => { setEditName(booking.name); setEditPhone(booking.phone); setEditEmail(booking.email ?? ''); setContactError(''); setEditingContact(true) }}
+                >
+                  Change
+                </button>
+              )}
             </div>
-            {booking.email && (
+            {booking.email && !editingContact && (
               <div className="admin-card-row">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 <a href={`mailto:${booking.email}`} className="admin-card-link">{booking.email}</a>
+              </div>
+            )}
+            {editingContact && (
+              <div className="admin-edit-service-panel">
+                <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
+                  Swapping the renter/contact here keeps the address, price and frequency as-is — it only changes who the booking belongs to. Past visits stay on the old number; future ones follow this contact.
+                </p>
+                <div className="admin-complete-field">
+                  <label>Name</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div className="admin-complete-field">
+                  <label>Phone</label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={e => setEditPhone(e.target.value)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div className="admin-complete-field">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={e => setEditEmail(e.target.value)}
+                    className="admin-confirm-date-input"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                {contactError && <p className="booking-error" role="alert" style={{ margin: '0 0 8px' }}>{contactError}</p>}
+                <div className="admin-confirm-date-btns">
+                  <button className="admin-confirm-date-send" onClick={saveContactDetails} disabled={pending}>
+                    Save
+                  </button>
+                  <button className="admin-confirm-date-cancel" onClick={() => { setEditingContact(false); setContactError('') }} disabled={pending}>
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
             <div className="admin-card-row">
@@ -587,8 +660,22 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
                   No follow-up will be scheduled and no reminder email will go out.
                 </div>
               ) : (
-                <div className="admin-complete-next-hint">
-                  Next visit auto-scheduled: <strong>{formatDate(previewNextDate)}{booking.confirmed_time ? ` · ${formatTime(booking.confirmed_time)}` : ''}</strong>
+                <div className="admin-complete-field" style={{ padding: '2px 0 10px' }}>
+                  <label>
+                    Next visit {completeNextDate ? '(customer requested)' : '(auto-scheduled)'}
+                    {booking.confirmed_time && <> · {formatTime(booking.confirmed_time)}</>}
+                  </label>
+                  <input
+                    type="date"
+                    value={previewNextDate}
+                    onChange={e => setCompleteNextDate(e.target.value)}
+                    className="admin-confirm-date-input"
+                  />
+                  {completeNextDate && (
+                    <button type="button" className="admin-edit-service-link" style={{ marginTop: 4 }} onClick={() => setCompleteNextDate('')}>
+                      Reset to auto ({formatDate(autoNextDate)})
+                    </button>
+                  )}
                 </div>
               )}
               <div className="admin-confirm-date-btns">
