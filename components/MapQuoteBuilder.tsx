@@ -8,7 +8,7 @@ import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 import { submitLead }   from '@/app/actions/submit-lead'
 import { getAttribution } from '@/lib/attribution'
-import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown } from '@/lib/gtag'
+import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAddonInterest, trackBookingRequested } from '@/lib/gtag'
 import ManualQuoteForm from './ManualQuoteForm'
 
 /* ── Types ────────────────────────────────────────────── */
@@ -87,6 +87,59 @@ function getSeasonInfo(month: number) {
   return   { name: 'Dormant season',  multiplier: 0.1, note: 'Minimal growth — no cleanup fees apply',  color: 'rgba(255,255,255,.35)' }
 }
 
+function calcFertPrice(sqFt: number): number {
+  return sqFt <= 2500 ? 70 : Math.round(70 + (sqFt - 2500) * 0.015)
+}
+
+const MULCH_RATE_PER_CU_YD   = 100
+const MULCH_MINIMUM          = 150
+const MULCH_DEFAULT_DEPTH_IN = 3
+
+function calcMulchCuYd(sqFt: number, depthIn: number): number {
+  return sqFt * depthIn / 324
+}
+
+function calcMulchPrice(sqFt: number, depthIn: number): number {
+  return Math.max(MULCH_MINIMUM, Math.round(calcMulchCuYd(sqFt, depthIn) * MULCH_RATE_PER_CU_YD))
+}
+
+const FERT_DISCLAIMER =
+  "Base price covers a standard fertilizer treatment. Final price may be higher depending on your lawn's needs, such as weed control, organic products, soil amendments, or treating disease and pests. We'll confirm before any extra work."
+
+type AddonKey = 'fertilization' | 'mulch' | 'maintenance' | 'yardClearout'
+type DrawableAddonKey = Exclude<AddonKey, 'maintenance'>
+
+const ADDON_META: Record<AddonKey, { label: string; blurb: string; priceHint: string; color: string }> = {
+  fertilization: { label: 'Fertilization',  blurb: "A feeding and weed-control schedule matched to Central Texas grasses like St. Augustine, Bermuda and Zoysia.", priceHint: 'Starting around $70/treatment.',                                        color: '#ffd166' },
+  mulch:         { label: 'Mulch',          blurb: 'Fresh mulch for your beds, with edging and cleanup.',                                                         priceHint: 'Starting around $150 installed (3" depth).',                           color: '#c08552' },
+  maintenance:   { label: 'Maintenance',    blurb: 'Garden bed care, seasonal cleanups, leaf removal and weed pulling — so beds and lawn stay sharp between mows.', priceHint: 'Billed hourly, starting around $55/hr.',                                color: '#95dbb8' },
+  yardClearout:  { label: 'Yard Clearout',  blurb: "Clearing overgrown beds, bushes, vines, cactus and brush — we'll bring a jungle back under control.",          priceHint: 'Starting around $75 — e.g. ~$125 for a 200 sq ft heavy clearout.',      color: '#e07a5f' },
+}
+
+/* Yard clearout: $/sq ft by overgrowth level. "Heavy" is anchored to a real
+   job ($125 for ~200 sq ft of heavy bed overgrowth); light/moderate are
+   drafted proportionally and worth revisiting once a few more jobs land. */
+type ClearoutSeverity = 'light' | 'moderate' | 'heavy'
+const CLEAROUT_RATES: Record<ClearoutSeverity, number> = { light: 0.30, moderate: 0.45, heavy: 0.625 }
+const CLEAROUT_MINIMUM = 75
+const CLEAROUT_LEVELS: { key: ClearoutSeverity; label: string; sub: string }[] = [
+  { key: 'light',    label: 'Light',    sub: 'A little overgrown' },
+  { key: 'moderate', label: 'Moderate', sub: 'Needs real work' },
+  { key: 'heavy',    label: 'Heavy',    sub: 'Jungle mode' },
+]
+
+function calcClearoutPrice(sqFt: number, severity: ClearoutSeverity): number {
+  return Math.max(CLEAROUT_MINIMUM, Math.round(sqFt * CLEAROUT_RATES[severity]))
+}
+
+/* Hazards bump the clearout price — crew needs gear/time either way. */
+const CLEAROUT_HAZARD_SURCHARGE_PCT = 20
+const CLEAROUT_HAZARDS: { key: string; label: string }[] = [
+  { key: 'poison_ivy', label: 'Poison ivy' },
+  { key: 'thorns',     label: 'Thorns / cactus' },
+  { key: 'debris',     label: 'Buried debris or rocks' },
+]
+
 function calcOvergrowthFee(weeks: number, multiplier: number): { fee: number; label: string } {
   const score = weeks * multiplier
   if (score >= 6)   return { fee: 45, label: 'Heavy first-cut cleanup' }
@@ -151,6 +204,7 @@ export default function MapQuoteBuilder() {
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestAbortRef = useRef<AbortController | null>(null)
   const addressWrapRef  = useRef<HTMLDivElement>(null)
+  const teaserWrapRef   = useRef<HTMLDivElement>(null)
 
   const [step,        setStep]        = useState<AppStep>('idle')
   const [address,     setAddress]     = useState('')
@@ -169,6 +223,27 @@ export default function MapQuoteBuilder() {
 
   const [showManualSqFt,  setShowManualSqFt]  = useState(false)
   const [manualSqFtInput, setManualSqFtInput] = useState('')
+
+  const [openAddon,       setOpenAddon]       = useState<AddonKey | null>(null)
+  const [addonDrawTarget, setAddonDrawTarget] = useState<DrawableAddonKey | null>(null)
+  const [teaserTip,       setTeaserTip]       = useState<AddonKey | null>(null)
+
+  const [fertAreaChoice, setFertAreaChoice] = useState<'same' | 'custom' | null>(null)
+  const [fertCustomSqFt, setFertCustomSqFt] = useState<number | null>(null)
+  const [fertIncluded,   setFertIncluded]   = useState(false)
+
+  const [mulchAreaChoice, setMulchAreaChoice] = useState<'same' | 'custom' | null>(null)
+  const [mulchCustomSqFt, setMulchCustomSqFt] = useState<number | null>(null)
+  const [mulchDepthIn,    setMulchDepthIn]    = useState(MULCH_DEFAULT_DEPTH_IN)
+  const [mulchIncluded,   setMulchIncluded]   = useState(false)
+
+  const [maintenanceInterested, setMaintenanceInterested] = useState(false)
+
+  const [yardAreaChoice, setYardAreaChoice] = useState<'same' | 'custom' | null>(null)
+  const [yardCustomSqFt, setYardCustomSqFt] = useState<number | null>(null)
+  const [yardSeverity,   setYardSeverity]   = useState<ClearoutSeverity>('moderate')
+  const [yardHazards,    setYardHazards]    = useState<string[]>([])
+  const [yardIncluded,   setYardIncluded]   = useState(false)
 
   const [leadUnlocked, setLeadUnlocked] = useState(false)
   const [leadPhone,    setLeadPhone]    = useState('')
@@ -307,6 +382,15 @@ export default function MapQuoteBuilder() {
     return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [])
 
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (teaserWrapRef.current && !teaserWrapRef.current.contains(e.target as Node))
+        setTeaserTip(null)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
+
   /* ─── Draw helpers ───────────────────────────────────── */
   const updateDrawSource = useCallback(() => {
     const map = mapRef.current
@@ -353,13 +437,48 @@ export default function MapQuoteBuilder() {
     setSections(prev => [...prev, { id: uid(), name: prev.length === 0 ? 'Lawn' : `Zone ${prev.length + 1}`, sqFt, coords: closed }])
   }, [])
 
+  /* ─── Add-on area polygon overlay (fert / mulch) ────── */
+  const drawAddonPolygon = useCallback((coords: [number, number][], target: DrawableAddonKey) => {
+    const map = mapRef.current
+    if (!map) return
+    const color = ADDON_META[target].color
+    const data = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } }
+    const src = map.getSource('addon-data') as any
+    if (src) {
+      src.setData(data)
+    } else {
+      map.addSource('addon-data', { type: 'geojson', data })
+      map.addLayer({ id: 'addon-fill',    type: 'fill', source: 'addon-data', paint: { 'fill-color': color, 'fill-opacity': 0.25 } })
+      map.addLayer({ id: 'addon-outline', type: 'line', source: 'addon-data', paint: { 'line-color': color, 'line-width': 2.5 } })
+      return
+    }
+    map.setPaintProperty('addon-fill', 'fill-color', color)
+    map.setPaintProperty('addon-outline', 'line-color', color)
+  }, [])
+
+  const removeAddonPolygon = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+    ;['addon-fill', 'addon-outline'].forEach(id => { try { map.getLayer(id) && map.removeLayer(id) } catch {} })
+    try { map.getSource('addon-data') && map.removeSource('addon-data') } catch {}
+  }, [])
+
   const commitPolygon = useCallback((pts: [number, number][]) => {
     if (pts.length < 3) return
     stopDraw()
+    if (addonDrawTarget) {
+      const sqFt = polygonSqFt(pts)
+      drawAddonPolygon([...pts, pts[0]], addonDrawTarget)
+      if (addonDrawTarget === 'fertilization')  { setFertCustomSqFt(sqFt); setFertAreaChoice('custom') }
+      else if (addonDrawTarget === 'mulch')     { setMulchCustomSqFt(sqFt); setMulchAreaChoice('custom') }
+      else                                      { setYardCustomSqFt(sqFt); setYardAreaChoice('custom') }
+      setAddonDrawTarget(null)
+      return
+    }
     savePolygon(pts)
     setStep('done')
     trackQuoteLawnTraced()
-  }, [stopDraw, savePolygon])
+  }, [stopDraw, savePolygon, addonDrawTarget, drawAddonPolygon])
 
   const startDraw = useCallback(() => {
     const map = mapRef.current
@@ -468,6 +587,38 @@ export default function MapQuoteBuilder() {
     map.on('move',      mapMoveFn)
     setIsDrawing(true)
   }, [stopDraw, updateDrawSource])
+
+  /* ─── Add-on area draw controls ─────────────────────── */
+  const startAddonDraw = useCallback((target: DrawableAddonKey) => {
+    setOpenAddon(target)
+    setAddonDrawTarget(target)
+    startDraw()
+    requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+  }, [startDraw])
+
+  const cancelAddonDraw = useCallback(() => {
+    stopDraw()
+    setAddonDrawTarget(null)
+  }, [stopDraw])
+
+  const resetFertArea = useCallback(() => {
+    removeAddonPolygon()
+    setFertAreaChoice(null); setFertCustomSqFt(null)
+  }, [removeAddonPolygon])
+
+  const resetMulchArea = useCallback(() => {
+    removeAddonPolygon()
+    setMulchAreaChoice(null); setMulchCustomSqFt(null)
+  }, [removeAddonPolygon])
+
+  const resetYardArea = useCallback(() => {
+    removeAddonPolygon()
+    setYardAreaChoice(null); setYardCustomSqFt(null); setYardHazards([])
+  }, [removeAddonPolygon])
+
+  const toggleYardHazard = useCallback((key: string) => {
+    setYardHazards(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }, [])
 
   /* ─── Finish button ──────────────────────────────────── */
   const handleFinish = useCallback(() => {
@@ -587,10 +738,16 @@ export default function MapQuoteBuilder() {
       ;['sections-data','parcel-boundary'].forEach(id => { try { map.getSource(id) && map.removeSource(id) } catch {} })
       map.flyTo({ center: [-98.5, 39.8], zoom: 4, duration: 1200 })
     }
+    removeAddonPolygon()
     setStep('idle'); setAddress(''); setError(''); setSuggestions([])
     setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek'); setJobLatLng(null)
     setLeadUnlocked(false); setLeadPhone(''); setLeadConsent(false); setLeadStatus('idle'); setLeadError('')
-  }, [stopDraw])
+    setOpenAddon(null); setAddonDrawTarget(null); setTeaserTip(null)
+    setFertAreaChoice(null); setFertCustomSqFt(null); setFertIncluded(false)
+    setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchDepthIn(MULCH_DEFAULT_DEPTH_IN); setMulchIncluded(false)
+    setMaintenanceInterested(false)
+    setYardAreaChoice(null); setYardCustomSqFt(null); setYardSeverity('moderate'); setYardHazards([]); setYardIncluded(false)
+  }, [stopDraw, removeAddonPolygon])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
   const captureMapScreenshot = useCallback((): Promise<string> => {
@@ -641,6 +798,29 @@ export default function MapQuoteBuilder() {
   const firstVisitPrice = Math.round(firstVisitFullPrice * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
   const isDone         = step === 'done' || step === 'editing'
 
+  /* ─── Add-on pricing ─────────────────────────────────── */
+  const fertSqFt   = fertAreaChoice === 'same' ? lawnSqFt : fertAreaChoice === 'custom' ? fertCustomSqFt : null
+  const fertPrice  = fertSqFt ? calcFertPrice(fertSqFt) : 0
+
+  const mulchSqFt  = mulchAreaChoice === 'same' ? lawnSqFt : mulchAreaChoice === 'custom' ? mulchCustomSqFt : null
+  const mulchCuYd  = mulchSqFt ? calcMulchCuYd(mulchSqFt, mulchDepthIn) : 0
+  const mulchPrice = mulchSqFt ? calcMulchPrice(mulchSqFt, mulchDepthIn) : 0
+
+  const yardSqFt       = yardAreaChoice === 'same' ? lawnSqFt : yardAreaChoice === 'custom' ? yardCustomSqFt : null
+  const yardBasePrice  = yardSqFt ? calcClearoutPrice(yardSqFt, yardSeverity) : 0
+  const yardHasHazard  = yardHazards.length > 0
+  const yardHazardFee  = yardHasHazard ? Math.round(yardBasePrice * CLEAROUT_HAZARD_SURCHARGE_PCT / 100) : 0
+  const yardPrice      = yardBasePrice + yardHazardFee
+
+  const addonInterest = (() => {
+    const obj: Record<string, unknown> = {}
+    if (fertIncluded && fertSqFt) obj.fertilization = { included: true, sq_ft: fertSqFt, price: fertPrice, area: fertAreaChoice }
+    if (mulchIncluded && mulchSqFt) obj.mulch = { included: true, sq_ft: mulchSqFt, depth_in: mulchDepthIn, cu_yd: Math.round(mulchCuYd * 10) / 10, price: mulchPrice, area: mulchAreaChoice }
+    if (maintenanceInterested) obj.maintenance = { interested: true }
+    if (yardIncluded && yardSqFt) obj.yardClearout = { included: true, sq_ft: yardSqFt, severity: yardSeverity, hazards: yardHazards, base_price: yardBasePrice, hazard_fee: yardHazardFee, price: yardPrice, area: yardAreaChoice }
+    return Object.keys(obj).length ? obj : null
+  })()
+
   useEffect(() => {
     if (showBooking && !bookingPhone && leadPhone) setBookingPhone(leadPhone)
   }, [showBooking, bookingPhone, leadPhone])
@@ -661,11 +841,12 @@ export default function MapQuoteBuilder() {
       overgrowth_fee: overgrowthFee, last_mow: lastMow,
       distance_miles: Math.round(jobMiles * 10) / 10, distance_fee: distanceFee,
       map_screenshot: mapScreenshot,
+      addon_interest: addonInterest,
       ...getAttribution(),
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setBookingStatus('success') }
+    if (result.success) { setBookingStatus('success'); trackBookingRequested() }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
-  }, [bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee])
+  }, [bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest])
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
@@ -680,7 +861,29 @@ export default function MapQuoteBuilder() {
             Trace your lawn.{' '}
             <em style={{ color: 'var(--green-bright)', fontStyle: 'italic' }}>Get your price.</em>
           </h2>
-          <div style={{ marginTop: 18 }}>
+          <div className="mapq-services-teaser" ref={teaserWrapRef}>
+            <span className="mapq-services-teaser-label">Also available</span>
+            {(Object.keys(ADDON_META) as AddonKey[]).map(key => (
+              <button
+                key={key}
+                type="button"
+                className="mapq-services-teaser-pill"
+                aria-expanded={teaserTip === key}
+                onClick={() => setTeaserTip(prev => prev === key ? null : key)}
+              >
+                <span className="mapq-services-teaser-dot" style={{ background: ADDON_META[key].color }} />
+                {ADDON_META[key].label}
+              </button>
+            ))}
+            <span className="mapq-services-teaser-sub">— priced to your yard once we see it. Tap one to learn more.</span>
+            {teaserTip && (
+              <p className="mapq-services-teaser-info">
+                {ADDON_META[teaserTip].blurb}{' '}
+                <span className="mapq-services-teaser-price">{ADDON_META[teaserTip].priceHint}</span>
+              </p>
+            )}
+          </div>
+          <div style={{ marginTop: 14 }}>
             <ManualQuoteForm />
           </div>
         </div>
@@ -785,7 +988,7 @@ export default function MapQuoteBuilder() {
                   </div>
                 )}
 
-                {isDrawing && (
+                {isDrawing && !addonDrawTarget && (
                   <div style={{ marginTop: 14 }}>
                     {/* Live counter — the gamification hook */}
                     <div className="mapq-live-counter">
@@ -1001,6 +1204,220 @@ export default function MapQuoteBuilder() {
                           ))}
                         </div>
 
+                        <div className="mapq-addons">
+                          <div className="mapq-addons-title">Also available — add to this visit</div>
+                          <div className="mapq-addons-chips">
+                            {(['fertilization', 'mulch', 'maintenance', 'yardClearout'] as AddonKey[]).map(key => {
+                              const meta = ADDON_META[key]
+                              const included = { fertilization: fertIncluded, mulch: mulchIncluded, maintenance: maintenanceInterested, yardClearout: yardIncluded }[key]
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  className={`mapq-addon-chip ${openAddon === key ? 'open' : ''} ${included ? 'included' : ''}`}
+                                  onClick={() => setOpenAddon(openAddon === key ? null : key)}
+                                >
+                                  <span className="mapq-addon-chip-dot" style={{ background: meta.color }} />
+                                  {meta.label}
+                                  {included && <CheckIcon />}
+                                </button>
+                              )
+                            })}
+                          </div>
+
+                          {openAddon === 'fertilization' && (
+                            <div className="mapq-addon-panel">
+                              <p className="mapq-addon-blurb">{ADDON_META.fertilization.blurb}</p>
+
+                              {!fertAreaChoice ? (
+                                <div className="mapq-addon-area-choice">
+                                  <button type="button" className="mapq-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setFertAreaChoice('same')}>
+                                    Same lawn ({lawnSqFt?.toLocaleString()} sq ft)
+                                  </button>
+                                  <button type="button" className="mapq-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => startAddonDraw('fertilization')}>
+                                    Draw a different area
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mapq-addon-area-summary">
+                                    <span>{fertSqFt?.toLocaleString()} sq ft {fertAreaChoice === 'same' ? '(your lawn)' : '(custom area)'}</span>
+                                    <button type="button" className="mapq-link" onClick={resetFertArea}>change</button>
+                                  </div>
+
+                                  <div className="mapq-addon-price-row">
+                                    <span>Starting at</span>
+                                    <span className="mapq-addon-price-val">${fertPrice}<span className="mapq-addon-price-sub"> /treatment</span></span>
+                                  </div>
+                                  <p className="mapq-addon-disclaimer">{FERT_DISCLAIMER}</p>
+
+                                  <label className="mapq-addon-include-row">
+                                    <input
+                                      type="checkbox"
+                                      className="mapq-consent-checkbox"
+                                      checked={fertIncluded}
+                                      onChange={e => { setFertIncluded(e.target.checked); if (e.target.checked) trackAddonInterest('fertilization') }}
+                                    />
+                                    <span>Include fertilization interest with my booking request</span>
+                                  </label>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {openAddon === 'mulch' && (
+                            <div className="mapq-addon-panel">
+                              <p className="mapq-addon-blurb">{ADDON_META.mulch.blurb}</p>
+
+                              {!mulchAreaChoice ? (
+                                <div className="mapq-addon-area-choice">
+                                  <button type="button" className="mapq-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setMulchAreaChoice('same')}>
+                                    Same lawn ({lawnSqFt?.toLocaleString()} sq ft)
+                                  </button>
+                                  <button type="button" className="mapq-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => startAddonDraw('mulch')}>
+                                    Draw your bed area
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mapq-addon-area-summary">
+                                    <span>{mulchSqFt?.toLocaleString()} sq ft {mulchAreaChoice === 'same' ? '(your lawn)' : '(drawn beds)'}</span>
+                                    <button type="button" className="mapq-link" onClick={resetMulchArea}>change</button>
+                                  </div>
+
+                                  <div className="mapq-addon-depth-row">
+                                    <span>Mulch depth</span>
+                                    <div className="mapq-addon-depth-btns">
+                                      {[2, 3, 4].map(d => (
+                                        <button
+                                          key={d}
+                                          type="button"
+                                          className={`mapq-cond-btn ${mulchDepthIn === d ? 'selected' : ''}`}
+                                          style={{ padding: '6px 12px' }}
+                                          onClick={() => setMulchDepthIn(d)}
+                                        >
+                                          <span className="mapq-cond-name">{d}&quot;</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="mapq-addon-price-row">
+                                    <span>{mulchCuYd.toFixed(1)} cu yd installed</span>
+                                    <span className="mapq-addon-price-val">${mulchPrice}</span>
+                                  </div>
+                                  <p className="mapq-addon-disclaimer">$150 minimum per visit. Final cu yd confirmed once we measure your beds on site.</p>
+
+                                  <label className="mapq-addon-include-row">
+                                    <input
+                                      type="checkbox"
+                                      className="mapq-consent-checkbox"
+                                      checked={mulchIncluded}
+                                      onChange={e => { setMulchIncluded(e.target.checked); if (e.target.checked) trackAddonInterest('mulch') }}
+                                    />
+                                    <span>Include mulch interest with my booking request</span>
+                                  </label>
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {openAddon === 'maintenance' && (
+                            <div className="mapq-addon-panel">
+                              <p className="mapq-addon-blurb">{ADDON_META.maintenance.blurb}</p>
+                              <p className="mapq-addon-disclaimer">Billed hourly, starting around $55/hr — we&apos;ll quote the exact time once we see your yard.</p>
+                              <label className="mapq-addon-include-row">
+                                <input
+                                  type="checkbox"
+                                  className="mapq-consent-checkbox"
+                                  checked={maintenanceInterested}
+                                  onChange={e => { setMaintenanceInterested(e.target.checked); if (e.target.checked) trackAddonInterest('maintenance') }}
+                                />
+                                <span>Include maintenance interest with my booking request</span>
+                              </label>
+                            </div>
+                          )}
+
+                          {openAddon === 'yardClearout' && (
+                            <div className="mapq-addon-panel">
+                              <p className="mapq-addon-blurb">{ADDON_META.yardClearout.blurb}</p>
+
+                              {!yardAreaChoice ? (
+                                <div className="mapq-addon-area-choice">
+                                  <button type="button" className="mapq-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setYardAreaChoice('same')}>
+                                    Same lawn ({lawnSqFt?.toLocaleString()} sq ft)
+                                  </button>
+                                  <button type="button" className="mapq-btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={() => startAddonDraw('yardClearout')}>
+                                    Draw the overgrown area
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mapq-addon-area-summary">
+                                    <span>{yardSqFt?.toLocaleString()} sq ft {yardAreaChoice === 'same' ? '(your lawn)' : '(drawn area)'}</span>
+                                    <button type="button" className="mapq-link" onClick={resetYardArea}>change</button>
+                                  </div>
+
+                                  <div className="mapq-addon-depth-row">
+                                    <span>Overgrowth level</span>
+                                    <div className="mapq-addon-depth-btns">
+                                      {CLEAROUT_LEVELS.map(lvl => (
+                                        <button
+                                          key={lvl.key}
+                                          type="button"
+                                          className={`mapq-cond-btn ${yardSeverity === lvl.key ? 'selected' : ''}`}
+                                          style={{ padding: '6px 10px' }}
+                                          onClick={() => setYardSeverity(lvl.key)}
+                                          title={lvl.sub}
+                                        >
+                                          <span className="mapq-cond-name">{lvl.label}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="mapq-addon-depth-row">
+                                    <span>Anything extra back there?</span>
+                                  </div>
+                                  <div className="mapq-addon-hazard-row">
+                                    {CLEAROUT_HAZARDS.map(hz => (
+                                      <label key={hz.key} className={`mapq-addon-hazard-chip ${yardHazards.includes(hz.key) ? 'selected' : ''}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={yardHazards.includes(hz.key)}
+                                          onChange={() => toggleYardHazard(hz.key)}
+                                        />
+                                        {hz.label}
+                                      </label>
+                                    ))}
+                                  </div>
+
+                                  <div className="mapq-addon-price-row">
+                                    <span>Starting at</span>
+                                    <span className="mapq-addon-price-val">${yardPrice}</span>
+                                  </div>
+                                  {yardHasHazard && (
+                                    <p className="mapq-addon-hazard-note">
+                                      Includes +{CLEAROUT_HAZARD_SURCHARGE_PCT}% hazard surcharge (+${yardHazardFee}) for {yardHazards.map(k => CLEAROUT_HAZARDS.find(h => h.key === k)?.label).join(', ')}.
+                                    </p>
+                                  )}
+                                  <p className="mapq-addon-disclaimer">${CLEAROUT_MINIMUM} minimum per visit. Final price confirmed once we see the area in person — overgrowth can hide surprises.</p>
+
+                                  <label className="mapq-addon-include-row">
+                                    <input
+                                      type="checkbox"
+                                      className="mapq-consent-checkbox"
+                                      checked={yardIncluded}
+                                      onChange={e => { setYardIncluded(e.target.checked); if (e.target.checked) trackAddonInterest('yardClearout') }}
+                                    />
+                                    <span>Include yard clearout interest with my booking request</span>
+                                  </label>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
                         <button className="mapq-cta" onClick={() => {
                           const map = mapRef.current
                           if (!map) { setShowBooking(true); return }
@@ -1043,10 +1460,17 @@ export default function MapQuoteBuilder() {
                 </div>
               )}
 
-              {isDrawing && (
+              {isDrawing && !addonDrawTarget && (
                 <div className="mapq-draw-pill">
                   <span className="mapq-pulse-dot" />
                   {ptCount < 3 ? 'Click to place points — trace your lawn' : `${ptCount} points · hit Finish to close`}
+                </div>
+              )}
+
+              {isDrawing && addonDrawTarget && (
+                <div className="mapq-draw-pill">
+                  <span className="mapq-pulse-dot" />
+                  {ptCount < 3 ? `Click to trace your ${ADDON_META[addonDrawTarget].label.toLowerCase()} area` : `${ptCount} points · hit Finish to close`}
                 </div>
               )}
 
@@ -1067,6 +1491,22 @@ export default function MapQuoteBuilder() {
               <canvas ref={previewCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }} />
             </div>
             <p className="mapq-attribution">Satellite imagery © Esri</p>
+
+            {isDrawing && addonDrawTarget && (
+              <div className="mapq-addon-draw-bar">
+                <div className="mapq-addon-draw-info">
+                  <span className="mapq-pulse-dot" />
+                  Tracing your {ADDON_META[addonDrawTarget].label.toLowerCase()} area — {liveSqFt > 0 ? liveSqFt.toLocaleString() : 0} sq ft
+                </div>
+                <div className="mapq-addon-draw-btns">
+                  {ptCount >= 3 && (
+                    <button className="mapq-btn-primary" onClick={handleFinish}>Finish area ✓</button>
+                  )}
+                  <button className="mapq-btn-ghost" onClick={cancelAddonDraw}>Cancel</button>
+                </div>
+              </div>
+            )}
+
             {(step === 'drawing' || step === 'editing') && !showManualSqFt && (
               <button
                 onClick={() => setShowManualSqFt(true)}
@@ -1142,6 +1582,14 @@ export default function MapQuoteBuilder() {
                     <span className="booking-dot">·</span>
                     <span>First visit ${firstVisitPrice} ({FIRST_VISIT_DISCOUNT_PCT}% off)</span>
                   </div>
+                  {addonInterest && (
+                    <div className="booking-summary-addons">
+                      {fertIncluded && <span>+ Fertilization interest (${fertPrice} starting)</span>}
+                      {mulchIncluded && <span>+ Mulch interest (${mulchPrice})</span>}
+                      {maintenanceInterested && <span>+ Maintenance interest</span>}
+                      {yardIncluded && <span>+ Yard clearout interest (${yardPrice} starting)</span>}
+                    </div>
+                  )}
                 </div>
 
                 <form onSubmit={handleBookingSubmit}>
@@ -1223,7 +1671,7 @@ export default function MapQuoteBuilder() {
         and we'll send you a price.
       </p>
 
-      {isDrawing && ptCount >= 3 && (
+      {isDrawing && ptCount >= 3 && !addonDrawTarget && (
         <div className="mapq-mobile-draw-bar">
           <button className="mapq-btn-primary" onClick={handleFinish} style={{ flex: 1 }}>
             Finish ✓

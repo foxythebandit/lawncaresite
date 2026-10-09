@@ -42,6 +42,22 @@ interface Booking {
   last_reminder_sent_at: string | null
   manual_quote: boolean
   lawn_size_bucket: string | null
+  addon_interest: Record<string, any> | null
+}
+
+const HAZARD_LABELS: Record<string, string> = { poison_ivy: 'poison ivy', thorns: 'thorns/cactus', debris: 'buried debris' }
+
+function formatAddonInterest(a: Record<string, any>): string {
+  const parts: string[] = []
+  if (a.fertilization) parts.push(`Fertilization — ${a.fertilization.sq_ft?.toLocaleString()} sq ft, starting at $${a.fertilization.price} (${a.fertilization.area === 'same' ? 'same area as lawn' : 'separate area'})`)
+  if (a.mulch)         parts.push(`Mulch — ${a.mulch.sq_ft?.toLocaleString()} sq ft @ ${a.mulch.depth_in}" deep (~${a.mulch.cu_yd} cu yd), starting at $${a.mulch.price}`)
+  if (a.maintenance)   parts.push('Maintenance — interested, hourly pricing to be quoted')
+  if (a.yardClearout) {
+    const hazards: string[] = a.yardClearout.hazards ?? []
+    const hazardNote = hazards.length ? ` — flagged ${hazards.map((k: string) => HAZARD_LABELS[k] ?? k).join(', ')} (+20% incl.)` : ''
+    parts.push(`Yard clearout — ${a.yardClearout.sq_ft?.toLocaleString()} sq ft, ${a.yardClearout.severity} overgrowth, starting at $${a.yardClearout.price}${hazardNote}`)
+  }
+  return parts.join(' · ')
 }
 
 function timeAgo(dateStr: string) {
@@ -335,6 +351,14 @@ export default function BookingCard({ booking, historyCount = 1 }: { booking: Bo
               <div className="admin-customer-note">
                 <span className="admin-customer-note-label">Note from customer</span>
                 <p>{booking.customer_notes}</p>
+              </div>
+            )}
+
+            {/* Add-on service interest expressed during booking */}
+            {booking.addon_interest && Object.keys(booking.addon_interest).length > 0 && (
+              <div className="admin-customer-note" style={{ borderColor: '#ffe3a3', background: '#fffaf0' }}>
+                <span className="admin-customer-note-label">Also interested in</span>
+                <p>{formatAddonInterest(booking.addon_interest)}</p>
               </div>
             )}
 

@@ -37,6 +37,10 @@ export function trackQuoteLawnTraced() {
   trackEvent('quote_lawn_traced')
 }
 
+export function trackAddonInterest(service: string) {
+  trackEvent('addon_interest', { service })
+}
+
 /**
  * Fires when the price is revealed: the GA4 funnel event, the Google Ads
  * conversion action, and a virtual pageview so the separately configured
@@ -62,4 +66,20 @@ export function trackQuoteShown() {
   setTimeout(() => {
     window.history.pushState({}, '', previousUrl || '/')
   }, 1000)
+}
+
+// Google Ads "Booking requested" conversion — paste the label from Ads here
+// (the part after the slash in send_to). Empty = only the GA4 event fires.
+const BOOKING_CONVERSION_LABEL = 'udMYCI2xipYdEOvG0cZE'
+
+/**
+ * Fires when the booking form submits successfully ("Request locked in.").
+ * Primary Ads conversion; the quote_shown conversion above is the secondary
+ * lead signal.
+ */
+export function trackBookingRequested(value?: number) {
+  trackEvent('booking_requested', value ? { value, currency: 'USD' } : undefined)
+  if (BOOKING_CONVERSION_LABEL) {
+    trackEvent('conversion', { send_to: `AW-18401747819/${BOOKING_CONVERSION_LABEL}` })
+  }
 }

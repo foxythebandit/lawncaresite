@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import HeroMediaModal, { type HeroMedia } from './HeroMediaModal'
 
 const MOWER_W  = 130
 const START_X  = 20
@@ -16,6 +17,10 @@ const CLIP_SHAPES = [
 ]
 
 export default function Hero() {
+  const [media, setMedia] = useState<HeroMedia | null>(null)
+  const closeMedia        = useCallback(() => setMedia(null), [])
+  const mowerHoverRef     = useRef(false)
+  const mowerLabelRef     = useRef<SVGGElement>(null)
   const mowerRef      = useRef<SVGGElement>(null)
   const pGroupRef     = useRef<SVGGElement>(null)
   const rearWheelRef  = useRef<SVGGElement>(null)
@@ -102,7 +107,8 @@ export default function Hero() {
       // Delta-time normalisation — keeps speed constant across 60/120hz and frame drops
       const delta = lastTime ? Math.min(timestamp - lastTime, 50) : TARGET_MS
       lastTime = timestamp
-      const step = SPEED * (delta / TARGET_MS)
+      // Mower parks while hovered so it's easy to click
+      const step = mowerHoverRef.current ? 0 : SPEED * (delta / TARGET_MS)
 
       totalDist += step
       autoX += autoDir * step
@@ -122,6 +128,8 @@ export default function Hero() {
         )
       }
 
+      mowerLabelRef.current?.setAttribute('transform', `translate(${x + MOWER_W / 2},${MOWER_Y - 44})`)
+
       // Rolling wheels — rotate spokes by distance traveled
       const rearAngle  = (totalDist / (2 * Math.PI * 18)) * 360
       const frontAngle = (totalDist / (2 * Math.PI * 16)) * 360
@@ -134,7 +142,7 @@ export default function Hero() {
         fr ? '' : `translate(${MOWER_W},0) scale(-1,1)`
       )
 
-      const nearEdge = autoX < START_X + 24 || autoX > END_X - 24
+      const nearEdge = step === 0 || autoX < START_X + 24 || autoX > END_X - 24
       if (!nearEdge && Math.abs(autoX - lastFireX) >= FIRE_DIST) {
         // Chute center is at local x=133 — compute world position after mower transform
         const cx = fr ? x + 133 : x + MOWER_W - 133
@@ -281,6 +289,24 @@ export default function Hero() {
           <text className="zzz2" x="376" y="430" fontFamily="sans-serif" fontSize="13" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
           <text className="zzz3" x="387" y="422" fontFamily="sans-serif" fontSize="10" fill="#b7e4c7" fontWeight="700" opacity="0">z</text>
 
+          {/* Sleeping-neighbor hotspot → 5:30 AM video */}
+          <g
+            className="hero-hotspot hero-hotspot-sleep"
+            role="button"
+            tabIndex={0}
+            aria-label="Watch: mowing at 5:30 AM while the neighbors sleep"
+            onClick={() => setMedia('sleep')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMedia('sleep') } }}
+          >
+            <rect className="hotspot-ring" x="333" y="420" width="94" height="70" rx="7" fill="none" stroke="#b7e4c7" strokeWidth="2" />
+            <rect x="333" y="420" width="94" height="70" fill="transparent" />
+            <g className="hotspot-label" transform="translate(380,505)">
+              <rect x="-50" y="-13" width="100" height="24" rx="12" fill="#f7f6f2" />
+              <path d="M-38 -5 L-38 5 L-30 0 Z" fill="#2d6a4f" />
+              <text x="4" y="4" textAnchor="middle" fontFamily="sans-serif" fontSize="11" fontWeight="700" fill="#1a3a2a">5:30 AM</text>
+            </g>
+          </g>
+
           {/* Small window — right of door */}
           <rect x="488" y="428" width="38" height="40" rx="3" fill="#1a3828" />
           <rect x="490" y="430" width="34" height="36" rx="2" fill="#0d2018" />
@@ -299,6 +325,24 @@ export default function Hero() {
           <ellipse cx="530" cy="534" rx="22" ry="14" fill="#1e4030" opacity=".72" />
           <ellipse cx="553" cy="537" rx="16" ry="10" fill="#1a3828" opacity=".65" />
 
+          {/* Shrub hotspot → bed cleanup / trimming footage */}
+          <g
+            className="hero-hotspot hero-hotspot-garden"
+            role="button"
+            tabIndex={0}
+            aria-label="Watch: garden bed cleanup and shrub trimming"
+            onClick={() => setMedia('garden')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMedia('garden') } }}
+          >
+            <ellipse className="hotspot-ring" cx="541" cy="535" rx="40" ry="20" fill="none" stroke="#b7e4c7" strokeWidth="2" />
+            <ellipse cx="541" cy="535" rx="40" ry="20" fill="transparent" />
+            <g className="hotspot-label" transform="translate(541,500)">
+              <rect x="-56" y="-13" width="112" height="24" rx="12" fill="#f7f6f2" />
+              <path d="M-44 -5 L-44 5 L-36 0 Z" fill="#2d6a4f" />
+              <text x="6" y="4" textAnchor="middle" fontFamily="sans-serif" fontSize="11" fontWeight="700" fill="#1a3a2a">Beds &amp; bushes</text>
+            </g>
+          </g>
+
           {/* Stone path — draws eye from mower toward door */}
           <ellipse cx="451" cy="549" rx="22" ry="7" fill="#224838" opacity=".5" />
           <ellipse cx="451" cy="556" rx="26" ry="8" fill="#1e4030" opacity=".4" />
@@ -309,7 +353,20 @@ export default function Hero() {
           <path d="M80 578 Q260 570 420 578" stroke="#38805a" strokeWidth="7" fill="none" opacity=".14" strokeLinecap="round"/>
 
           {/* ── Lawn mower — smooth flat style ── */}
-          <g ref={mowerRef} transform={`translate(${START_X},${MOWER_Y})`}>
+          <g
+            ref={mowerRef}
+            transform={`translate(${START_X},${MOWER_Y})`}
+            className="hero-hotspot hero-hotspot-mower"
+            role="button"
+            tabIndex={0}
+            aria-label="Watch: our electric mower in action"
+            onClick={() => setMedia('mower')}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMedia('mower') } }}
+            onMouseEnter={() => { mowerHoverRef.current = true }}
+            onMouseLeave={() => { mowerHoverRef.current = false }}
+          >
+            {/* Generous hit area around handle + deck */}
+            <rect x="-24" y="-34" width="172" height="106" fill="transparent" />
 
             {/* Rear wheel */}
             <circle cx="20" cy="52" r="18" fill="#0f2e1e" stroke="#52b788" strokeWidth="2.5"/>
@@ -357,6 +414,13 @@ export default function Hero() {
             <line x1="4" y1="46" x2="124" y2="46" stroke="#52b788" strokeWidth="1" strokeDasharray="6 4" opacity=".22"/>
           </g>
 
+          {/* Mower label — positioned by the loop, never mirrored */}
+          <g ref={mowerLabelRef} className="hotspot-label mower-label" transform={`translate(${START_X + MOWER_W / 2},${MOWER_Y - 44})`}>
+            <rect x="-48" y="-13" width="96" height="24" rx="12" fill="#f7f6f2" />
+            <path d="M-36 -5 L-36 5 L-28 0 Z" fill="#2d6a4f" />
+            <text x="5" y="4" textAnchor="middle" fontFamily="sans-serif" fontSize="11" fontWeight="700" fill="#1a3a2a">See it mow</text>
+          </g>
+
           {/* Particle container — after mower so clippings render in front */}
           <g ref={pGroupRef} />
         </svg>
@@ -364,12 +428,16 @@ export default function Hero() {
         <div className="stat-card card-1">
           <div className="stat-card-val">60<span>dB</span></div>
           <div className="stat-card-label">Library-quiet operation</div>
+          <div className="stat-card-short">quiet</div>
         </div>
         <div className="stat-card card-2">
           <div className="stat-card-val">0<span>g</span></div>
           <div className="stat-card-label">Zero emissions, zero fumes</div>
+          <div className="stat-card-short">emissions</div>
         </div>
       </div>
+
+      <HeroMediaModal media={media} onClose={closeMedia} />
     </section>
   )
 }

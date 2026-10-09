@@ -20,8 +20,8 @@ export default function Nav() {
       </ul>
       <div className="nav-actions">
         <a href="tel:+16823528260" className="nav-phone" aria-label="Call (682) 352-8260">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+          <svg width="17" height="17" viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
+            <path d="M164.9 24.6c-7.7-18.6-28-28.5-47.4-23.2l-88 24C12.1 30.2 0 46 0 64 0 311.4 200.6 512 448 512c18 0 33.8-12.1 38.6-29.5l24-88c5.3-19.4-4.6-39.7-23.2-47.4l-96-40c-16.3-6.8-35.2-2.1-46.3 11.6l-39.6 48.4C234.3 334.7 177.3 277.7 144 207.3l48.4-39.6c13.7-11.2 18.4-30 11.6-46.3l-40-96z" />
           </svg>
           <span className="nav-phone-text">(682) 352-8260</span>
         </a>

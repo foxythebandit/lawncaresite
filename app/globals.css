@@ -58,7 +58,7 @@ nav {
   font-size: 14px; font-weight: 500; color: var(--ink);
   text-decoration: none; letter-spacing: .02em; white-space: nowrap;
 }
-.nav-phone svg { width: 16px; height: 16px; color: var(--green-bright); }
+.nav-phone svg { width: 17px; height: 17px; color: var(--green-mid); }
 .nav-phone:hover { color: var(--green-mid); }
 .nav-cta {
   background: var(--green-mid); color: #fff;
@@ -191,6 +191,7 @@ nav {
 }
 .stat-card-val span { font-size: 16px; color: var(--green-bright); }
 .stat-card-label { font-size: 12px; color: var(--ink-soft); margin-top: 10px; font-weight: 400; }
+.stat-card-short { display: none; }
 
 .card-1 { top: 55%; right: 12%; }
 .card-2 { top: 22%; right: 34%; }
@@ -728,6 +729,12 @@ section { padding: 100px 8vw; }
   font-size: 13px; font-weight: 500; color: var(--green-bright);
 }
 .booking-dot { opacity: .4; }
+.booking-summary-addons {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.12);
+  font-size: 12px; color: rgba(255,255,255,.65);
+}
 .booking-fields { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
 .booking-field  { display: flex; flex-direction: column; gap: 5px; }
 .booking-field label {
@@ -1273,6 +1280,197 @@ footer {
   font-size: 12.5px; font-weight: 500; color: rgba(255,255,255,.75);
 }
 .mapq-includes-item svg { color: var(--green-bright); flex-shrink: 0; }
+
+/* Services teaser (header) */
+.mapq-services-teaser {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  margin-top: 14px;
+}
+.mapq-services-teaser-label {
+  font-size: 11px; font-weight: 500; letter-spacing: .08em;
+  text-transform: uppercase; color: rgba(255,255,255,.35);
+}
+.mapq-services-teaser-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; color: rgba(255,255,255,.75);
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 100px; padding: 5px 12px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color .2s, background .2s, color .2s;
+}
+.mapq-services-teaser-pill:hover,
+.mapq-services-teaser-pill[aria-expanded="true"] {
+  border-color: rgba(255,255,255,.35);
+  background: rgba(255,255,255,.12);
+  color: #fff;
+}
+.mapq-services-teaser-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.mapq-services-teaser-sub {
+  font-size: 12px; color: rgba(255,255,255,.4);
+}
+
+.mapq-services-teaser-info {
+  /* In normal document flow (not an overlay) so it pushes content below
+     down instead of ever covering the heading or the manual-quote link. */
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12.5px; font-weight: 400; line-height: 1.5;
+  color: rgba(255,255,255,.7);
+  max-width: 480px;
+  animation: mapqTeaserInfoIn .15s ease both;
+}
+.mapq-services-teaser-price {
+  color: var(--green-bright);
+  font-weight: 600;
+}
+@keyframes mapqTeaserInfoIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Add-on services panel */
+.mapq-addons {
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 16px;
+  margin-bottom: 20px;
+}
+.mapq-addons-title {
+  font-size: 11px; font-weight: 500; letter-spacing: .08em;
+  text-transform: uppercase; color: rgba(255,255,255,.35);
+  margin-bottom: 10px;
+}
+.mapq-addons-chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.mapq-addon-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  background: rgba(255,255,255,.06);
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 100px;
+  color: rgba(255,255,255,.75);
+  font-size: 12.5px; font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: border-color .2s, background .2s;
+}
+.mapq-addon-chip:hover { border-color: rgba(255,255,255,.3); }
+.mapq-addon-chip.open {
+  border-color: rgba(255,255,255,.4);
+  background: rgba(255,255,255,.1);
+}
+.mapq-addon-chip.included {
+  border-color: var(--green-bright);
+  background: rgba(82,183,136,.15);
+  color: var(--green-bright);
+}
+.mapq-addon-chip svg { color: var(--green-bright); flex-shrink: 0; }
+.mapq-addon-chip-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+
+.mapq-addon-panel {
+  margin-top: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.mapq-addon-blurb {
+  font-size: 12.5px; color: rgba(255,255,255,.55);
+  margin: 0 0 12px; line-height: 1.5;
+}
+.mapq-addon-area-choice {
+  display: flex; gap: 8px;
+}
+.mapq-addon-area-summary {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; color: rgba(255,255,255,.7);
+  margin-bottom: 12px;
+}
+.mapq-addon-depth-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 12.5px; color: rgba(255,255,255,.55);
+}
+.mapq-addon-depth-btns { display: flex; gap: 6px; }
+
+.mapq-addon-hazard-row {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 12px;
+}
+.mapq-addon-hazard-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: rgba(255,255,255,.6);
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 100px; padding: 5px 10px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, color .2s;
+}
+.mapq-addon-hazard-chip:hover { border-color: rgba(255,255,255,.3); }
+.mapq-addon-hazard-chip.selected {
+  border-color: rgba(255,190,80,.6);
+  background: rgba(255,190,80,.12);
+  color: rgba(255,210,130,.95);
+}
+.mapq-addon-hazard-chip input {
+  accent-color: #ffbe50;
+  width: 12px; height: 12px;
+  cursor: pointer;
+}
+.mapq-addon-hazard-note {
+  font-size: 11px; line-height: 1.5; text-align: center;
+  color: rgba(255,190,80,.85);
+  margin: 0 0 8px;
+}
+.mapq-addon-price-row {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  margin-bottom: 8px;
+  text-align: center;
+  font-size: 13px; color: rgba(255,255,255,.6);
+}
+.mapq-addon-price-val {
+  font-family: var(--font-display);
+  font-size: 22px; color: #fff;
+}
+.mapq-addon-price-sub {
+  font-size: 11px; color: rgba(255,255,255,.4); font-family: var(--font-body);
+}
+.mapq-addon-disclaimer {
+  font-size: 11px; line-height: 1.5; color: rgba(255,255,255,.4);
+  margin: 0 0 12px;
+}
+.mapq-addon-include-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  cursor: pointer; font-size: 12px; color: rgba(255,255,255,.65);
+}
+
+/* Add-on area drawing control bar — shown near the map at all breakpoints */
+.mapq-addon-draw-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px;
+  background: rgba(18,42,28,.9);
+  border: 1px solid rgba(82,183,136,.4);
+  border-radius: 14px;
+  padding: 12px 16px;
+}
+.mapq-addon-draw-info {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: #fff; font-weight: 500;
+}
+.mapq-addon-draw-btns { display: flex; gap: 8px; }
+.mapq-addon-draw-btns .mapq-btn-primary,
+.mapq-addon-draw-btns .mapq-btn-ghost { flex: 0 0 auto; padding: 8px 14px; font-size: 13px; }
 
 .mapq-cta {
   width: 100%; padding: 15px;
@@ -2499,3 +2697,146 @@ footer {
   text-decoration: none; transition: background .15s; white-space: nowrap;
 }
 .portal-pay-btn:hover { background: var(--green-mid); }
+
+/* ── HERO HOTSPOTS (click mower / sleeping neighbor → footage) ── */
+/* hero-left sits over the scene; let clicks fall through to the SVG */
+.hero-left, .hero-left * { pointer-events: none; }
+.hero-hotspot { cursor: pointer; outline: none; }
+.hero-hotspot-mower { transition: filter .2s; }
+.hero-hotspot-mower:hover,
+.hero-hotspot-mower:focus-visible { filter: drop-shadow(0 0 10px rgba(82,183,136,.9)); }
+.hotspot-ring {
+  opacity: .35;
+  animation: hotspotPulse 2.6s ease-in-out infinite;
+  transition: opacity .2s;
+}
+.hero-hotspot-sleep:hover .hotspot-ring,
+.hero-hotspot-sleep:focus-visible .hotspot-ring,
+.hero-hotspot-garden:hover .hotspot-ring,
+.hero-hotspot-garden:focus-visible .hotspot-ring { opacity: 1; animation: none; }
+@keyframes hotspotPulse {
+  0%, 100% { opacity: .15; }
+  50%      { opacity: .55; }
+}
+.hotspot-label {
+  opacity: .72;
+  transition: opacity .2s;
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.3));
+  pointer-events: none;
+}
+.hero-hotspot-sleep .hotspot-label,
+.hero-hotspot-garden .hotspot-label { pointer-events: auto; }
+.hero-hotspot-sleep:hover .hotspot-label,
+.hero-hotspot-sleep:focus-visible .hotspot-label,
+.hero-hotspot-garden:hover .hotspot-label,
+.hero-hotspot-garden:focus-visible .hotspot-label,
+.hero-illustration:has(.hero-hotspot-mower:hover) .mower-label,
+.hero-illustration:has(.hero-hotspot-mower:focus-visible) .mower-label { opacity: 1; }
+
+/* ── HERO MEDIA MODAL ── */
+.hm-backdrop {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(10,22,16,.78);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  animation: hmFade .2s ease both;
+}
+@keyframes hmFade { from { opacity: 0; } to { opacity: 1; } }
+.hm-dialog {
+  position: relative;
+  display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 420px);
+  background: var(--off-white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  max-height: calc(100vh - 48px);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+  animation: fadeUp .3s ease both;
+}
+.hm-close {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: rgba(26,58,42,.08); color: var(--green-deep);
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.hm-close:hover { background: rgba(26,58,42,.16); }
+.hm-video-wrap { background: #000; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.hm-video { width: 100%; height: 100%; max-height: calc(100vh - 48px); object-fit: contain; display: block; }
+.hm-video-missing { color: rgba(255,255,255,.6); padding: 80px 24px; font-size: 14px; }
+.hm-body { padding: 40px 32px 32px; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; }
+.hm-eyebrow {
+  font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--green-bright); margin-bottom: 10px;
+}
+.hm-title { font-family: var(--font-display); font-size: 30px; line-height: 1.15; color: var(--green-deep); margin-bottom: 20px; }
+.hm-copy { font-size: 15px; line-height: 1.7; color: var(--ink-soft); }
+
+.hm-emissions-head { font-size: 14px; color: var(--ink-soft); line-height: 1.5; margin-bottom: 14px; }
+.hm-emissions-head strong { color: var(--green-deep); }
+.hm-emissions-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.hm-stat {
+  background: #3a1f12; color: #fff;
+  border-radius: 14px; padding: 14px 18px;
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+}
+.hm-stat-val { font-family: var(--font-display); font-size: 30px; line-height: 1; color: #ffb27a; font-variant-numeric: tabular-nums; }
+.hm-stat-val span { font-size: 15px; color: #f2c9a8; }
+.hm-stat-label { font-size: 13px; color: rgba(255,255,255,.75); }
+.hm-ours {
+  margin-top: 14px; padding: 18px 20px 16px; border-radius: 14px;
+  background: var(--green-deep); color: #fff;
+  box-shadow: 0 0 0 1px rgba(82,183,136,.35), 0 10px 30px rgba(26,58,42,.25);
+  animation: hmOursIn .5s 1.5s cubic-bezier(.2,1.4,.4,1) both;
+}
+@keyframes hmOursIn {
+  from { opacity: 0; transform: translateY(10px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+.hm-ours-label {
+  font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--green-light);
+}
+.hm-ours-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 8px; }
+.hm-ours-stat { display: flex; flex-direction: column; }
+.hm-ours-val { font-family: var(--font-display); font-size: 52px; line-height: 1; color: var(--green-bright); }
+.hm-ours-unit { font-size: 12px; color: rgba(255,255,255,.7); margin-top: 2px; }
+.hm-ours-tag { font-size: 14px; color: #fff; border-top: 1px solid rgba(255,255,255,.12); padding-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .hm-ours { animation: none; } }
+.hm-cta {
+  margin-top: 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--green-deep); color: #fff;
+  padding: 13px 24px; border-radius: 100px;
+  font-size: 15px; font-weight: 500; text-decoration: none;
+  transition: background .2s, transform .15s;
+}
+.hm-cta:hover { background: var(--green-mid); transform: translateY(-1px); }
+.hm-footnote { margin-top: 12px; font-size: 11px; color: var(--ink-soft); opacity: .75; line-height: 1.5; }
+
+@media (max-width: 760px) {
+  /* Stat cards shrink to pills along the bottom edge so they don't cover the
+     clickable shrubs / mower */
+  .stat-card {
+    display: flex; align-items: baseline; gap: 5px;
+    min-width: 0; padding: 7px 12px; border-radius: 100px;
+  }
+  .stat-card-val { font-size: 18px; }
+  .stat-card-val span { font-size: 11px; }
+  .stat-card-label { display: none; }
+  .stat-card-short { display: block; font-size: 11px; color: var(--ink-soft); }
+  .card-1 { top: auto; bottom: 14px; right: 4%; }
+  .card-2 { top: auto; bottom: 14px; right: calc(4% + 108px); }
+
+  .hm-backdrop { padding: 0; align-items: stretch; }
+  .hm-dialog { grid-template-columns: 1fr; align-content: start; border-radius: 0; max-height: none; height: 100%; overflow-y: auto; }
+  .hm-video-wrap { flex: none; }
+  .hm-video { max-height: 42vh; }
+  .hm-body { padding: 24px 20px 32px; justify-content: flex-start; }
+  .hm-title { font-size: 24px; }
+  .hm-close { background: rgba(255,255,255,.85); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hotspot-ring { animation: none; opacity: .4; }
+}

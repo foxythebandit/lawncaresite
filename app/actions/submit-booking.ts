@@ -22,6 +22,22 @@ export interface BookingData extends Attribution {
   distance_miles?:   number
   distance_fee?:     number
   map_screenshot?:   string
+  addon_interest?:   Record<string, unknown> | null
+}
+
+const HAZARD_LABELS: Record<string, string> = { poison_ivy: 'poison ivy', thorns: 'thorns/cactus', debris: 'buried debris' }
+
+function formatAddonInterest(a: Record<string, any>): string {
+  const parts: string[] = []
+  if (a.fertilization) parts.push(`Fertilization — ${a.fertilization.sq_ft?.toLocaleString()} sq ft, starting at $${a.fertilization.price}`)
+  if (a.mulch)         parts.push(`Mulch — ${a.mulch.sq_ft?.toLocaleString()} sq ft @ ${a.mulch.depth_in}" deep (~${a.mulch.cu_yd} cu yd), starting at $${a.mulch.price}`)
+  if (a.maintenance)   parts.push('Maintenance — interested, hourly pricing to be quoted')
+  if (a.yardClearout) {
+    const hazards: string[] = a.yardClearout.hazards ?? []
+    const hazardNote = hazards.length ? ` — flagged ${hazards.map((k: string) => HAZARD_LABELS[k] ?? k).join(', ')} (+20% incl.)` : ''
+    parts.push(`Yard clearout — ${a.yardClearout.sq_ft?.toLocaleString()} sq ft, ${a.yardClearout.severity} overgrowth, starting at $${a.yardClearout.price}${hazardNote}`)
+  }
+  return parts.join(' · ')
 }
 
 function h(s: string | null | undefined) {
@@ -79,6 +95,7 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
     overgrowth_fee:     data.overgrowth_fee || null,
     last_mow:           data.last_mow,
     map_screenshot_url: screenshotUrl,
+    addon_interest:     data.addon_interest || null,
     gclid:              data.gclid || null,
     utm_source:         data.utm_source || null,
     utm_medium:         data.utm_medium || null,
@@ -143,6 +160,13 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
               <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Traced lawn</p>
               <img src="${screenshotUrl}" alt="Lawn trace" style="width:100%;border-radius:10px;border:1px solid #e0ede6;display:block"/>
             </div>` : ''}
+
+            ${data.addon_interest && Object.keys(data.addon_interest).length ? `
+            <div style="background:#fffaf0;border:1px solid #ffe3a3;border-radius:10px;padding:14px 16px;margin-bottom:20px">
+              <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Also interested in</p>
+              <p style="margin:0;font-size:13px;color:#1a3a2a">${h(formatAddonInterest(data.addon_interest))}</p>
+            </div>` : ''}
+
             <a href="tel:${h(data.phone)}" style="display:block;background:#1a3a2a;color:#fff;text-align:center;padding:13px;border-radius:100px;text-decoration:none;font-size:14px;font-weight:500">
               Call ${h(data.name.split(' ')[0])} →
             </a>
