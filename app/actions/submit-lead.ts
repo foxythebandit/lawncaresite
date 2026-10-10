@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
 import { pingPhone } from '@/lib/pushover'
+import { callLead } from '@/lib/twilio-call'
 
 function getAdmin() {
   return createClient(
@@ -86,6 +87,9 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
   if (receipt) {
     await adminClient.from('leads').update({ pushover_receipt: receipt }).eq('id', inserted.id)
   }
+  await callLead(
+    `New quote lead. ${data.sq_ft ? `${data.sq_ft} square feet.` : ''} Check your phone for the number.`
+  )
 
   if (process.env.RESEND_API_KEY) {
     const source = formatAttributionLabel(data)

@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
 import { pingPhone } from '@/lib/pushover'
+import { callLead } from '@/lib/twilio-call'
 
 export interface ManualQuoteData extends Attribution {
   name:            string
@@ -57,6 +58,7 @@ export async function submitManualQuote(data: ManualQuoteData): Promise<{ succes
   if (receipt) {
     await adminClient.from('bookings').update({ pushover_receipt: receipt }).eq('id', inserted.id)
   }
+  await callLead(`New manual quote request from ${data.name.trim()}. Check your phone for the number.`)
 
   if (process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY)
