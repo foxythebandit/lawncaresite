@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
+import { pingPhone, cancelPhonePing } from '@/lib/pushover'
 
 export interface BookingData extends Attribution {
   name:              string
@@ -107,6 +108,28 @@ export async function submitBooking(data: BookingData): Promise<{ success: boole
   if (error) {
     return { success: false, error: 'Something went wrong. Please try again.' }
   }
+
+  // They booked before the call — silence the emergency alarm from their
+  // original lead (if any) and send a calm confirmation instead.
+  const { data: recentLead } = await adminClient
+    .from('leads')
+    .select('id, pushover_receipt')
+    .eq('phone', data.phone.trim())
+    .not('pushover_receipt', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (recentLead?.pushover_receipt) {
+    await cancelPhonePing(recentLead.pushover_receipt)
+    await adminClient.from('leads').update({ pushover_receipt: null }).eq('id', recentLead.id)
+  }
+
+  await pingPhone({
+    title: '✅ Booked',
+    message: `${data.name} · ${data.address} · $${data.price_per_visit}/visit`,
+    urgent: false,
+  })
 
   // Send notification email
   if (process.env.RESEND_API_KEY) {

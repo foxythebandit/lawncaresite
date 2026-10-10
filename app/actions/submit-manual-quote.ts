@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
+import { pingPhone } from '@/lib/pushover'
 
 export interface ManualQuoteData extends Attribution {
   name:            string
@@ -44,6 +45,17 @@ export async function submitManualQuote(data: ManualQuoteData): Promise<{ succes
 
   if (error) {
     return { success: false, error: 'Something went wrong. Please try again.' }
+  }
+
+  // Urgent phone alert — they skipped straight to name/phone/address, which
+  // is an even hotter signal than the map tool's soft lead.
+  const receipt = await pingPhone({
+    title: '🌱 New manual quote request — call now',
+    message: [data.name.trim(), data.address.trim()].filter(Boolean).join(' · '),
+    phone: data.phone.trim(),
+  })
+  if (receipt) {
+    await adminClient.from('bookings').update({ pushover_receipt: receipt }).eq('id', inserted.id)
   }
 
   if (process.env.RESEND_API_KEY) {

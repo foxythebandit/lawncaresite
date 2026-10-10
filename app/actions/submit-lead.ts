@@ -3,11 +3,12 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { formatAttributionLabel, type Attribution } from '@/lib/attribution'
+import { pingPhone } from '@/lib/pushover'
 
-function getSupabase() {
+function getAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    process.env.SUPABASE_SECRET_KEY!
   )
 }
 
@@ -35,14 +36,11 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
     return { success: false, error: 'Please check the box to consent to being contacted.' }
   }
 
-  // Upload the traced-lawn map screenshot to Supabase Storage (service-role
-  // client, since the public/anon client can't write to storage)
+  const adminClient = getAdmin()
+
+  // Upload the traced-lawn map screenshot to Supabase Storage
   let screenshotUrl: string | null = null
   if (data.map_screenshot) {
-    const adminClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SECRET_KEY!
-    )
     const base64 = data.map_screenshot.split(',')[1]
     if (base64) {
       const buffer = Buffer.from(base64, 'base64')
@@ -57,8 +55,7 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
     }
   }
 
-  const supabase = getSupabase()
-  const { error } = await supabase.from('leads').insert({
+  const { data: inserted, error } = await adminClient.from('leads').insert({
     phone,
     address: data.address || null,
     sq_ft: data.sq_ft,
@@ -72,10 +69,22 @@ export async function submitLead(data: LeadData): Promise<{ success: boolean; er
     consent: true,
     consent_text: data.consentText,
     consented_at: new Date().toISOString(),
-  })
+  }).select('id').single()
 
   if (error) {
     return { success: false, error: 'Something went wrong. Please try again.' }
+  }
+
+  // Urgent phone alert — response within minutes closes far more leads than
+  // an email they'll see an hour later. Cancelled by submitBooking if they
+  // book before the alarm is acknowledged.
+  const receipt = await pingPhone({
+    title: '🌱 New lead — call now',
+    message: [data.address, data.sq_ft ? `${data.sq_ft.toLocaleString()} sq ft` : null].filter(Boolean).join(' · ') || phone,
+    phone,
+  })
+  if (receipt) {
+    await adminClient.from('leads').update({ pushover_receipt: receipt }).eq('id', inserted.id)
   }
 
   if (process.env.RESEND_API_KEY) {
