@@ -1,6 +1,7 @@
-import { getBookings } from '../actions'
+import { getBookings, getExtraCharges } from '../actions'
 import CompletedJobRow from './CompletedJobRow'
 import RecurringClientRow from './RecurringClientRow'
+import ExtraCharges from './ExtraCharges'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,16 +19,12 @@ function formatDate(dateStr: string) {
   })
 }
 
-function visitsPerYear(frequency: string | null): number {
-  const f = (frequency ?? '').toLowerCase()
-  if (f.includes('bi'))    return 26
-  if (f.includes('week'))  return 52
-  if (f.includes('month')) return 12
-  return 12
-}
+// Austin season average: a recurring customer gets ~30 mows a year,
+// regardless of the weekly/bi-weekly label (growth slows in winter).
+const MOWS_PER_YEAR = 30
 
 export default async function RevenuePage() {
-  const all = await getBookings()
+  const [all, extras] = await Promise.all([getBookings(), getExtraCharges()])
 
   const completed = all.filter(b => b.status === 'completed' && b.completed_at && b.amount_charged)
   completed.sort((a, b) => b.completed_at!.localeCompare(a.completed_at!))
@@ -37,9 +34,14 @@ export default async function RevenuePage() {
     const k = monthKey(b.completed_at!)
     monthMap.set(k, (monthMap.get(k) ?? 0) + (b.amount_charged ?? 0))
   }
+  for (const c of extras) {
+    const k = monthKey(c.charged_on)
+    monthMap.set(k, (monthMap.get(k) ?? 0) + c.amount)
+  }
   const monthly = [...monthMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 
-  const totalEarned   = completed.reduce((s, b) => s + (b.amount_charged ?? 0), 0)
+  const extrasTotal   = extras.reduce((s, c) => s + c.amount, 0)
+  const totalEarned   = completed.reduce((s, b) => s + (b.amount_charged ?? 0), 0) + extrasTotal
   const avgPerMonth   = monthly.length ? totalEarned / monthly.length : 0
   const maxVal        = Math.max(...monthly.map(([, v]) => v), 1)
 
@@ -60,12 +62,20 @@ export default async function RevenuePage() {
       phone: b.phone as string,
       name: b.name,
       frequency: b.frequency as string,
-      annual: (b.price_per_visit ?? 0) * visitsPerYear(b.frequency),
+      perVisit: b.price_per_visit ?? 0,
+      annual: (b.price_per_visit ?? 0) * MOWS_PER_YEAR,
     }))
     .sort((a, b) => b.annual - a.annual)
 
   const expectedAnnualTotal = recurringClients.reduce((s, c) => s + c.annual, 0)
   const maxAnnual = Math.max(...recurringClients.map(c => c.annual), 1)
+
+  // Everyone who's ever booked, for the extra-charge client picker
+  const clientByPhone = new Map<string, { name: string; phone: string }>()
+  for (const b of all) {
+    if (b.phone && !clientByPhone.has(b.phone)) clientByPhone.set(b.phone, { name: b.name, phone: b.phone })
+  }
+  const clients = [...clientByPhone.values()].sort((a, b) => a.name.localeCompare(b.name))
 
   // SVG chart dimensions
   const chartW = 560
@@ -78,7 +88,7 @@ export default async function RevenuePage() {
     <>
       <div className="admin-stats">
         <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${totalEarned.toLocaleString()}</span>
+          <span className="admin-stat-val admin-stat-money">${Math.round(totalEarned).toLocaleString()}</span>
           <span className="admin-stat-label">Total earned</span>
         </div>
         <div className="admin-stat-divider" />
@@ -102,7 +112,7 @@ export default async function RevenuePage() {
         <div className="admin-revenue-card">
           <div className="admin-revenue-card-title">Monthly Revenue</div>
           {monthly.length === 0 ? (
-            <div className="admin-empty" style={{ padding: '40px 20px' }}>No completed jobs yet.</div>
+            <div className="admin-empty" style={{ padding: '40px 20px' }}>No revenue yet.</div>
           ) : (
             <svg
               viewBox={`0 0 ${chartW} ${chartH + 36}`}
@@ -135,7 +145,7 @@ export default async function RevenuePage() {
                       {monthLabel(key)}
                     </text>
                     <text x={cx} y={y - 5} textAnchor="middle" fontSize={10} fill="var(--green-mid)" fontWeight={600}>
-                      ${val.toLocaleString()}
+                      ${Math.round(val).toLocaleString()}
                     </text>
                   </g>
                 )
@@ -152,7 +162,7 @@ export default async function RevenuePage() {
             <>
               <div className="admin-expected-total">
                 ${expectedAnnualTotal.toLocaleString()}
-                <span> / year across {recurringClients.length} recurring customer{recurringClients.length === 1 ? '' : 's'}</span>
+                <span> / year across {recurringClients.length} recurring customer{recurringClients.length === 1 ? '' : 's'} · ~{MOWS_PER_YEAR} mows each</span>
               </div>
               <div className="admin-expected-bars">
                 {recurringClients.map(c => (
@@ -162,6 +172,7 @@ export default async function RevenuePage() {
                     phone={c.phone}
                     name={c.name}
                     annual={c.annual}
+                    perVisit={c.perVisit}
                     widthPct={(c.annual / maxAnnual) * 100}
                   />
                 ))}
@@ -169,6 +180,8 @@ export default async function RevenuePage() {
             </>
           )}
         </div>
+
+        <ExtraCharges charges={extras} clients={clients} />
 
         {completed.length > 0 && (
           <div className="admin-revenue-card" style={{ marginTop: 12 }}>

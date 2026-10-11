@@ -400,3 +400,62 @@ export async function createPaymentLink(
     return { error: msg }
   }
 }
+
+// ── Extra charges: one-off work billed outside a booking (bed cleanups, trims…) ──
+
+export type ExtraCharge = {
+  id: string
+  charged_on: string
+  client_name: string
+  phone: string | null
+  description: string
+  amount: number
+  payment_method: string | null
+}
+
+export async function getExtraCharges(): Promise<ExtraCharge[]> {
+  const { data } = await getAdmin()
+    .from('extra_charges')
+    .select('id, charged_on, client_name, phone, description, amount, payment_method')
+    .order('charged_on', { ascending: false })
+  return (data ?? []).map(c => ({ ...c, amount: Number(c.amount) }))
+}
+
+function cleanCharge(data: { charged_on: string; client_name: string; phone?: string | null; description: string; amount: number; payment_method?: string | null }) {
+  const client_name = data.client_name.trim().slice(0, 120)
+  const description = data.description.trim().slice(0, 300)
+  if (!client_name || !description) return null
+  if (!Number.isFinite(data.amount) || data.amount < 0) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data.charged_on)) return null
+  return {
+    charged_on: data.charged_on,
+    client_name,
+    phone: data.phone?.trim() || null,
+    description,
+    amount: Math.round(data.amount * 100) / 100,
+    payment_method: data.payment_method?.trim() || null,
+  }
+}
+
+export async function addExtraCharge(data: { charged_on: string; client_name: string; phone?: string | null; description: string; amount: number; payment_method?: string | null }) {
+  const row = cleanCharge(data)
+  if (!row) return { error: 'Client, description, date and amount are required.' }
+  const { error } = await getAdmin().from('extra_charges').insert(row)
+  if (error) return { error: error.message }
+  revalidatePath('/admin/revenue')
+  return { success: true }
+}
+
+export async function updateExtraCharge(id: string, data: { charged_on: string; client_name: string; phone?: string | null; description: string; amount: number; payment_method?: string | null }) {
+  if (!UUID_RE.test(id)) return
+  const row = cleanCharge(data)
+  if (!row) return
+  await getAdmin().from('extra_charges').update(row).eq('id', id)
+  revalidatePath('/admin/revenue')
+}
+
+export async function deleteExtraCharge(id: string) {
+  if (!UUID_RE.test(id)) return
+  await getAdmin().from('extra_charges').delete().eq('id', id)
+  revalidatePath('/admin/revenue')
+}

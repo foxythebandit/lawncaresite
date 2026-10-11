@@ -2393,7 +2393,7 @@ footer {
 }
 .admin-expected-bars { display: flex; flex-direction: column; gap: 10px; }
 .admin-expected-bar-row {
-  display: grid; grid-template-columns: 140px 1fr 80px 20px;
+  display: grid; grid-template-columns: 140px 1fr 90px 20px;
   align-items: center; gap: 10px;
 }
 .admin-expected-bar-name {
@@ -2408,6 +2408,39 @@ footer {
 .admin-expected-bar-val {
   font-size: 12px; font-weight: 600; color: var(--green-mid); text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.admin-expected-bar-val small {
+  display: block; font-size: 10px; font-weight: 400; color: var(--ink-soft);
+}
+
+/* Extra services (one-off charges outside bookings) */
+.admin-extra-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.admin-extra-hint { font-size: 12px; color: var(--ink-soft); margin: 6px 0 14px; }
+.admin-extra-form {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+  padding: 14px; margin-bottom: 16px; border-radius: 10px;
+  background: var(--green-pale);
+}
+.admin-extra-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.admin-extra-field > span {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft);
+}
+.admin-extra-field input, .admin-extra-field select { width: 100%; padding: 7px 8px; }
+.admin-extra-field-wide { grid-column: 1 / -1; }
+.admin-extra-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.admin-extra-chip {
+  background: #fff; border: 1px solid var(--green-light); border-radius: 100px;
+  padding: 3px 10px; font-size: 12px; font-family: var(--font-body);
+  color: var(--green-deep); cursor: pointer;
+}
+.admin-extra-chip:hover { background: var(--green-light); }
+.admin-extra-error { grid-column: 1 / -1; font-size: 12px; color: #b03030; }
+.admin-extra-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+@media (max-width: 600px) {
+  .admin-extra-form { grid-template-columns: 1fr 1fr; }
 }
 
 /* ── Admin Today/Route page ── */
@@ -2805,7 +2838,7 @@ footer {
 .hm-ours-tag { font-size: 14px; color: #fff; border-top: 1px solid rgba(255,255,255,.12); padding-top: 10px; }
 @media (prefers-reduced-motion: reduce) { .hm-ours { animation: none; } }
 .hm-cta {
-  margin-top: 14px;
+  margin-top: 14px; align-self: flex-start;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   background: var(--green-deep); color: #fff;
   padding: 13px 24px; border-radius: 100px;

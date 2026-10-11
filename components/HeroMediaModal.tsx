@@ -168,11 +168,17 @@ export default function HeroMediaModal({
               gas trimmer screaming next to your windows.
             </p>
           ) : (
-            <p className="hm-copy">
-              Real footage, mowing in the dark before sunrise. Our battery equipment
-              runs around 60 dB, about as loud as a normal conversation, so we can
-              start early and beat the Texas heat without waking the house.
-            </p>
+            <>
+              <p className="hm-copy">
+                Real footage, mowing in the dark before sunrise. Our battery mowers
+                run around 60 dB, about as loud as a normal conversation. No 7 AM
+                gas engine rattling your windows.
+              </p>
+              <a href="#map-quote" className="hm-cta" onClick={onClose}>
+                Get my price
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </>
           )}
         </div>
       </div>
