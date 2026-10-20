@@ -6,6 +6,7 @@ import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/style.css'
 import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
+import TraceDemo        from '@/components/TraceDemo'
 import { submitLead }   from '@/app/actions/submit-lead'
 import { getAttribution } from '@/lib/attribution'
 import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAddonInterest, trackBookingRequested } from '@/lib/gtag'
@@ -983,7 +984,7 @@ export default function MapQuoteBuilder() {
                       ))}
                     </svg>
                     <p className="mapq-hint" style={{ margin: 0 }}>
-                      Tap each corner of your lawn on the map to trace it — takes about 30 seconds.
+                      Tap each corner of your grass on the map to trace it — not the dashed property line. Takes about 30 seconds.
                     </p>
                   </div>
                 )}
@@ -1476,14 +1477,11 @@ export default function MapQuoteBuilder() {
 
               {step === 'idle' && (
                 <div className="mapq-map-placeholder">
-                  <svg width="110" height="84" viewBox="0 0 110 84" fill="none">
-                    <rect x="4" y="4" width="102" height="76" rx="8" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.12)" strokeWidth="1.5"/>
-                    <polygon points="28,58 28,30 55,20 82,30 82,58" fill="rgba(82,183,136,.18)" stroke="var(--green-bright)" strokeWidth="2" strokeDasharray="4 3" strokeLinejoin="round"/>
-                    <circle cx="82" cy="30" r="11" fill="var(--green-bright)"/>
-                    <path d="M77 30l3.5 3.5L88 26" stroke="#1a3a2a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                  </svg>
-                  <p className="mapq-map-placeholder-title">This takes about 30 seconds</p>
-                  <p className="mapq-map-placeholder-sub">Enter your address above and we&apos;ll fly you right to your property.</p>
+                  <TraceDemo />
+                  <div className="mapq-demo-copy">
+                  <p className="mapq-map-placeholder-title">Trace just the grass — about 30 seconds</p>
+                  <p className="mapq-map-placeholder-sub">The dashed line is your property line — it&apos;s only a guide. Tap the corners of the grass we&apos;ll mow.</p>
+                  </div>
                 </div>
               )}
 
