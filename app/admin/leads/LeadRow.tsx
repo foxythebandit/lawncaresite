@@ -1,6 +1,7 @@
 'use client'
 
-import { useTransition } from 'react'
+import Link from 'next/link'
+import { useState, useTransition } from 'react'
 import { deleteLead } from '../actions'
 
 interface Lead {
@@ -20,6 +21,7 @@ export default function LeadRow({
   timeAgo: string
 }) {
   const [pending, startTransition] = useTransition()
+  const [error, setError] = useState('')
 
   return (
     <div className={`admin-card ${pending ? 'admin-card-loading' : ''}`}>
@@ -41,6 +43,7 @@ export default function LeadRow({
         <a href={`tel:${lead.phone}`} className="admin-card-summary-name" style={{ color: 'inherit', textDecoration: 'none' }}>
           {lead.phone}
         </a>
+        <Link href={`/admin/leads/${lead.id}`}>Open quote</Link>
         <span className="admin-card-summary-addr">
           {lead.address ?? '—'}{lead.sq_ft ? ` · ${lead.sq_ft.toLocaleString()} sq ft` : ''}
         </span>
@@ -48,7 +51,7 @@ export default function LeadRow({
           {source ?? 'Direct / unknown'} · {timeAgo}
         </span>
         <button
-          onClick={() => { if (window.confirm('Delete this lead?')) startTransition(() => deleteLead(lead.id)) }}
+          onClick={() => { if (window.confirm('Delete this lead?')) startTransition(async () => { const result = await deleteLead(lead.id); setError(result.error ?? '') }) }}
           disabled={pending}
           style={{ background: 'none', border: 'none', color: 'var(--ink-faint, #999)', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }}
           aria-label="Delete lead"
@@ -56,6 +59,7 @@ export default function LeadRow({
           ×
         </button>
       </div>
+      {error && <p role="alert">{error}</p>}
     </div>
   )
 }

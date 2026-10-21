@@ -10,6 +10,11 @@ import TraceDemo        from '@/components/TraceDemo'
 import { submitLead }   from '@/app/actions/submit-lead'
 import { getAttribution } from '@/lib/attribution'
 import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAddonInterest, trackBookingRequested } from '@/lib/gtag'
+import { trackWebsiteLead } from '@/lib/meta-events'
+import { QUOTE_CONSENT_TEXT as LEAD_CONSENT_TEXT } from '@/lib/quote-consent'
+import { submissionId } from '@/lib/submission-id'
+import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
+import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
 import ManualQuoteForm from './ManualQuoteForm'
 
 /* ── Types ────────────────────────────────────────────── */
@@ -59,8 +64,7 @@ const SERVICE_RADIUS_MILES = 30
 // entries like "123 Main St" resolve locally instead of in another state
 const GEOCODE_BIAS = `countrycodes=us&viewbox=${OFFICE_LNG - 0.6},${OFFICE_LAT + 0.5},${OFFICE_LNG + 0.6},${OFFICE_LAT - 0.5}&bounded=0`
 
-const LEAD_CONSENT_TEXT =
-  "I agree to receive calls and texts from QuietGreen about my quote at the number above, including by autodialer. Consent isn't required to make a purchase. Msg & data rates may apply. Reply STOP to opt out."
+
 
 /* ── Helpers ──────────────────────────────────────────── */
 function uid() { return Math.random().toString(36).slice(2, 8) }
@@ -255,7 +259,19 @@ const CheckIcon = () => (
 )
 
 /* ── Component ────────────────────────────────────────── */
-export default function MapQuoteBuilder() {
+export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuote }) {
+  const staffMode = !!staffQuote
+  const draft = staffQuote?.draft
+  const requestedServices = (staffQuote?.services ?? []).map(s => s.toLowerCase().replace(/[^a-z]/g, ''))
+  const requestedFrequency = staffQuote?.frequency?.toLowerCase().replace(/[^a-z]/g, '') as Frequency | undefined
+  const [leadToken, setLeadToken] = useState<string | undefined>(undefined)
+  const [saveMessage, setSaveMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [overridePrice, setOverridePrice] = useState<number | null>(() => draft?.overridePrice ?? null)
+  const [staffNotes, setStaffNotes] = useState(() => draft?.notes ?? '')
+  const [mapReady, setMapReady] = useState(false)
+  const restored = useRef(false)
+
   const mapDivRef        = useRef<HTMLDivElement>(null)
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
   const mapRef           = useRef<any>(null)
@@ -279,17 +295,17 @@ export default function MapQuoteBuilder() {
   const priceTitleRef   = useRef<HTMLDivElement>(null)
   const addonsRef       = useRef<HTMLDivElement>(null)
 
-  const [step,        setStep]        = useState<AppStep>('idle')
-  const [address,     setAddress]     = useState('')
+  const [step,        setStep]        = useState<AppStep>(() => draft?.sections.length ? 'done' : 'idle')
+  const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.address ?? '')
   const [error,       setError]       = useState('')
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [activeSug,   setActiveSug]   = useState(-1)
-  const [sections, setSections] = useState<Section[]>([])
+  const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
   const [lawnSqFt, setLawnSqFt] = useState<number | null>(null)
   const [animSqFt, setAnimSqFt] = useState(0)
   const [liveSqFt, setLiveSqFt] = useState(0)
-  const [freq,     setFreq]     = useState<Frequency>('biweekly')
-  const [lastMow,  setLastMow]  = useState('thisweek')
+  const [freq,     setFreq]     = useState<Frequency>(() => draft?.freq ?? (requestedFrequency && requestedFrequency in FREQ ? requestedFrequency : 'biweekly'))
+  const [lastMow,  setLastMow]  = useState(() => draft?.lastMow ?? 'thisweek')
   const [isDrawing,setIsDrawing]= useState(false)
   const [drawCount,setDrawCount]= useState(0)
   const [ptCount,  setPtCount]  = useState(0)
@@ -301,32 +317,32 @@ export default function MapQuoteBuilder() {
   const [addonDrawTarget, setAddonDrawTarget] = useState<DrawableAddonKey | null>(null)
   const [teaserTip,       setTeaserTip]       = useState<AddonKey | null>(null)
   // Other services stay tucked behind one link so the quote header stays calm
-  const [servicesOpen,    setServicesOpen]    = useState(false)
+  const [servicesOpen,    setServicesOpen]    = useState(() => requestedServices.length > 1)
 
-  const [fertAreaChoice, setFertAreaChoice] = useState<'same' | 'custom' | null>(null)
-  const [fertCustomSqFt, setFertCustomSqFt] = useState<number | null>(null)
-  const [fertIncluded,   setFertIncluded]   = useState(false)
+  const [fertAreaChoice, setFertAreaChoice] = useState<'same' | 'custom' | null>(() => draft?.fertAreaChoice ?? null)
+  const [fertCustomSqFt, setFertCustomSqFt] = useState<number | null>(() => draft?.fertCustomSqFt ?? null)
+  const [fertIncluded,   setFertIncluded]   = useState(() => draft?.fertIncluded ?? requestedServices.includes('fertilization'))
 
-  const [mulchAreaChoice, setMulchAreaChoice] = useState<'same' | 'custom' | null>(null)
-  const [mulchCustomSqFt, setMulchCustomSqFt] = useState<number | null>(null)
-  const [mulchDepthIn,    setMulchDepthIn]    = useState(MULCH_DEFAULT_DEPTH_IN)
-  const [mulchIncluded,   setMulchIncluded]   = useState(false)
+  const [mulchAreaChoice, setMulchAreaChoice] = useState<'same' | 'custom' | null>(() => draft?.mulchAreaChoice ?? null)
+  const [mulchCustomSqFt, setMulchCustomSqFt] = useState<number | null>(() => draft?.mulchCustomSqFt ?? null)
+  const [mulchDepthIn,    setMulchDepthIn]    = useState(() => draft?.mulchDepthIn ?? MULCH_DEFAULT_DEPTH_IN)
+  const [mulchIncluded,   setMulchIncluded]   = useState(() => draft?.mulchIncluded ?? requestedServices.includes('mulch'))
 
-  const [maintenanceInterested, setMaintenanceInterested] = useState(false)
+  const [maintenanceInterested, setMaintenanceInterested] = useState(() => draft?.maintenanceInterested ?? requestedServices.includes('maintenance'))
 
-  const [yardAreaChoice, setYardAreaChoice] = useState<'same' | 'custom' | null>(null)
-  const [yardCustomSqFt, setYardCustomSqFt] = useState<number | null>(null)
-  const [yardSeverity,   setYardSeverity]   = useState<ClearoutSeverity>('moderate')
-  const [yardHazards,    setYardHazards]    = useState<string[]>([])
-  const [yardIncluded,   setYardIncluded]   = useState(false)
+  const [yardAreaChoice, setYardAreaChoice] = useState<'same' | 'custom' | null>(() => draft?.yardAreaChoice ?? null)
+  const [yardCustomSqFt, setYardCustomSqFt] = useState<number | null>(() => draft?.yardCustomSqFt ?? null)
+  const [yardSeverity,   setYardSeverity]   = useState<ClearoutSeverity>(() => draft?.yardSeverity ?? 'moderate')
+  const [yardHazards,    setYardHazards]    = useState<string[]>(() => draft?.yardHazards ?? [])
+  const [yardIncluded,   setYardIncluded]   = useState(() => draft?.yardIncluded ?? requestedServices.includes('yardclearout'))
 
-  const [leadUnlocked, setLeadUnlocked] = useState(false)
+  const [leadUnlocked, setLeadUnlocked] = useState(() => !!staffQuote)
   const [leadPhone,    setLeadPhone]    = useState('')
   const [leadConsent,  setLeadConsent]  = useState(false)
   const [leadStatus,   setLeadStatus]   = useState<'idle' | 'submitting'>('idle')
   const [leadError,    setLeadError]    = useState('')
 
-  const [jobLatLng,     setJobLatLng]     = useState<{ lat: number; lng: number } | null>(null)
+  const [jobLatLng,     setJobLatLng]     = useState<{ lat: number; lng: number } | null>(() => draft?.jobLatLng ?? null)
   const [showBooking,   setShowBooking]   = useState(false)
   const [bookingName,   setBookingName]   = useState('')
   const [bookingPhone,  setBookingPhone]  = useState('')
@@ -387,6 +403,8 @@ export default function MapQuoteBuilder() {
       // Intro: hold the wide continental view for a beat so it's visible
       // loading in, then swoop into the service area.
       map.once('load', () => {
+        setMapReady(true)
+        if (staffMode) return
         setTimeout(() => {
           mapRef.current?.flyTo({ center: [OFFICE_LNG, OFFICE_LAT], zoom: 10.5, duration: 1800 })
         }, 1000)
@@ -394,7 +412,7 @@ export default function MapQuoteBuilder() {
       } catch { /* map unavailable — user sees the static fallback UI */ }
     })()
     return () => { alive = false; cancelAnimationFrame(rafRef.current); mapRef.current?.remove(); mapRef.current = null }
-  }, [])
+  }, [staffMode])
 
   /* ─── Final sq ft counter (on completion) ───────────── */
   useEffect(() => {
@@ -437,10 +455,15 @@ export default function MapQuoteBuilder() {
   /* ─── Sync sections → map ────────────────────────────── */
   useEffect(() => {
     const map = mapRef.current
-    if (!map) return
+    if (!map || !mapReady) return
+    if (!map.getSource('sections-data')) {
+      map.addSource('sections-data', { type: 'geojson', data: sectionsGeoJSON(sections) })
+      map.addLayer({ id: 'sections-fill', type: 'fill', source: 'sections-data', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.25 } })
+      map.addLayer({ id: 'sections-outline', type: 'line', source: 'sections-data', paint: { 'line-color': ['get', 'color'], 'line-width': 2.5 } })
+    }
     const src = map.getSource('sections-data') as any
     if (src) src.setData(sectionsGeoJSON(sections))
-  }, [sections])
+  }, [sections, mapReady])
 
   /* ─── Address autocomplete ──────────────────────────── */
   const fetchSuggestions = useCallback((query: string) => {
@@ -565,8 +588,8 @@ export default function MapQuoteBuilder() {
     }
     savePolygon(pts)
     setStep('done')
-    trackQuoteLawnTraced()
-  }, [stopDraw, savePolygon, addonDrawTarget, drawAddonPolygon])
+    if (!staffQuote) trackQuoteLawnTraced()
+  }, [staffQuote, stopDraw, savePolygon, addonDrawTarget, drawAddonPolygon])
 
   const startDraw = useCallback(() => {
     const map = mapRef.current
@@ -771,7 +794,7 @@ export default function MapQuoteBuilder() {
         return
       }
       setJobLatLng({ lat, lng: lon })
-      trackQuoteAddressFound()
+      if (!staffQuote) trackQuoteAddressFound()
 
       const map = mapRef.current
       // Snap out to a wide, zoomed-out view over the address first (instant,
@@ -793,7 +816,30 @@ export default function MapQuoteBuilder() {
       setError('Search failed. Please try again.')
       setStep('idle')
     }
-  }, [address, startDraw, drawParcelBoundary])
+  }, [staffQuote, address, startDraw, drawParcelBoundary])
+
+  useEffect(() => {
+    if (!staffQuote || !mapReady || restored.current) return
+    const frame = requestAnimationFrame(() => {
+    restored.current = true
+    if (draft?.jobLatLng) {
+      mapRef.current?.jumpTo({ center: [draft.jobLatLng.lng, draft.jobLatLng.lat], zoom: 18 })
+      setSections([...draft.sections])
+      setStep(draft.sections.length ? 'done' : 'idle')
+      if (draft.unfinishedPoints?.length) {
+        startDraw()
+        drawRef.current.points = draft.unfinishedPoints
+        setAddonDrawTarget(draft.unfinishedTarget ?? null)
+        setStep('editing')
+        setPtCount(draft.unfinishedPoints.length)
+        updateDrawSource()
+      }
+    } else if (draft?.address || staffQuote.address) {
+      void handleSearch()
+    }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [staffQuote, draft, mapReady, address, handleSearch, startDraw, updateDrawSource])
 
   /* ─── Cancel current trace (keep address/map position) ── */
   const cancelTrace = useCallback(() => {
@@ -815,8 +861,8 @@ export default function MapQuoteBuilder() {
     setShowManualSqFt(false)
     setManualSqFtInput('')
     setStep('done')
-    trackQuoteLawnTraced()
-  }, [manualSqFtInput, stopDraw])
+    if (!staffQuote) trackQuoteLawnTraced()
+  }, [staffQuote, manualSqFtInput, stopDraw])
 
   /* ─── Edit mode ──────────────────────────────────────── */
   const enterEditMode = useCallback(() => {
@@ -841,14 +887,14 @@ export default function MapQuoteBuilder() {
     removeAddonPolygon()
     setStep('idle'); setAddress(''); setError(''); setSuggestions([])
     setLawnSqFt(null); setAnimSqFt(0); setSections([]); setLastMow('thisweek'); setJobLatLng(null)
-    setLeadUnlocked(false); setLeadPhone(''); setLeadConsent(false); setLeadStatus('idle'); setLeadError('')
+    setLeadUnlocked(!!staffQuote); setLeadToken(undefined); if (!staffQuote) { sessionStorage.removeItem('qg_lead_token'); sessionStorage.removeItem('qg_submission_map'); sessionStorage.removeItem('qg_submission_booking') };  setLeadPhone(''); setLeadConsent(false); setLeadStatus('idle'); setLeadError('')
     setOpenAddon(null); setAddonDrawTarget(null); setTeaserTip(null)
     setFertAreaChoice(null); setFertCustomSqFt(null); setFertIncluded(false)
     setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchDepthIn(MULCH_DEFAULT_DEPTH_IN); setMulchIncluded(false)
     setMaintenanceInterested(false)
     setYardAreaChoice(null); setYardCustomSqFt(null); setYardSeverity('moderate'); setYardHazards([]); setYardIncluded(false)
     scrollToNext(addressWrapRef, 'center')
-  }, [stopDraw, removeAddonPolygon])
+  }, [staffQuote, stopDraw, removeAddonPolygon])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
   const captureMapScreenshot = useCallback((): Promise<string> => {
@@ -869,14 +915,15 @@ export default function MapQuoteBuilder() {
 
   const handleLeadSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    if (staffQuote) return
     if (!leadConsent) { setLeadError('Please check the box to consent to being contacted.'); return }
     setLeadStatus('submitting'); setLeadError('')
     const screenshot = await captureMapScreenshot()
-    const result = await submitLead({ phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined, ...getAttribution() })
-      .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setLeadUnlocked(true); setLeadStatus('idle'); trackQuoteShown() }
+    const result = await submitLead({ submission_id: submissionId('map'), phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined, ...getAttribution() })
+      .catch(() => ({ success: false, error: 'Something went wrong. Please try again.', leadToken: undefined, eventId: undefined }))
+    if (result.success) { trackWebsiteLead(result.eventId); setLeadToken(result.leadToken); if (result.leadToken) sessionStorage.setItem('qg_lead_token', result.leadToken); setLeadUnlocked(true); setLeadStatus('idle'); if (!staffQuote) trackQuoteShown() }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
-  }, [leadPhone, leadConsent, address, lawnSqFt, captureMapScreenshot])
+  }, [staffQuote, leadPhone, leadConsent, address, lawnSqFt, captureMapScreenshot])
 
   /* ─── Booking modal ─────────────────────────────────── */
   useEffect(() => {
@@ -958,8 +1005,10 @@ export default function MapQuoteBuilder() {
 
   const handleBookingSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    if (staffQuote) return
     setBookingStatus('submitting'); setBookingError('')
     const result = await submitBooking({
+      submission_id: submissionId('booking'), lead_token: leadToken ?? sessionStorage.getItem('qg_lead_token') ?? undefined,
       name: bookingName, phone: bookingPhone, email: bookingEmail,
       preferred_date: bookingDate ? bookingDate.toLocaleDateString('en-CA') : '',
       preferred_time: bookingTimeWindow, notes: bookingNotes, address,
@@ -971,9 +1020,28 @@ export default function MapQuoteBuilder() {
       addon_interest: addonInterest,
       ...getAttribution(),
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setBookingStatus('success'); trackBookingRequested() }
+    if (result.success) { setBookingStatus('success'); if (!staffQuote) trackBookingRequested() }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
-  }, [bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest])
+  }, [leadToken, staffQuote, bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest])
+
+  async function saveStaffDraft(confirmed: boolean) {
+    if (!staffQuote || saving) return
+    setSaving(true); setSaveMessage('')
+    // Preserve unfinished trace points separately from finished/priced measurements.
+    const points = drawRef.current.points
+    const savedSections = sections
+    const next: QuoteDraft = {
+      address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
+      fertAreaChoice, fertCustomSqFt, fertIncluded, mulchAreaChoice, mulchCustomSqFt, mulchDepthIn, mulchIncluded,
+      maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
+      addonInterest, overgrowthFee, calculatedPrice: ongoingPrice, calculatedFirstVisit: firstVisitPrice, overridePrice, notes: staffNotes,
+    }
+    try {
+      const result = await saveLeadQuote(staffQuote.id, next, confirmed)
+      setSaveMessage(result.error ?? (confirmed ? 'Quote confirmed. No booking or message was created.' : 'Draft saved.'))
+    } catch { setSaveMessage('Could not save. Please retry.') }
+    finally { setSaving(false) }
+  }
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
@@ -984,6 +1052,15 @@ export default function MapQuoteBuilder() {
       </div>
 
       <div className="mapq-inner">
+        {staffQuote && <div className="staff-quote-controls">
+          <h2>Prepare this quote</h2>
+          <p>Trace the lawn and edit the estimate below. Saving does not contact the customer.</p>
+          <label>Staff price override per visit ($, optional)<input type="number" min="0" value={overridePrice ?? ''} onChange={e => setOverridePrice(e.target.value === '' ? null : Number(e.target.value))} /></label>
+          <label>Quote notes<textarea value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} /></label>
+          <button disabled={saving} onClick={() => void saveStaffDraft(false)}>Save draft</button>
+          <button disabled={saving || isDrawing} onClick={() => void saveStaffDraft(true)}>Confirm quote</button>
+          <p role="status">{saveMessage}</p>
+        </div>}
         <div className="mapq-header">
           <div className="section-label" style={{ color: 'var(--green-bright)' }}>Instant Quote</div>
           <h2 className="section-h2" style={{ color: '#fff', marginBottom: 0 }}>
@@ -1007,7 +1084,7 @@ export default function MapQuoteBuilder() {
           </ul>
           {/* Obvious way out for anyone who doesn't want to draw on a map */}
           <div className="mapq-fallback">
-            <ManualQuoteForm />
+            {!staffQuote && <ManualQuoteForm />}
           </div>
           <button
             type="button"
@@ -1419,7 +1496,7 @@ export default function MapQuoteBuilder() {
                                       type="checkbox"
                                       className="mapq-consent-checkbox"
                                       checked={fertIncluded}
-                                      onChange={e => { setFertIncluded(e.target.checked); if (e.target.checked) trackAddonInterest('fertilization') }}
+                                      onChange={e => { setFertIncluded(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('fertilization') }}
                                     />
                                     <span>Include fertilization interest with my booking request</span>
                                   </label>
@@ -1476,7 +1553,7 @@ export default function MapQuoteBuilder() {
                                       type="checkbox"
                                       className="mapq-consent-checkbox"
                                       checked={mulchIncluded}
-                                      onChange={e => { setMulchIncluded(e.target.checked); if (e.target.checked) trackAddonInterest('mulch') }}
+                                      onChange={e => { setMulchIncluded(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('mulch') }}
                                     />
                                     <span>Include mulch interest with my booking request</span>
                                   </label>
@@ -1494,7 +1571,7 @@ export default function MapQuoteBuilder() {
                                   type="checkbox"
                                   className="mapq-consent-checkbox"
                                   checked={maintenanceInterested}
-                                  onChange={e => { setMaintenanceInterested(e.target.checked); if (e.target.checked) trackAddonInterest('maintenance') }}
+                                  onChange={e => { setMaintenanceInterested(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('maintenance') }}
                                 />
                                 <span>Include maintenance interest with my booking request</span>
                               </label>
@@ -1571,7 +1648,7 @@ export default function MapQuoteBuilder() {
                                       type="checkbox"
                                       className="mapq-consent-checkbox"
                                       checked={yardIncluded}
-                                      onChange={e => { setYardIncluded(e.target.checked); if (e.target.checked) trackAddonInterest('yardClearout') }}
+                                      onChange={e => { setYardIncluded(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('yardClearout') }}
                                     />
                                     <span>Include yard clearout interest with my booking request</span>
                                   </label>
@@ -1582,6 +1659,7 @@ export default function MapQuoteBuilder() {
                         </div>
 
                         <button className="mapq-cta" onClick={() => {
+                          if (staffQuote) { void saveStaffDraft(false); return }
                           const map = mapRef.current
                           if (!map) { setShowBooking(true); return }
                           map.triggerRepaint()
@@ -1595,7 +1673,7 @@ export default function MapQuoteBuilder() {
                             setShowBooking(true)
                           })
                         }}>
-                          Book this visit
+                          {staffQuote ? 'Save draft estimate' : 'Book this visit'}
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
                           </svg>

@@ -1,7 +1,9 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient as sessionClient } from '@/lib/supabase/server'
+import { requireStaff } from '@/lib/staff'
+import { isStaff, staffReturnTo } from '@/lib/staff-policy'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
@@ -28,55 +30,36 @@ function getAdmin() {
   )
 }
 
-// Simple per-process rate limiter (slows brute force; not cross-instance)
-const loginAttempts = new Map<string, { count: number; resetAt: number }>()
-const RATE_WINDOW_MS = 15 * 60 * 1000 // 15 min
-const MAX_ATTEMPTS   = 10
-
 export async function login(_: unknown, formData: FormData) {
-  const password = formData.get('password') as string
-  const key = 'admin'
-  const now = Date.now()
-  const rec = loginAttempts.get(key)
-
-  if (rec && now < rec.resetAt && rec.count >= MAX_ATTEMPTS) {
-    await new Promise(r => setTimeout(r, 2000))
-    return { error: 'Too many attempts. Try again later.' }
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const password = String(formData.get('password') ?? '')
+  if (!(process.env.STAFF_EMAILS ?? '').split(',').map(s => s.trim().toLowerCase()).includes(email)) {
+    return { error: 'Staff sign-in unavailable or credentials invalid.' }
   }
-
-  if (password !== process.env.ADMIN_PASSWORD) {
-    const entry = rec && now < rec.resetAt ? rec : { count: 0, resetAt: now + RATE_WINDOW_MS }
-    entry.count++
-    loginAttempts.set(key, entry)
-    await new Promise(r => setTimeout(r, 800)) // slow brute force
-    return { error: 'Incorrect password.' }
+  const client = await sessionClient()
+  const { data, error } = await client.auth.signInWithPassword({ email, password })
+  if (error || !isStaff(data.user)) {
+    await client.auth.signOut()
+    return { error: 'Staff sign-in unavailable or credentials invalid.' }
   }
-
-  loginAttempts.delete(key)
-  const jar = await cookies()
-  jar.set('qg_admin', process.env.ADMIN_TOKEN!, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 60 * 60 * 8, // 8 hours
-    path: '/',
-  })
-  redirect('/admin')
+  redirect(staffReturnTo(formData.get('next')))
 }
 
 export async function logout() {
-  const jar = await cookies()
-  jar.delete('qg_admin')
+  const client = await sessionClient()
+  await client.auth.signOut()
   redirect('/admin/login')
 }
 
 export async function updateNotes(id: string, notes: string) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   await getAdmin().from('bookings').update({ notes: notes.slice(0, 2000) }).eq('id', id)
   revalidatePath('/admin')
 }
 
 export async function deleteBooking(id: string) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   await getAdmin().from('bookings').delete().eq('id', id)
   revalidatePath('/admin')
@@ -86,6 +69,7 @@ export async function deleteBooking(id: string) {
 }
 
 export async function updateCompletedJob(id: string, data: { amount_charged: number; payment_method: string }) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   if (!Number.isFinite(data.amount_charged) || data.amount_charged < 0) return
   await getAdmin().from('bookings').update({
@@ -97,6 +81,7 @@ export async function updateCompletedJob(id: string, data: { amount_charged: num
 }
 
 export async function setOneTime(id: string, oneTime: boolean) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   await getAdmin().from('bookings').update({ one_time: oneTime }).eq('id', id)
   revalidatePath('/admin')
@@ -104,6 +89,7 @@ export async function setOneTime(id: string, oneTime: boolean) {
 }
 
 export async function updateServiceDetails(id: string, data: { frequency: string; price_per_visit: number }) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   const frequency = data.frequency.trim()
   if (!frequency || !Number.isFinite(data.price_per_visit) || data.price_per_visit < 0) return
@@ -123,6 +109,7 @@ export async function updateServiceDetails(id: string, data: { frequency: string
 // booking off from the old tenant's history — the old tenant's past visits
 // stay under their number, future ones follow the new contact.
 export async function updateContactDetails(id: string, data: { name: string; phone: string; email: string }) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
   const name  = data.name.trim()
   const phone = data.phone.trim()
@@ -139,6 +126,7 @@ export async function updateContactDetails(id: string, data: { name: string; pho
 }
 
 export async function sendReminderEmail(id: string): Promise<{ success: boolean; error?: string }> {
+  await requireStaff()
   if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
@@ -190,6 +178,7 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
 }
 
 export async function updateStatus(id: string, status: string, confirmedDate?: string, confirmedTime?: string) {
+  await requireStaff()
   if (!UUID_RE.test(id) || !ALLOWED_STATUSES.has(status)) return
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
@@ -279,6 +268,7 @@ export async function markComplete(
   id: string,
   data: { completed_at: string; amount_charged: number; payment_method: string; one_time?: boolean; next_visit_date?: string }
 ) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
@@ -322,6 +312,14 @@ export async function markComplete(
   }).eq('id', id)
 
   await db.from('bookings').insert({
+    lead_id: booking.lead_id,
+    attribution: booking.attribution,
+    gclid: booking.gclid,
+    utm_source: booking.utm_source,
+    utm_medium: booking.utm_medium,
+    utm_campaign: booking.utm_campaign,
+    utm_term: booking.utm_term,
+    utm_content: booking.utm_content,
     name: booking.name,
     phone: booking.phone,
     email: booking.email,
@@ -345,6 +343,7 @@ export async function markComplete(
 }
 
 export async function getBookings() {
+  await requireStaff()
   const { data } = await getAdmin()
     .from('bookings')
     .select('*')
@@ -353,6 +352,7 @@ export async function getBookings() {
 }
 
 export async function getLeads() {
+  await requireStaff()
   const { data } = await getAdmin()
     .from('leads')
     .select('*')
@@ -361,9 +361,12 @@ export async function getLeads() {
 }
 
 export async function deleteLead(id: string) {
-  if (!UUID_RE.test(id)) return
-  await getAdmin().from('leads').delete().eq('id', id)
+  await requireStaff()
+  if (!UUID_RE.test(id)) return { error: 'Invalid lead.' }
+  const { error } = await getAdmin().from('leads').delete().eq('id', id)
+  if (error) return { error: error.code === '23503' ? 'This lead has intake or booking history and must be retained.' : 'Could not delete lead. Please retry.' }
   revalidatePath('/admin/leads')
+  return { success: true }
 }
 
 export async function createPaymentLink(
@@ -372,6 +375,7 @@ export async function createPaymentLink(
   customerName: string,
   address: string,
 ): Promise<{ url: string } | { error: string }> {
+  await requireStaff()
   if (!UUID_RE.test(bookingId)) return { error: 'Invalid booking ID' }
   if (!process.env.STRIPE_SECRET_KEY) return { error: 'Stripe not configured' }
 
@@ -414,6 +418,7 @@ export type ExtraCharge = {
 }
 
 export async function getExtraCharges(): Promise<ExtraCharge[]> {
+  await requireStaff()
   const { data } = await getAdmin()
     .from('extra_charges')
     .select('id, charged_on, client_name, phone, description, amount, payment_method')
@@ -438,6 +443,7 @@ function cleanCharge(data: { charged_on: string; client_name: string; phone?: st
 }
 
 export async function addExtraCharge(data: { charged_on: string; client_name: string; phone?: string | null; description: string; amount: number; payment_method?: string | null }) {
+  await requireStaff()
   const row = cleanCharge(data)
   if (!row) return { error: 'Client, description, date and amount are required.' }
   const { error } = await getAdmin().from('extra_charges').insert(row)
@@ -447,6 +453,7 @@ export async function addExtraCharge(data: { charged_on: string; client_name: st
 }
 
 export async function updateExtraCharge(id: string, data: { charged_on: string; client_name: string; phone?: string | null; description: string; amount: number; payment_method?: string | null }) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   const row = cleanCharge(data)
   if (!row) return
@@ -455,6 +462,7 @@ export async function updateExtraCharge(id: string, data: { charged_on: string; 
 }
 
 export async function deleteExtraCharge(id: string) {
+  await requireStaff()
   if (!UUID_RE.test(id)) return
   await getAdmin().from('extra_charges').delete().eq('id', id)
   revalidatePath('/admin/revenue')

@@ -101,12 +101,12 @@ export default async function AdminPage({
         <div className="admin-stat-divider" />
         <a href="/admin/revenue" className="admin-stat admin-stat-link">
           <span className="admin-stat-val admin-stat-money">${totalFirstVisit.toLocaleString()}</span>
-          <span className="admin-stat-label">First-visit rev ↗</span>
+          <span className="admin-stat-label">Scheduled estimate ↗</span>
         </a>
         <div className="admin-stat-divider" />
         <a href="/admin/revenue" className="admin-stat admin-stat-link">
           <span className="admin-stat-val admin-stat-money">${monthlyRecurring.toLocaleString()}</span>
-          <span className="admin-stat-label">Monthly rate ↗</span>
+          <span className="admin-stat-label">Scheduled visit rate ↗</span>
         </a>
       </div>
 
