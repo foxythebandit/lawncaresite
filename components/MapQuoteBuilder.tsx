@@ -51,6 +51,11 @@ const LAST_MOW_WEEKS: Record<string, number> = {
 // 807 E 47th St, Austin TX
 const OFFICE_LAT = 30.3049
 const OFFICE_LNG = -97.7184
+// Addresses farther than this get an "outside our area" message instead of a quote
+const SERVICE_RADIUS_MILES = 30
+// Bias geocoding toward Austin (lon/lat box ~35 mi around the office) so vague
+// entries like "123 Main St" resolve locally instead of in another state
+const GEOCODE_BIAS = `countrycodes=us&viewbox=${OFFICE_LNG - 0.6},${OFFICE_LAT + 0.5},${OFFICE_LNG + 0.6},${OFFICE_LAT - 0.5}&bounded=0`
 
 const LEAD_CONSENT_TEXT =
   "I agree to receive calls and texts from QuietGreen about my quote at the number above, including by autodialer. Consent isn't required to make a purchase. Msg & data rates may apply. Reply STOP to opt out."
@@ -384,7 +389,7 @@ export default function MapQuoteBuilder() {
       suggestAbortRef.current = new AbortController()
       try {
         const res  = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=0&countrycodes=us`,
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=0&${GEOCODE_BIAS}`,
           { headers: { 'Accept-Language': 'en' }, signal: suggestAbortRef.current.signal }
         )
         const data = await res.json()
@@ -679,6 +684,9 @@ export default function MapQuoteBuilder() {
     ev?.preventDefault()
     if (!address.trim()) { setError('Enter your address to find your property.'); return }
     if (!mapRef.current) return
+    // Cancel any in-flight autocomplete so it can't reopen the dropdown over the result
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
+    suggestAbortRef.current?.abort()
     setSuggestions([])
     setError('')
     setStep('searching')
@@ -687,10 +695,19 @@ export default function MapQuoteBuilder() {
     // after appears to cancel a scrollIntoView queued in the same handler).
     requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
     try {
-      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`, { headers: { 'Accept-Language': 'en' } })
+      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&${GEOCODE_BIAS}`, { headers: { 'Accept-Language': 'en' } })
       const data = await res.json()
       if (!data.length) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
       const lat = +data[0].lat, lon = +data[0].lon
+
+      // Outside the service area: stop here rather than quote a huge travel fee
+      const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, lat, lon)
+      if (miles > SERVICE_RADIUS_MILES) {
+        setError(`That address is about ${Math.round(miles).toLocaleString()} miles from us — we serve Austin and up to ${SERVICE_RADIUS_MILES} miles out. Double-check the address (add city or zip), or call (682) 352-8260.`)
+        setStep('idle')
+        scrollToNext(addressWrapRef, 'center')
+        return
+      }
       setJobLatLng({ lat, lng: lon })
       trackQuoteAddressFound()
 
@@ -899,8 +916,10 @@ export default function MapQuoteBuilder() {
   /* ─── JSX ────────────────────────────────────────────── */
   return (
     <section className="mapq-section" id="map-quote">
-      <div className="mapq-blob mapq-blob-a" />
-      <div className="mapq-blob mapq-blob-b" />
+      <div className="mapq-blobs" aria-hidden="true">
+        <div className="mapq-blob mapq-blob-a" />
+        <div className="mapq-blob mapq-blob-b" />
+      </div>
 
       <div className="mapq-inner">
         <div className="mapq-header">
@@ -1180,26 +1199,30 @@ export default function MapQuoteBuilder() {
                       </div>
                     ) : (
                       <>
-                        <div className="mapq-price-total">
-                          <div>
-                            <div className="mapq-price-val">${ongoingPrice}</div>
-                            <div className="mapq-price-per">per visit · fixed</div>
+                        {/* Headline is what they'll actually pay first — the discounted first visit */}
+                        <div className="mapq-price-hero">
+                          <div className="mapq-price-hero-top">
+                            <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
+                            <span className="mapq-price-hero-label">Your first visit</span>
                           </div>
-                          <div className="mapq-eco-badge">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
-                              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
-                            </svg>
-                            Zero emissions
+                          <div className="mapq-price-hero-row">
+                            <span className="mapq-price-val">${firstVisitPrice}</span>
+                            <span className="mapq-price-hero-was">${firstVisitFullPrice}</span>
                           </div>
-                        </div>
-
-                        <div className="mapq-first-visit-promo">
-                          <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
-                          <span className="mapq-first-visit-promo-text">
-                            First visit <strong>${firstVisitPrice}</strong>
-                            <span className="mapq-first-visit-promo-was">${firstVisitFullPrice}</span>
-                          </span>
+                          <div className="mapq-price-hero-foot">
+                            <span className="mapq-price-hero-then">
+                              {freq === 'onetime'
+                                ? 'One-time visit · no commitment'
+                                : <>Then <strong>${ongoingPrice}</strong> per visit · fixed price</>}
+                            </span>
+                            <span className="mapq-eco-badge">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
+                                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+                              </svg>
+                              Zero emissions
+                            </span>
+                          </div>
                         </div>
 
                         <div className="mapq-price-rows">

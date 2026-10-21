@@ -232,22 +232,98 @@ nav {
 
 /* ── TRUST BAR ── */
 .trust-bar {
-  background: var(--green-pale);
-  border-top: 1px solid var(--green-light);
-  border-bottom: 1px solid var(--green-light);
+  /* dark so it reads as the top of the quote section, not a separate band */
+  background: var(--green-deep);
+  border-bottom: 1px solid rgba(255,255,255,.06);
   padding: 20px 8vw;
-  display: flex; align-items: center; justify-content: center; gap: 48px;
+  display: flex; align-items: center; justify-content: center; gap: 28px;
   flex-wrap: wrap;
   position: relative;
   z-index: 0;
 }
-.trust-item {
+.trust-cell { display: flex; align-items: center; gap: 28px; }
+.trust-item { position: relative; }
+.trust-trigger {
   display: flex; align-items: center; gap: 10px;
-  font-size: 13px; font-weight: 500; color: var(--green-mid);
-  letter-spacing: .03em; text-transform: uppercase;
+  font-family: inherit; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.78);
+  letter-spacing: .03em; text-transform: uppercase; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 6px 10px; margin: -6px -10px;
+  border-radius: 100px;
+  transition: background .2s, color .2s;
 }
-.trust-item svg { width: 18px; height: 18px; color: var(--green-bright); }
-.trust-divider { width: 1px; height: 24px; background: var(--green-light); }
+.trust-item.open .trust-trigger { background: rgba(255,255,255,.1); color: #fff; }
+@media (hover: hover) {
+  .trust-trigger:hover { background: rgba(255,255,255,.1); color: #fff; }
+}
+.trust-rating { text-decoration: none; color: #fff; text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 600; }
+.trust-stars { display: inline-flex; gap: 2px; }
+.trust-rating .trust-stars svg { width: 14px; height: 14px; color: #ffd166; }
+.trust-rating-count { font-weight: 400; color: rgba(255,255,255,.55); }
+.trust-trigger:focus-visible { outline: 2px solid var(--green-bright); outline-offset: 2px; }
+.trust-item svg { width: 18px; height: 18px; color: var(--green-bright); flex-shrink: 0; }
+.trust-divider { width: 1px; height: 24px; background: rgba(255,255,255,.12); }
+
+/* Explainer card: hover/focus on desktop, tap anywhere */
+.trust-bar.has-open,
+.trust-bar:has(.trust-trigger:focus-visible) { z-index: 5; }
+@media (hover: hover) { .trust-bar:has(.trust-item:hover) { z-index: 5; } }
+.trust-card {
+  position: absolute; top: calc(100% + 14px); left: 50%;
+  width: 270px;
+  background: var(--green-pale); color: var(--green-deep);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.28);
+  text-align: left;
+  opacity: 0; visibility: hidden;
+  transform: translate(-50%, 6px);
+  transition: opacity .18s ease, transform .18s ease, visibility .18s;
+  z-index: 5;
+}
+/* bridge the gap so the pointer can travel from the label into the card */
+.trust-card::before { content: ''; position: absolute; left: 0; right: 0; top: -16px; height: 16px; }
+.trust-card::after {
+  content: ''; position: absolute; top: -6px; left: 50%;
+  width: 12px; height: 12px; margin-left: -6px;
+  background: var(--green-pale); transform: rotate(45deg); border-radius: 2px;
+}
+.trust-item.open .trust-card,
+.trust-item:has(.trust-trigger:focus-visible) .trust-card {
+  opacity: 1; visibility: visible; transform: translate(-50%, 0);
+}
+@media (hover: hover) {
+  .trust-item:hover .trust-card { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+}
+.trust-card-title {
+  font-family: var(--font-display); font-size: 17px; line-height: 1.25;
+  margin: 0 0 6px;
+}
+.trust-card-body { font-size: 13px; line-height: 1.5; color: rgba(26,58,42,.75); margin: 0; }
+.trust-card-cta {
+  display: inline-block; margin-top: 10px;
+  font-size: 13px; font-weight: 600; color: var(--green-mid); text-decoration: none;
+}
+.trust-card-cta:hover { text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) { .trust-card { transition: none; } }
+/* Below ~1100px all four won't fit on one line: rating gets its own row and the
+   three promises sit in a row below (never a lone wrapped item) */
+@media (max-width: 1100px) {
+  /* ── Trust bar: rating on its own row, the three promises in a row below ── */
+  .trust-bar {
+    display: grid; grid-template-columns: repeat(3, max-content);
+    justify-content: center; gap: 14px 36px;
+    padding: 16px 6vw;
+  }
+  .trust-bar > .trust-cell:first-child { grid-column: 1 / -1; justify-self: center; }
+  .trust-divider { display: none; }
+  /* Two rows: a card hanging under one item would cover the item below it, so
+     cards open below the whole bar, and only on click/tap (hover just highlights) */
+  .trust-item { position: static; }
+  .trust-card { top: calc(100% + 10px); width: min(340px, 88vw); }
+  .trust-card::after { display: none; }
+  .trust-item:hover:not(.open) .trust-card { opacity: 0; visibility: hidden; }
+}
 
 /* ── SECTION BASE ── */
 section { padding: 100px 8vw; }
@@ -875,10 +951,11 @@ footer {
   background: var(--green-deep);
   padding: 100px 0 0;
   position: relative;
-  /* clip-path, not overflow:hidden — hidden makes a scroll container and
-     breaks the sticky map (and the build rewrites overflow:clip to hidden) */
-  clip-path: inset(0);
 }
+/* Glows live in their own clipped layer: overflow:hidden on the section itself
+   would break the sticky map, and clip-path only hides paint — phones still
+   widen the page to fit the 600px glow. */
+.mapq-blobs { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .mapq-blob {
   position: absolute; border-radius: 50%; pointer-events: none;
   filter: blur(80px);
@@ -1196,12 +1273,13 @@ footer {
 .mapq-freq-btn:hover { border-color: rgba(82,183,136,.4); }
 .mapq-freq-btn.selected {
   border-color: var(--green-bright);
-  background: rgba(82,183,136,.15);
+  background: var(--green-bright);
 }
 .mapq-freq-name {
   font-size: 13px; font-weight: 500; color: rgba(255,255,255,.8);
 }
-.mapq-freq-btn.selected .mapq-freq-name { color: var(--green-bright); }
+.mapq-freq-btn.selected .mapq-freq-name { color: var(--green-deep); font-weight: 600; }
+.mapq-freq-btn.selected .mapq-freq-sub { color: rgba(26,58,42,.7); }
 .mapq-freq-sub {
   font-size: 11px; color: rgba(255,255,255,.35);
 }
@@ -1210,6 +1288,8 @@ footer {
   background: var(--green-bright); color: var(--green-deep);
   font-size: 10px; font-weight: 700;
   padding: 2px 6px; border-radius: 100px;
+  /* dark ring keeps the lime tag distinct when its button is lime too */
+  box-shadow: 0 0 0 2px var(--green-deep);
 }
 
 .mapq-price-rows {
@@ -1224,21 +1304,34 @@ footer {
 }
 .mapq-price-discount { color: rgba(82,183,136,.8); }
 
-.mapq-price-total {
-  display: flex; justify-content: space-between; align-items: flex-end;
-  background: rgba(82,183,136,.1);
-  border: 1px solid rgba(82,183,136,.2);
-  border-radius: 12px;
-  padding: 16px 18px;
+/* Headline price card: the discounted first visit, with the ongoing rate under it */
+.mapq-price-hero {
+  background: var(--green-bright); color: var(--green-deep);
+  border-radius: 16px;
+  padding: 20px 22px;
   margin-bottom: 20px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.25);
 }
+.mapq-price-hero-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.mapq-price-hero-label { font-size: 14px; font-weight: 600; }
+.mapq-price-hero-row { display: flex; align-items: baseline; gap: 12px; }
 .mapq-price-val {
   font-family: var(--font-display);
-  font-size: 48px; color: #fff; line-height: 1;
+  font-size: 56px; color: var(--green-deep); line-height: 1;
 }
-.mapq-price-per {
-  font-size: 12px; color: rgba(255,255,255,.4);
-  margin-top: 3px;
+.mapq-price-hero-was {
+  font-size: 20px; text-decoration: line-through; opacity: .5;
+}
+.mapq-price-hero-foot {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px 16px; margin-top: 12px;
+}
+.mapq-price-hero-then { font-size: 14px; }
+.mapq-price-hero-then strong { font-size: 16px; }
+.mapq-price-hero .mapq-eco-badge {
+  color: var(--green-deep);
+  background: rgba(255,255,255,.22);
+  border-color: rgba(27,67,50,.18);
 }
 .mapq-eco-badge {
   display: flex; align-items: center; gap: 5px;
@@ -1283,7 +1376,8 @@ footer {
 
 /* Services teaser (header) */
 .mapq-services-teaser {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 8px 10px;
   margin-top: 14px;
 }
 .mapq-services-teaser-label {
@@ -1310,6 +1404,7 @@ footer {
   width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
 }
 .mapq-services-teaser-sub {
+  flex-basis: 100%; text-align: center;
   font-size: 12px; color: rgba(255,255,255,.4);
 }
 
@@ -1363,16 +1458,19 @@ footer {
   transition: border-color .2s, background .2s;
 }
 .mapq-addon-chip:hover { border-color: rgba(255,255,255,.3); }
-.mapq-addon-chip.open {
-  border-color: rgba(255,255,255,.4);
-  background: rgba(255,255,255,.1);
-}
+.mapq-addon-chip.open,
 .mapq-addon-chip.included {
   border-color: var(--green-bright);
-  background: rgba(82,183,136,.15);
-  color: var(--green-bright);
+  background: var(--green-bright);
+  color: var(--green-deep);
+  font-weight: 600;
 }
 .mapq-addon-chip svg { color: var(--green-bright); flex-shrink: 0; }
+.mapq-addon-chip.open svg,
+.mapq-addon-chip.included svg { color: var(--green-deep); }
+/* ring keeps the color dot visible on the lime chip */
+.mapq-addon-chip.open .mapq-addon-chip-dot,
+.mapq-addon-chip.included .mapq-addon-chip-dot { box-shadow: 0 0 0 1.5px var(--green-deep); }
 .mapq-addon-chip-dot {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 }
@@ -1389,7 +1487,7 @@ footer {
   margin: 0 0 12px; line-height: 1.5;
 }
 .mapq-addon-area-choice {
-  display: flex; gap: 8px;
+  display: flex; flex-wrap: wrap; gap: 8px;
 }
 .mapq-addon-area-summary {
   display: flex; align-items: center; justify-content: space-between;
@@ -1532,12 +1630,13 @@ footer {
 .mapq-cond-btn:hover { border-color: rgba(82,183,136,.4); }
 .mapq-cond-btn.selected {
   border-color: var(--green-bright);
-  background: rgba(82,183,136,.15);
+  background: var(--green-bright);
 }
 .mapq-cond-name {
   font-size: 12px; font-weight: 500; color: rgba(255,255,255,.75);
 }
-.mapq-cond-btn.selected .mapq-cond-name { color: var(--green-bright); }
+.mapq-cond-btn.selected .mapq-cond-name { color: var(--green-deep); font-weight: 600; }
+.mapq-cond-btn.selected .mapq-cond-sub { color: rgba(26,58,42,.7); }
 .mapq-cond-sub {
   font-size: 10px; color: rgba(255,255,255,.3);
 }
@@ -1774,13 +1873,9 @@ footer {
 .mapq-grid-compact .mapq-panel { max-width: 720px; animation: fadeUp .4s ease both; }
 .mapq-grid-compact .mapq-step-title { font-family: var(--font-display); font-size: 28px; }
 .mapq-grid-compact .mapq-quote-card { padding: 32px; }
-.mapq-grid-compact .mapq-price-total {
-  padding: 26px 28px;
-  background: rgba(82,183,136,.16);
-  border-color: rgba(82,183,136,.4);
-}
-.mapq-grid-compact .mapq-price-val { font-size: 76px; }
-.mapq-grid-compact .mapq-price-per { font-size: 14px; }
+.mapq-grid-compact .mapq-price-hero { padding: 26px 28px; }
+.mapq-grid-compact .mapq-price-val { font-size: 84px; }
+.mapq-grid-compact .mapq-price-hero-was { font-size: 26px; }
 
 .mapq-dev-skip {
   display: block; margin: 10px auto 0;
@@ -2417,6 +2512,11 @@ footer {
   /* ── Layout stacking ── */
   .hero { grid-template-columns: 1fr; min-height: 0; overflow: hidden; }
   .hero-right { min-height: 0; }
+  /* Short, wide hero (tablets / narrow windows): the centered crop cut off the
+     mower at the bottom. Grow the hero a little and size the illustration so
+     only ~60px of drawing is trimmed below — max() keeps phones unchanged. */
+  .hero { min-height: 56vw; }
+  .hero-illustration { top: auto; height: max(100%, calc(87.5vw - 120px)); }
   .why-grid, .testi-grid, .steps { grid-template-columns: 1fr; }
   .founder-grid { grid-template-columns: 1fr; gap: 40px; }
   .founder-photo-frame { max-width: 320px; margin: 0 auto; }
@@ -2425,10 +2525,11 @@ footer {
   .how-two-col { grid-template-columns: 1fr; gap: 48px; }
   .faq-grid { grid-template-columns: 1fr; gap: 32px; }
   .faq-heading-col { position: static; }
-  .mapq-grid { grid-template-columns: 1fr; }
+  /* minmax(0,…) so wide content (e.g. add-on buttons) can't push the column past the screen */
+  .mapq-grid { grid-template-columns: minmax(0, 1fr); }
   .mapq-map-wrap { position: static; }
   .mapq-map-border { height: 380px; }
-  .mapq-grid-compact { grid-template-columns: 1fr; }
+  .mapq-grid-compact { grid-template-columns: minmax(0, 1fr); }
   /* price stays where the phone was entered; the yard preview follows it */
   .mapq-grid-compact .mapq-map-wrap { order: 1; }
   .mapq-grid-compact .mapq-map-border { height: 180px; }
@@ -2475,9 +2576,6 @@ footer {
   .card-1 { top: auto; bottom: 10%; right: 4%; }
   .card-2 { top: auto; bottom: calc(10% + 110px); right: 4%; }
 
-  /* ── Trust bar ── */
-  .trust-bar { gap: 20px; padding: 14px 6vw; }
-  .trust-divider { display: none; }
 
   /* ── Noise chart ── */
   .noise-bars { margin-top: 28px; max-width: 100%; }
@@ -2594,6 +2692,15 @@ footer {
 .admin-extra-error { grid-column: 1 / -1; font-size: 12px; color: #b03030; }
 .admin-extra-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
 @media (max-width: 600px) {
+  .trust-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 12px; padding: 14px 5vw; }
+  .trust-trigger:not(.trust-rating) { flex-direction: column; text-align: center; }
+  .trust-trigger { font-size: 11px; gap: 8px; line-height: 1.3; }
+  .trust-item { position: static; }
+  .trust-card { left: 5vw; right: 5vw; width: auto; transform: translateY(6px); top: calc(100% + 6px); }
+  .trust-item.open .trust-card,
+  .trust-item:hover .trust-card,
+  .trust-item:has(.trust-trigger:focus-visible) .trust-card { transform: none; }
+  .trust-card::after { display: none; }
   .admin-extra-form { grid-template-columns: 1fr 1fr; }
 }
 
