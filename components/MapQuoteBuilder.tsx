@@ -65,11 +65,25 @@ const LEAD_CONSENT_TEXT =
 /* ── Helpers ──────────────────────────────────────────── */
 function uid() { return Math.random().toString(36).slice(2, 8) }
 
+/* Mowing: flat rate for small lawns, then a per-sq-ft rate that tapers as
+   lawns get bigger. Each tier starts where the last one ended, so there
+   are no price jumps at the breakpoints. */
+const MOW_BASE_PRICE = 75
+const MOW_BASE_SQFT  = 2250
+const MOW_TIERS: { upTo: number; rate: number }[] = [
+  { upTo: 5000,     rate: 0.0198 },
+  { upTo: 12000,    rate: 0.0143 },
+  { upTo: Infinity, rate: 0.0099 },
+]
+
 function calcPrice(sqFt: number): number {
-  if (sqFt <= 2500)  return 65
-  if (sqFt <= 5000)  return 65  + Math.round((sqFt - 2500)  * 0.018)
-  if (sqFt <= 12000) return 100 + Math.round((sqFt - 5000)  * 0.013)
-  return                      191 + Math.round((sqFt - 12000) * 0.009)
+  let price = MOW_BASE_PRICE, from = MOW_BASE_SQFT
+  for (const { upTo, rate } of MOW_TIERS) {
+    if (sqFt <= from) break
+    price += (Math.min(sqFt, upTo) - from) * rate
+    from = upTo
+  }
+  return Math.round(price)
 }
 
 /* ── Sharper Esri imagery ─────────────────────────────── */
