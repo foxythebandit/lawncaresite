@@ -9,6 +9,13 @@ const MOWER_Y  = 535
 const POOL     = 12
 const FIRE_DIST = 16
 
+// Short silent loops cut from the full videos, so visitors see there's footage
+// without hunting for the hotspot labels. Tapping one opens the full video.
+const PREVIEWS: { media: HeroMedia; cls: string; src: string; poster: string; tag?: string; title: string; sub: string }[] = [
+  { media: 'sleep',  cls: 'card-1', src: '/videos/530am-mow-preview.mp4',   poster: '/videos/530am-mow-preview.jpg',   tag: '60 dB', title: '5:30 AM mow', sub: 'They slept through it' },
+  { media: 'garden', cls: 'card-2', src: '/videos/garden-beds-preview.mp4', poster: '/videos/garden-beds-preview.jpg',              title: 'Beds & bushes', sub: 'More than mowing' },
+]
+
 const CLIP_SHAPES = [
   { x2:  3, y2: 7 }, { x2: -2, y2: 6 }, { x2:  4, y2: 5 },
   { x2: -3, y2: 8 }, { x2:  2, y2: 6 }, { x2: -4, y2: 5 },
@@ -19,6 +26,12 @@ const CLIP_SHAPES = [
 export default function Hero() {
   const [media, setMedia] = useState<HeroMedia | null>(null)
   const closeMedia        = useCallback(() => setMedia(null), [])
+
+  // Respect reduced motion: show the preview's first frame instead of looping
+  useEffect(() => {
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    document.querySelectorAll<HTMLVideoElement>('.hero-vid-card video').forEach(v => v.pause())
+  }, [])
   const mowerHoverRef     = useRef(false)
   const mowerLabelRef     = useRef<SVGGElement>(null)
   const mowerRef      = useRef<SVGGElement>(null)
@@ -425,16 +438,16 @@ export default function Hero() {
           <g ref={pGroupRef} />
         </svg>
 
-        <div className="stat-card card-1">
-          <div className="stat-card-val">60<span>dB</span></div>
-          <div className="stat-card-label">Library-quiet operation</div>
-          <div className="stat-card-short">quiet</div>
-        </div>
-        <div className="stat-card card-2">
-          <div className="stat-card-val">0<span>g</span></div>
-          <div className="stat-card-label">Zero emissions, zero fumes</div>
-          <div className="stat-card-short">emissions</div>
-        </div>
+        {PREVIEWS.map(p => (
+          <button key={p.media} type="button" className={`hero-vid-card ${p.cls}`} onClick={() => setMedia(p.media)} aria-label={`Play video: ${p.title} — ${p.sub}`}>
+            <video src={p.src} poster={p.poster} autoPlay muted loop playsInline preload="auto" aria-hidden="true" />
+            {p.tag && <span className="hero-vid-tag">{p.tag}</span>}
+            <span className="hero-vid-play" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            </span>
+            <span className="hero-vid-caption"><strong>{p.title}</strong>{p.sub}</span>
+          </button>
+        ))}
       </div>
 
       <HeroMediaModal media={media} onClose={closeMedia} />
