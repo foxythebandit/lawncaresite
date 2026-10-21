@@ -154,6 +154,15 @@ function easeInOut(t: number): number {
 }
 
 /** Flat-earth shoelace area in sq ft */
+// Carry the visitor to the next thing they need to do. Deferred a frame so it
+// runs after the state change that reveals the target has rendered.
+function scrollToNext(ref: React.RefObject<HTMLElement | null>, block: ScrollLogicalPosition = 'start') {
+  requestAnimationFrame(() => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ref.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block })
+  })
+}
+
 function polygonSqFt(coords: [number, number][]): number {
   if (coords.length < 3) return 0
   const cosLat = Math.cos(coords[0][1] * Math.PI / 180)
@@ -206,6 +215,10 @@ export default function MapQuoteBuilder() {
   const suggestAbortRef = useRef<AbortController | null>(null)
   const addressWrapRef  = useRef<HTMLDivElement>(null)
   const teaserWrapRef   = useRef<HTMLDivElement>(null)
+  const leadGateRef     = useRef<HTMLDivElement>(null)
+  const leadPhoneRef    = useRef<HTMLInputElement>(null)
+  const priceTitleRef   = useRef<HTMLDivElement>(null)
+  const addonsRef       = useRef<HTMLDivElement>(null)
 
   const [step,        setStep]        = useState<AppStep>('idle')
   const [address,     setAddress]     = useState('')
@@ -297,6 +310,12 @@ export default function MapQuoteBuilder() {
       })
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
       mapRef.current = map
+
+      // MapLibre only tracks window resizes; the container also shrinks to a
+      // preview once the price is unlocked (see `compact`).
+      const ro = new ResizeObserver(() => mapRef.current?.resize())
+      ro.observe(mapDivRef.current)
+      map.once('remove', () => ro.disconnect())
 
       // Intro: hold the wide continental view for a beat so it's visible
       // loading in, then swoop into the service area.
@@ -474,6 +493,7 @@ export default function MapQuoteBuilder() {
       else if (addonDrawTarget === 'mulch')     { setMulchCustomSqFt(sqFt); setMulchAreaChoice('custom') }
       else                                      { setYardCustomSqFt(sqFt); setYardAreaChoice('custom') }
       setAddonDrawTarget(null)
+      scrollToNext(addonsRef, 'center')
       return
     }
     savePolygon(pts)
@@ -748,6 +768,7 @@ export default function MapQuoteBuilder() {
     setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchDepthIn(MULCH_DEFAULT_DEPTH_IN); setMulchIncluded(false)
     setMaintenanceInterested(false)
     setYardAreaChoice(null); setYardCustomSqFt(null); setYardSeverity('moderate'); setYardHazards([]); setYardIncluded(false)
+    scrollToNext(addressWrapRef, 'center')
   }, [stopDraw, removeAddonPolygon])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
@@ -798,6 +819,32 @@ export default function MapQuoteBuilder() {
   const firstVisitFullPrice = ongoingPrice + overgrowthFee
   const firstVisitPrice = Math.round(firstVisitFullPrice * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
   const isDone         = step === 'done' || step === 'editing'
+  // Once the price is unlocked the map shrinks to a preview and the quote takes over
+  const compact        = leadUnlocked && step === 'done' && !isDrawing
+
+  // Lawn finished → phone box; price unlocked (or extra area added) → price
+  useEffect(() => {
+    if (step !== 'done') return
+    if (leadUnlocked) { scrollToNext(priceTitleRef); return }
+    scrollToNext(leadGateRef, 'center')
+    // Only jump into the field with a mouse — on phones it would pop the keyboard over the map
+    if (window.matchMedia('(pointer: fine)').matches)
+      setTimeout(() => leadPhoneRef.current?.focus({ preventScroll: true }), 450)
+  }, [step, leadUnlocked])
+
+  // Re-frame the traced lawn whenever the map changes size between full and preview
+  useEffect(() => {
+    const map = mapRef.current
+    const pts = sections.flatMap(s => s.coords ?? [])
+    if (!map || pts.length < 3) return
+    const lngs = pts.map(p => p[0]), lats = pts.map(p => p[1])
+    const t = setTimeout(() => {
+      map.resize()
+      map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 28, duration: 600, maxZoom: 20 })
+    }, 380)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compact])
 
   /* ─── Add-on pricing ─────────────────────────────────── */
   const fertSqFt   = fertAreaChoice === 'same' ? lawnSqFt : fertAreaChoice === 'custom' ? fertCustomSqFt : null
@@ -889,7 +936,7 @@ export default function MapQuoteBuilder() {
           </div>
         </div>
 
-        <div className="mapq-grid">
+        <div className={`mapq-grid${compact ? ' mapq-grid-compact' : ''}`}>
           {/* ── Left panel ── */}
           <div className="mapq-panel">
 
@@ -1044,13 +1091,13 @@ export default function MapQuoteBuilder() {
                   : '3'}
               </div>
               <div className="mapq-step-body">
-                <div className={`mapq-step-title ${isDone ? 'active' : ''}`}>Your instant quote</div>
+                <div ref={priceTitleRef} className={`mapq-step-title ${isDone ? 'active' : ''}`}>{compact ? 'Your price' : 'Your instant quote'}</div>
 
                 {isDone && lawnSqFt && (
                   <div className="mapq-quote-card">
 
-                    {/* Area summary */}
-                    <div className="mapq-sqft-row">
+                    {/* Area summary (moves under the map preview when compact) */}
+                    {!compact && <div className="mapq-sqft-row">
                       <div>
                         <div className="mapq-sqft-num">{animSqFt.toLocaleString()}</div>
                         <div className="mapq-sqft-label">sq ft of lawn</div>
@@ -1059,10 +1106,10 @@ export default function MapQuoteBuilder() {
                         <span className="mapq-pulse-dot" />
                         Traced
                       </div>
-                    </div>
+                    </div>}
 
                     {/* Add zone button */}
-                    {step === 'done' && (
+                    {step === 'done' && !compact && (
                       <button className="mapq-btn-ghost" onClick={enterEditMode} style={{ width: '100%', marginBottom: 16 }}>
                         + Add another area
                       </button>
@@ -1095,10 +1142,11 @@ export default function MapQuoteBuilder() {
                     )}
 
                     {!leadUnlocked ? (
-                      <div className="mapq-lead-gate">
+                      <div className="mapq-lead-gate" ref={leadGateRef}>
                         <p className="mapq-lead-gate-text">Enter your phone to unlock your price — no commitment, no spam.</p>
                         <form onSubmit={handleLeadSubmit} className="mapq-lead-form">
                           <input
+                            ref={leadPhoneRef}
                             className="mapq-input"
                             type="tel"
                             placeholder="(512) 555-0100"
@@ -1123,9 +1171,68 @@ export default function MapQuoteBuilder() {
                           </button>
                         </form>
                         {leadError && <p className="mapq-error">{leadError}</p>}
+                        {/* Dev-only: test the price screen without sending a lead (stripped from production builds) */}
+                        {process.env.NODE_ENV === 'development' && (
+                          <button type="button" className="mapq-link mapq-dev-skip" onClick={() => setLeadUnlocked(true)}>
+                            Skip — dev only, no lead sent
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <>
+                        <div className="mapq-price-total">
+                          <div>
+                            <div className="mapq-price-val">${ongoingPrice}</div>
+                            <div className="mapq-price-per">per visit · fixed</div>
+                          </div>
+                          <div className="mapq-eco-badge">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
+                              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+                            </svg>
+                            Zero emissions
+                          </div>
+                        </div>
+
+                        <div className="mapq-first-visit-promo">
+                          <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
+                          <span className="mapq-first-visit-promo-text">
+                            First visit <strong>${firstVisitPrice}</strong>
+                            <span className="mapq-first-visit-promo-was">${firstVisitFullPrice}</span>
+                          </span>
+                        </div>
+
+                        <div className="mapq-price-rows">
+                          <div className="mapq-price-row"><span>Base rate</span><span>${basePrice}</span></div>
+                          {discount > 0 && (
+                            <div className="mapq-price-row mapq-price-discount">
+                              <span>{FREQ[freq].label} discount</span><span>–${Math.round(basePrice * discount / 100)}</span>
+                            </div>
+                          )}
+                          {distanceFee > 0 && (
+                            <div className="mapq-price-row" style={{ color: 'rgba(255,255,255,.6)' }}>
+                              <span>{distanceLabel}</span><span>+${distanceFee}</span>
+                            </div>
+                          )}
+                          {overgrowthFee > 0 && (
+                            <div className="mapq-price-row mapq-price-overgrowth">
+                              <span>{overgrowthLabel} <span className="mapq-price-once">(first visit only)</span></span>
+                              <span>+${overgrowthFee}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mapq-includes-row">
+                          {['Full mow', 'Crisp edging', 'Clipping blowdown', 'Complete cleanup'].map(item => (
+                            <span key={item} className="mapq-includes-item">
+                              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M2 8.5l4 4 8-8" />
+                              </svg>
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+
                         <div className="mapq-freq-label">How often?</div>
                         <div className="mapq-freq-row">
                           {(Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([key, f]) => (
@@ -1152,60 +1259,7 @@ export default function MapQuoteBuilder() {
                           ))}
                         </div>
 
-                        <div className="mapq-price-rows">
-                          <div className="mapq-price-row"><span>Base rate</span><span>${basePrice}</span></div>
-                          {discount > 0 && (
-                            <div className="mapq-price-row mapq-price-discount">
-                              <span>{FREQ[freq].label} discount</span><span>–${Math.round(basePrice * discount / 100)}</span>
-                            </div>
-                          )}
-                          {distanceFee > 0 && (
-                            <div className="mapq-price-row" style={{ color: 'rgba(255,255,255,.6)' }}>
-                              <span>{distanceLabel}</span><span>+${distanceFee}</span>
-                            </div>
-                          )}
-                          {overgrowthFee > 0 && (
-                            <div className="mapq-price-row mapq-price-overgrowth">
-                              <span>{overgrowthLabel} <span className="mapq-price-once">(first visit only)</span></span>
-                              <span>+${overgrowthFee}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mapq-price-total">
-                          <div>
-                            <div className="mapq-price-val">${ongoingPrice}</div>
-                            <div className="mapq-price-per">per visit · fixed</div>
-                          </div>
-                          <div className="mapq-eco-badge">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>
-                              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
-                            </svg>
-                            Zero emissions
-                          </div>
-                        </div>
-
-                        <div className="mapq-first-visit-promo">
-                          <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
-                          <span className="mapq-first-visit-promo-text">
-                            First visit <strong>${firstVisitPrice}</strong>
-                            <span className="mapq-first-visit-promo-was">${firstVisitFullPrice}</span>
-                          </span>
-                        </div>
-
-                        <div className="mapq-includes-row">
-                          {['Full mow', 'Crisp edging', 'Clipping blowdown', 'Complete cleanup'].map(item => (
-                            <span key={item} className="mapq-includes-item">
-                              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M2 8.5l4 4 8-8" />
-                              </svg>
-                              {item}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="mapq-addons">
+                        <div className="mapq-addons" ref={addonsRef}>
                           <div className="mapq-addons-title">Also available — add to this visit</div>
                           <div className="mapq-addons-chips">
                             {(['fertilization', 'mulch', 'maintenance', 'yardClearout'] as AddonKey[]).map(key => {
@@ -1489,6 +1543,20 @@ export default function MapQuoteBuilder() {
               <canvas ref={previewCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }} />
             </div>
             <p className="mapq-attribution">Satellite imagery © Esri</p>
+
+            {compact && lawnSqFt && (
+              <div className="mapq-map-summary">
+                <div className="mapq-map-summary-addr">{address}</div>
+                <div className="mapq-map-summary-sqft">
+                  <span className="mapq-pulse-dot" />
+                  {lawnSqFt.toLocaleString()} sq ft of lawn traced
+                </div>
+                <div className="mapq-map-summary-actions">
+                  <button className="mapq-btn-ghost" onClick={enterEditMode}>+ Add another area</button>
+                  <button className="mapq-link" onClick={handleReset}>New address</button>
+                </div>
+              </div>
+            )}
 
             {isDrawing && addonDrawTarget && (
               <div className="mapq-addon-draw-bar">
