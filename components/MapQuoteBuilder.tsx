@@ -286,6 +286,8 @@ export default function MapQuoteBuilder() {
   const [openAddon,       setOpenAddon]       = useState<AddonKey | null>(null)
   const [addonDrawTarget, setAddonDrawTarget] = useState<DrawableAddonKey | null>(null)
   const [teaserTip,       setTeaserTip]       = useState<AddonKey | null>(null)
+  // Other services stay tucked behind one link so the quote header stays calm
+  const [servicesOpen,    setServicesOpen]    = useState(false)
 
   const [fertAreaChoice, setFertAreaChoice] = useState<'same' | 'custom' | null>(null)
   const [fertCustomSqFt, setFertCustomSqFt] = useState<number | null>(null)
@@ -974,8 +976,34 @@ export default function MapQuoteBuilder() {
             Trace your lawn.{' '}
             <em style={{ color: 'var(--green-bright)', fontStyle: 'italic' }}>Get your price.</em>
           </h2>
-          <div className="mapq-services-teaser" ref={teaserWrapRef}>
-            <span className="mapq-services-teaser-label">Also available</span>
+          {/* The deal and the effort, upfront — before anyone has to start */}
+          <ul className="mapq-facts">
+            <li className="mapq-fact mapq-fact-deal">
+              <span className="mapq-fact-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
+              your first mow
+            </li>
+            <li className="mapq-fact">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              Your price in about a minute
+            </li>
+            <li className="mapq-fact">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              No payment now
+            </li>
+          </ul>
+          {/* Obvious way out for anyone who doesn't want to draw on a map */}
+          <div className="mapq-fallback">
+            <ManualQuoteForm />
+          </div>
+          <button
+            type="button"
+            className="mapq-services-toggle"
+            aria-expanded={servicesOpen}
+            onClick={() => { setServicesOpen(o => !o); setTeaserTip(null) }}
+          >
+            {servicesOpen ? 'Hide other services' : 'Need more than mowing? See other services →'}
+          </button>
+          {servicesOpen && <div className="mapq-services-teaser" ref={teaserWrapRef}>
             {(Object.keys(ADDON_META) as AddonKey[]).map(key => (
               <button
                 key={key}
@@ -988,17 +1016,14 @@ export default function MapQuoteBuilder() {
                 {ADDON_META[key].label}
               </button>
             ))}
-            <span className="mapq-services-teaser-sub">— priced to your yard once we see it. Tap one to learn more.</span>
+            <span className="mapq-services-teaser-sub">Each is priced to your yard once we see it. Tap one to learn more.</span>
             {teaserTip && (
               <p className="mapq-services-teaser-info">
                 {ADDON_META[teaserTip].blurb}{' '}
                 <span className="mapq-services-teaser-price">{ADDON_META[teaserTip].priceHint}</span>
               </p>
             )}
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <ManualQuoteForm />
-          </div>
+          </div>}
         </div>
 
         <div className={`mapq-grid${compact ? ' mapq-grid-compact' : ''}`}>
@@ -1078,7 +1103,7 @@ export default function MapQuoteBuilder() {
 
                 <div className="mapq-first-visit-promo" style={{ marginTop: 12, marginBottom: 0 }}>
                   <span className="mapq-first-visit-promo-badge">{FIRST_VISIT_DISCOUNT_PCT}% OFF</span>
-                  <span className="mapq-first-visit-promo-text">Your first visit — applied automatically below</span>
+                  <span className="mapq-first-visit-promo-text">Your first mow — applied automatically, no code needed</span>
                 </div>
 
                 {!isDrawing && !isDone && (

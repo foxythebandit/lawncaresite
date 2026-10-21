@@ -376,13 +376,43 @@ section { padding: 100px 8vw; }
 
 /* ── MANUAL QUOTE FORM — compact, inline under the map-tool heading ── */
 .manualq-toggle {
-  background: none; border: none; cursor: pointer;
-  font-size: 13.5px; font-weight: 500; color: rgba(255,255,255,.55);
-  text-decoration: underline; text-underline-offset: 2px;
+  display: inline-flex; flex-direction: column; align-items: center; gap: 3px;
+  background: rgba(255,255,255,.04);
+  border: 1.5px solid rgba(255,255,255,.22);
+  border-radius: 14px;
+  padding: 11px 20px;
+  cursor: pointer;
   font-family: var(--font-body);
-  transition: color .15s;
+  transition: border-color .15s, background .15s;
 }
-.manualq-toggle:hover { color: var(--green-bright); }
+.manualq-toggle:hover { border-color: var(--green-bright); background: rgba(82,183,136,.08); }
+.manualq-toggle-main { font-size: 14.5px; font-weight: 600; color: #fff; }
+.manualq-toggle-sub { font-size: 12px; color: rgba(255,255,255,.5); }
+
+/* Upfront facts under the quote heading: the deal, the time, no payment */
+.mapq-facts {
+  list-style: none; padding: 0; margin: 18px 0 0;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px;
+}
+.mapq-fact {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 14px; color: rgba(255,255,255,.8);
+}
+.mapq-fact svg { color: var(--green-bright); flex-shrink: 0; }
+.mapq-fact-deal { color: #fff; font-weight: 500; }
+.mapq-fact-badge {
+  background: var(--green-bright); color: var(--green-deep);
+  font-size: 11px; font-weight: 700; letter-spacing: .03em;
+  padding: 4px 9px; border-radius: 100px;
+}
+.mapq-fallback { margin-top: 18px; }
+.mapq-services-toggle {
+  display: inline-block; margin-top: 14px;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-body); font-size: 13px; color: rgba(255,255,255,.5);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.mapq-services-toggle:hover, .mapq-services-toggle[aria-expanded="true"] { color: var(--green-bright); }
 .manualq-inline {
   max-width: 460px; margin: 0 auto; text-align: left;
   background: rgba(255,255,255,.05);
@@ -2694,6 +2724,7 @@ footer {
 .admin-extra-error { grid-column: 1 / -1; font-size: 12px; color: #b03030; }
 .admin-extra-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
 @media (max-width: 600px) {
+  .mapq-facts { flex-direction: column; align-items: center; gap: 8px; }
   .mapq-section { padding-top: 36px; }
   .trust-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 12px; padding: 14px 5vw; }
   .trust-trigger:not(.trust-rating) { flex-direction: column; text-align: center; }

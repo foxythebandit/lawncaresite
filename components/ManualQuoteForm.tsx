@@ -71,7 +71,8 @@ export default function ManualQuoteForm() {
   if (!open) {
     return (
       <button type="button" className="manualq-toggle" onClick={() => setOpen(true)}>
-        Prefer we measure it for you? →
+        <span className="manualq-toggle-main">Don&apos;t want to draw? We&apos;ll measure it for you →</span>
+        <span className="manualq-toggle-sub">Leave your name, phone and address — we&apos;ll text you a price</span>
       </button>
     )
   }
