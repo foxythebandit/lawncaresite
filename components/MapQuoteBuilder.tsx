@@ -51,6 +51,8 @@ const LAST_MOW_WEEKS: Record<string, number> = {
 // 807 E 47th St, Austin TX
 const OFFICE_LAT = 30.3049
 const OFFICE_LNG = -97.7184
+// Mapbox Satellite (sharper, more current) when a token is configured; Esri World Imagery otherwise
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 // Addresses farther than this get an "outside our area" message instead of a quote
 const SERVICE_RADIUS_MILES = 30
 // Bias geocoding toward Austin (lon/lat box ~35 mi around the office) so vague
@@ -68,6 +70,44 @@ function calcPrice(sqFt: number): number {
   if (sqFt <= 5000)  return 65  + Math.round((sqFt - 2500)  * 0.018)
   if (sqFt <= 12000) return 100 + Math.round((sqFt - 5000)  * 0.013)
   return                      191 + Math.round((sqFt - 12000) * 0.009)
+}
+
+/* ── Sharper Esri imagery ─────────────────────────────── */
+// Esri has zoom 20–21 photos across most of the service area, but where it
+// doesn't it serves a grey "Map data not yet available" tile instead of a 404.
+// The `esri-hd://` protocol loads the real tile when there is one and, for the
+// placeholder, crops + enlarges the nearest real ancestor tile instead.
+const ESRI_IMAGERY = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile'
+const ESRI_ALWAYS_AVAILABLE_Z = 19
+// A tile Esri has no imagery for (mid-Pacific) — byte-identical to every placeholder
+const ESRI_PLACEHOLDER_URL = `${ESRI_IMAGERY}/21/1048575/131072`
+let esriPlaceholder: Promise<Uint8Array | null> | null = null
+
+function isPlaceholder(bytes: Uint8Array, ref: Uint8Array | null) {
+  if (!ref || bytes.length !== ref.length) return false
+  for (let i = 0; i < bytes.length; i++) if (bytes[i] !== ref[i]) return false
+  return true
+}
+
+async function loadEsriTile(z: number, y: number, x: number, signal: AbortSignal): Promise<ArrayBuffer> {
+  esriPlaceholder ??= fetch(ESRI_PLACEHOLDER_URL).then(r => r.arrayBuffer()).then(b => new Uint8Array(b)).catch(() => null)
+  const buf = await (await fetch(`${ESRI_IMAGERY}/${z}/${y}/${x}`, { signal })).arrayBuffer()
+  if (z <= ESRI_ALWAYS_AVAILABLE_Z || !isPlaceholder(new Uint8Array(buf), await esriPlaceholder)) return buf
+
+  // Walk up to the nearest zoom that has a real photo, then crop out this tile's quarter (or sixteenth)
+  for (let k = 1; z - k >= ESRI_ALWAYS_AVAILABLE_Z; k++) {
+    const pz = z - k, px = x >> k, py = y >> k
+    const pbuf = await (await fetch(`${ESRI_IMAGERY}/${pz}/${py}/${px}`, { signal })).arrayBuffer()
+    if (pz > ESRI_ALWAYS_AVAILABLE_Z && isPlaceholder(new Uint8Array(pbuf), await esriPlaceholder)) continue
+    const img = await createImageBitmap(new Blob([pbuf]))
+    const part = 256 >> k
+    const canvas = new OffscreenCanvas(256, 256)
+    const ctx = canvas.getContext('2d')!
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(img, (x - (px << k)) * part, (y - (py << k)) * part, part, part, 0, 0, 256, 256)
+    return (await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 })).arrayBuffer()
+  }
+  return buf
 }
 
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -290,7 +330,13 @@ export default function MapQuoteBuilder() {
       try {
       const ml = (await import('maplibre-gl')).default
       if (!alive || !mapDivRef.current) return
-      const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+      ml.addProtocol('esri-hd', (params, abortController) => {
+        const [z, y, x] = params.url.slice('esri-hd://'.length).split('/').map(Number)
+        return loadEsriTile(z, y, x, abortController.signal).then(data => ({ data }))
+      })
+      // On Retina/phone screens, draw 256px tiles at 128 CSS px so photos land 1:1
+      // on device pixels (one zoom level sharper) instead of being stretched 2×
+      const esriTileSize = window.devicePixelRatio >= 2 ? 128 : 256
       const map = new ml.Map({
         container: mapDivRef.current,
         style: {
@@ -298,9 +344,9 @@ export default function MapQuoteBuilder() {
           sources: {
             // Mapbox Satellite (sharper, more current) when a token is configured;
             // falls back to Esri World Imagery otherwise — see .env.local.example.
-            satellite: mapboxToken
-              ? { type: 'raster', tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mapboxToken}`], tileSize: 512, maxzoom: 22 }
-              : { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19 },
+            satellite: MAPBOX_TOKEN
+              ? { type: 'raster', tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${MAPBOX_TOKEN}`], tileSize: 512, maxzoom: 22 }
+              : { type: 'raster', tiles: ['esri-hd://{z}/{y}/{x}'], tileSize: esriTileSize, maxzoom: 21 },
             labels:    { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'], tileSize: 256 },
           },
           layers: [
@@ -1565,7 +1611,17 @@ export default function MapQuoteBuilder() {
               <div ref={mapDivRef} className="mapq-map" />
               <canvas ref={previewCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 2 }} />
             </div>
-            <p className="mapq-attribution">Satellite imagery © Esri</p>
+            {/* Credit must match the imagery actually shown (Mapbox's terms require theirs) */}
+            <p className="mapq-attribution">
+              {MAPBOX_TOKEN ? (
+                <>
+                  <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer">© Mapbox</a>{' '}
+                  <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a>{' '}
+                  <a href="https://www.mapbox.com/map-feedback/" target="_blank" rel="noopener noreferrer">Improve this map</a>{' '}
+                  © Maxar · Labels © Esri
+                </>
+              ) : 'Satellite imagery © Esri'}
+            </p>
 
             {compact && lawnSqFt && (
               <div className="mapq-map-summary">
