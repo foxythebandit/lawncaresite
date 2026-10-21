@@ -1,57 +1,61 @@
-export interface Attribution {
-  gclid?:        string
-  utm_source?:   string
-  utm_medium?:   string
-  utm_campaign?: string
-  utm_term?:     string
-  utm_content?:  string
+export const ATTRIBUTION_KEYS = ['gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'fbc', 'fbp', 'meta_campaign_id', 'meta_adset_id', 'meta_ad_id', 'creative_id', 'creative_type'] as const
+export type AttributionTouch = Partial<Record<typeof ATTRIBUTION_KEYS[number], string>> & { captured_at?: string; source_url?: string }
+export interface Attribution extends AttributionTouch {
+  first_touch?: AttributionTouch
+  latest_touch?: AttributionTouch
 }
-
-const COOKIE_NAME  = 'qg_attr'
-const MAX_AGE_DAYS = 90
-const TRACKED_KEYS: (keyof Attribution)[] = ['gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-
+const COOKIE_NAME = 'qg_attr'
 function readCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'))
-  return match ? decodeURIComponent(match[1]) : null
+  try { return match ? decodeURIComponent(match[1]) : null } catch { return null }
 }
-
-function writeCookie(name: string, value: string, days: number) {
-  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${days * 24 * 60 * 60}; path=/; SameSite=Lax`
-}
-
-/** Call once on app load. Captures ad-click params from the URL, if present, and persists
- *  them so the visit that first brought someone in stays attributed even after they've
- *  navigated around or come back later — later visits without tracking params don't overwrite it. */
-export function captureAttribution() {
-  if (typeof window === 'undefined') return
-  const params = new URLSearchParams(window.location.search)
-  const found: Attribution = {}
-  let hasAny = false
-  for (const key of TRACKED_KEYS) {
-    const val = params.get(key)
-    if (val) { found[key] = val; hasAny = true }
+export function cleanTouch(input: unknown): AttributionTouch {
+  if (!input || typeof input !== 'object') return {}
+  const data = input as Record<string, unknown>, result: AttributionTouch = {}
+  for (const key of ATTRIBUTION_KEYS) if (typeof data[key] === 'string') result[key] = data[key].slice(0, 150)
+  if (typeof data.captured_at === 'string' && Number.isFinite(Date.parse(data.captured_at))) result.captured_at = data.captured_at
+  if (typeof data.source_url === 'string') {
+    try { const u = new URL(data.source_url); if (['http:','https:'].includes(u.protocol)) result.source_url = u.origin } catch {}
   }
-  if (hasAny) writeCookie(COOKIE_NAME, JSON.stringify(found), MAX_AGE_DAYS)
+  return result
 }
-
-/** Read whatever attribution was captured for this visitor, if any. */
+export function cleanAttribution(input: Attribution): Attribution {
+  return { ...cleanTouch(input), first_touch: cleanTouch(input.first_touch ?? input), latest_touch: cleanTouch(input.latest_touch ?? input) }
+}
+/** First tagged touch remains fixed for 90 days; latest tagged touch changes only on tagged visits. */
+export function captureAttribution() {
+  if (typeof window === 'undefined' || location.pathname.startsWith('/admin')) return
+  const params = new URLSearchParams(location.search)
+  const found: AttributionTouch = {}
+  for (const key of ATTRIBUTION_KEYS) { const value = params.get(key); if (value) found[key] = value.slice(0, 150) }
+  if (!Object.keys(found).length) return
+  const now = Date.now()
+  found.captured_at = new Date(now).toISOString()
+  found.source_url = location.origin // No addresses, query strings, or other personal data in URLs.
+  found.fbp = readCookie('_fbp') ?? undefined
+  found.fbc = found.fbclid ? `fb.1.${now}.${found.fbclid}` : readCookie('_fbc') ?? undefined
+  const old = getAttribution()
+  const first = old.first_touch && Object.keys(old.first_touch).length ? old.first_touch : cleanTouch(old)
+  const value = { ...found, first_touch: Object.keys(first).length ? first : found, latest_touch: found }
+  // Cookie has a fixed expiry based on first touch, rather than a rolling retention period.
+  const expiry = Date.parse(value.first_touch.captured_at ?? found.captured_at) + 90 * 86400000
+  try { localStorage.setItem(COOKIE_NAME, JSON.stringify({ value, expiry })) } catch { /* Storage may be disabled. Missing attribution stays unknown. */ }
+}
+function browserIds(value: Attribution): Attribution {
+  return { ...value, fbp: readCookie('_fbp')?.slice(0, 150) ?? value.fbp, fbc: value.fbc ?? readCookie('_fbc')?.slice(0, 150) }
+}
 export function getAttribution(): Attribution {
   if (typeof window === 'undefined') return {}
-  const raw = readCookie(COOKIE_NAME)
-  if (!raw) return {}
-  try { return JSON.parse(raw) } catch { return {} }
+  try {
+    const stored = JSON.parse(localStorage.getItem(COOKIE_NAME) ?? 'null')
+    if (stored?.expiry > Date.now()) return browserIds(cleanAttribution(stored.value))
+    if (stored) { localStorage.removeItem(COOKIE_NAME); return browserIds({}) }
+    return browserIds(cleanAttribution(JSON.parse(readCookie(COOKIE_NAME) ?? '{}')))
+  } catch { return {} }
 }
-
-/** Human-readable source summary for admin/emails, e.g. "Google Ads · electric lawn mowing austin". */
-export function formatAttributionLabel(attr: Partial<Record<keyof Attribution, string | null | undefined>>): string | null {
-  if (!attr.utm_source && !attr.gclid) return null
-  const source = attr.utm_source
-    ? attr.utm_source[0].toUpperCase() + attr.utm_source.slice(1)
-    : attr.gclid ? 'Google Ads' : 'Unknown'
-  const parts = [source]
-  if (attr.utm_term) parts.push(`"${attr.utm_term}"`)
-  else if (attr.utm_campaign) parts.push(attr.utm_campaign)
-  else if (attr.gclid) parts.push('(keyword not tagged)')
-  return parts.join(' · ')
+export function formatAttributionLabel(attr: Partial<Record<typeof ATTRIBUTION_KEYS[number], string | null>> | null | undefined): string | null {
+  if (!attr) return null
+  const source = attr.utm_source || (attr.gclid ? 'Google Ads' : attr.fbclid ? 'Meta (ad unknown)' : '')
+  if (!source) return null
+  return [source, attr.utm_campaign, attr.utm_term, attr.utm_content, attr.creative_id, attr.creative_type].filter(Boolean).join(' · ')
 }

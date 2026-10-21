@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "submission_id": "fixture-conviflo-0001",
+  "form_version": "quietgreen-test:1",
+  "contact": { "name": "Test Lawn Owner", "phone": "+15125550123", "email": "customer@example.test", "address": "807 E 47th St, Austin, TX" },
+  "services": ["Mowing", "Mulch"],
+  "frequency": "Bi-weekly",
+  "timing": "Next week",
+  "answers": { "gate": "Side access", "pets": "None" },
+  "attribution": { "utm_source": "meta", "utm_campaign": "spring-test", "utm_content": "creative-a", "meta_campaign_id": "test-campaign", "meta_adset_id": "test-adset", "meta_ad_id": "test-ad", "creative_id": "test-creative", "creative_type": "ai", "fbclid": "test-click" },
+  "consent": { "granted": true, "text": "Test consent to quote contact", "version": "test:1", "timestamp": "2026-10-21T12:00:00Z" },
+  "score": 90,
+  "estimated_value": 250
+}

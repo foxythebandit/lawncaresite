@@ -4,10 +4,6 @@ import LeadRow from './LeadRow'
 
 export const dynamic = 'force-dynamic'
 
-function normalizePhone(p: string) {
-  return p.replace(/\D/g, '').slice(-10)
-}
-
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
@@ -20,19 +16,19 @@ function timeAgo(dateStr: string) {
 export default async function LeadsPage() {
   const [leads, bookings] = await Promise.all([getLeads(), getBookings()])
 
-  const bookedPhones = new Set(bookings.map(b => normalizePhone(b.phone ?? '')))
+  const bookedLeadIds = new Set(bookings.filter(b => ['confirmed', 'completed'].includes(b.status)).map(b => b.lead_id).filter(Boolean))
 
   const bySource = new Map<string, { total: number; converted: number }>()
   for (const lead of leads) {
     const label = formatAttributionLabel(lead) ?? 'Direct / unknown'
     const entry = bySource.get(label) ?? { total: 0, converted: 0 }
     entry.total += 1
-    if (bookedPhones.has(normalizePhone(lead.phone ?? ''))) entry.converted += 1
+    if (bookedLeadIds.has(lead.id)) entry.converted += 1
     bySource.set(label, entry)
   }
   const sourceRows = [...bySource.entries()].sort((a, b) => b[1].total - a[1].total)
 
-  const totalConverted = leads.filter(l => bookedPhones.has(normalizePhone(l.phone ?? ''))).length
+  const totalConverted = leads.filter(l => bookedLeadIds.has(l.id)).length
 
   return (
     <>
@@ -44,7 +40,7 @@ export default async function LeadsPage() {
         <div className="admin-stat-divider" />
         <div className="admin-stat">
           <span className="admin-stat-val">{totalConverted}</span>
-          <span className="admin-stat-label">Converted to booking</span>
+          <span className="admin-stat-label">Confirmed booking conversion</span>
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
@@ -80,7 +76,7 @@ export default async function LeadsPage() {
               key={lead.id}
               lead={lead}
               source={formatAttributionLabel(lead)}
-              converted={bookedPhones.has(normalizePhone(lead.phone ?? ''))}
+              converted={bookedLeadIds.has(lead.id)}
               timeAgo={timeAgo(lead.created_at)}
             />
           ))}

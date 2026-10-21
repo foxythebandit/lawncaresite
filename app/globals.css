@@ -3184,3 +3184,15 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   .hotspot-ring { animation: none; opacity: .4; }
 }
+
+/* Staff quote workspace shares the customer builder and its pricing. */
+.lead-workspace { padding: 24px; margin-bottom: 20px; }
+.lead-workspace h1 { font-family: var(--font-display); margin: 16px 0 8px; }
+.lead-workspace p { margin: 10px 0; }
+.lead-workspace details { border-top: 1px solid var(--rule); padding: 12px 0; }
+.lead-workspace summary { cursor: pointer; font-weight: 600; }
+.lead-workspace pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.staff-quote-controls { padding: 20px; background: var(--green-deep); color: white; border: 1px solid var(--green-bright); border-radius: 12px; margin-bottom: 20px; }
+.staff-quote-controls label { display: block; margin: 12px 0; }
+.staff-quote-controls input, .staff-quote-controls textarea { display: block; width: 100%; padding: 10px; margin-top: 6px; color: var(--ink); background: white; border: 1px solid var(--rule); border-radius: 6px; }
+.staff-quote-controls button { margin: 6px 8px 0 0; padding: 10px 16px; border-radius: 24px; border: 1px solid var(--green-bright); cursor: pointer; }

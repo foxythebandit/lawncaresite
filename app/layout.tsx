@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { DM_Serif_Display, DM_Sans } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import Script from 'next/script'
+import PublicAnalytics from '@/components/PublicAnalytics'
 import AttributionCapture from '@/components/AttributionCapture'
 import './globals.css'
 
@@ -62,54 +61,7 @@ export default function RootLayout({
       <body>
         <AttributionCapture />
         {children}
-        <Analytics />
-        <Script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-RCG8V5DEXX"
-          strategy="afterInteractive"
-        />
-        <Script
-          id="google-tag"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-RCG8V5DEXX');
-              gtag('config', 'AW-18401747819');
-            `,
-          }}
-        />
-        {process.env.NEXT_PUBLIC_META_PIXEL_ID && (
-          <>
-            <Script
-              id="meta-pixel"
-              strategy="afterInteractive"
-              dangerouslySetInnerHTML={{
-                __html: `
-                  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){
-                  n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-                  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-                  n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;
-                  s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}
-                  (window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-                  fbq('init','${process.env.NEXT_PUBLIC_META_PIXEL_ID}');
-                  fbq('track','PageView');
-                `,
-              }}
-            />
-            <noscript>
-              <img
-                height="1"
-                width="1"
-                style={{ display: 'none' }}
-                src={`https://www.facebook.com/tr?id=${process.env.NEXT_PUBLIC_META_PIXEL_ID}&ev=PageView&noscript=1`}
-                alt=""
-              />
-            </noscript>
-          </>
-        )}
+        <PublicAnalytics pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify({

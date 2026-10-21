@@ -29,7 +29,7 @@ export default async function PortalPage() {
 
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('*')
+    .select('id, email, created_at, status, confirmed_date, preferred_date, confirmed_time, address, sq_ft, frequency, price_per_visit, map_screenshot_url, completed_at, amount_charged, payment_method, payment_link')
     .order('created_at', { ascending: false })
 
   const visits = bookings ?? []

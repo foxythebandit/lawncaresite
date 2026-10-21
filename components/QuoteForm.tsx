@@ -1,6 +1,8 @@
 'use client'
 
 import { useActionState, useEffect } from 'react'
+import { submissionId } from '@/lib/submission-id'
+import { trackWebsiteLead } from '@/lib/meta-events'
 import { submitQuote, type QuoteState } from '@/app/actions/submit-quote'
 
 declare global {
@@ -15,11 +17,8 @@ export default function QuoteForm() {
     null
   )
 
-  useEffect(() => {
-    if (state?.success && typeof window.fbq === 'function') {
-      window.fbq('track', 'Lead')
-    }
-  }, [state?.success])
+  const eventId = state?.success ? state.eventId : undefined
+  useEffect(() => { trackWebsiteLead(eventId) }, [eventId])
 
   return (
     <section className="cta-section" id="quote">
@@ -58,7 +57,8 @@ export default function QuoteForm() {
           </p>
         </div>
       ) : (
-        <form action={action} className="cta-form" aria-describedby={state?.error ? 'form-error' : undefined}>
+        <form action={action} onSubmit={e => { (e.currentTarget.elements.namedItem('submission_id') as HTMLInputElement).value = submissionId('legacy') }} className="cta-form" aria-describedby={state?.error ? 'form-error' : undefined}>
+          <input type="hidden" name="submission_id" />
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',

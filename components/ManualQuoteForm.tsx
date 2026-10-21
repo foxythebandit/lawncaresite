@@ -2,6 +2,9 @@
 
 import { useState, useCallback, type ReactNode } from 'react'
 import { submitManualQuote } from '@/app/actions/submit-manual-quote'
+import { trackWebsiteLead } from '@/lib/meta-events'
+import { QUOTE_CONSENT_TEXT } from '@/lib/quote-consent'
+import { submissionId } from '@/lib/submission-id'
 import { getAttribution } from '@/lib/attribution'
 
 type Size = 'Small' | 'Medium' | 'Large'
@@ -40,6 +43,7 @@ const SIZES: { key: Size; hint: string; icon: ReactNode }[] = [
 ]
 
 export default function ManualQuoteForm() {
+  const [consent, setConsent] = useState(false)
   const [open, setOpen]   = useState(false)
   const [name, setName]   = useState('')
   const [phone, setPhone] = useState('')
@@ -48,14 +52,19 @@ export default function ManualQuoteForm() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
   const [error, setError] = useState('')
 
+  function startNewInquiry() {
+    sessionStorage.removeItem('qg_submission_manual')
+    setName(''); setPhone(''); setAddress(''); setSize(''); setConsent(false); setError(''); setStatus('idle'); setOpen(true)
+  }
+
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     setStatus('submitting'); setError('')
-    const result = await submitManualQuote({ name, phone, address, lawn_size_bucket: size || undefined, ...getAttribution() })
-      .catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setStatus('success') }
+    const result = await submitManualQuote({ submission_id: submissionId('manual'), consent, name, phone, address, lawn_size_bucket: size || undefined, ...getAttribution() })
+      .catch(() => ({ success: false, error: 'Something went wrong. Please try again.', eventId: undefined }))
+    if (result.success) { trackWebsiteLead(result.eventId); setStatus('success') }
     else { setStatus('idle'); setError(result.error ?? 'Something went wrong.') }
-  }, [name, phone, address, size])
+  }, [consent, name, phone, address, size])
 
   if (status === 'success') {
     return (
@@ -64,6 +73,7 @@ export default function ManualQuoteForm() {
           <circle cx="12" cy="12" r="10"/><polyline points="8 12 11 15 16 9"/>
         </svg>
         Got it — we&apos;ll be in touch shortly with your price.
+        <button type="button" onClick={startNewInquiry}>Start a new inquiry</button>
       </div>
     )
   }
@@ -80,6 +90,7 @@ export default function ManualQuoteForm() {
   return (
     <div className="manualq-inline">
       <p className="manualq-inline-sub">Leave your info and we&apos;ll size up your lawn and text you a price.</p>
+      <button type="button" onClick={startNewInquiry}>Start a new inquiry</button>
       <form onSubmit={handleSubmit} className="manualq-inline-form">
         <div className="manualq-inline-fields">
           <input
@@ -115,6 +126,9 @@ export default function ManualQuoteForm() {
           ))}
         </div>
 
+        <label className="mapq-consent" style={{ fontSize: 12, display: 'block', margin: '12px 0' }}>
+          <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {QUOTE_CONSENT_TEXT} (Optional)
+        </label>
         {error && <p className="mapq-error">{error}</p>}
 
         <button type="submit" className="mapq-btn-primary" style={{ width: '100%' }} disabled={status === 'submitting'}>
