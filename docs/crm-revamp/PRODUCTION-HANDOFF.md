@@ -5,7 +5,7 @@
 ## Release evidence to complete
 
 - Reviewed branch and exact commit: **pending**
-- Resolved decisions: **pending — D01–D20 in SPINE.md**
+- Decisions/defaults: **recorded in SPINE.md; final release contract/connector evidence still pending**
 - Changed migration files and expected schema effects: **pending**
 - Local upgrade/preservation tests and results: **pending**
 - Final Astra review and outstanding findings: **pending**
@@ -35,3 +35,7 @@ After migration/deployment, verify existing website forms still save correctly, 
 Verify existing customer records and visits remain available, customer portal privacy holds, recurring completion produces one next visit, payments remain separate from estimates and acquisition survives into bookings/visits. Test only scenarios and external events authorized for production; keep destructive cases in staging.
 
 If acceptance fails, retain the saved inquiries, pause the problematic new integration/dispatch path as appropriate, reconcile uncertain provider sends before retrying, and use the prepared application rollback or forward-fix plan. Do not drop newly created business records to make an old application version fit. Finish with exact deployed commit, applied migrations, non-sensitive preservation results, live checks performed, unresolved issues and operating instructions.
+
+## Accepted lifecycle cutover requirements
+
+Use BUILD-CONTRACT.md for the additive customer/jobs/optional agreement plan. Preserve booking IDs, historical job prices, extras/discounts, existing Stripe links and Paxton’s conservative 30-mow annual forecast. Never interpret forecasts as paid revenue. Keep historical recorded amounts visible with provenance; do not invent paid dates or merge customers by phone alone. Pause/end replaces deleting customer history. Repeated completion must generate at most one next occurrence. The live `website-service` inquiry path is part of production acceptance alongside map/manual/booking.
