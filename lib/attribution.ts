@@ -1,4 +1,4 @@
-export const ATTRIBUTION_KEYS = ['gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'fbc', 'fbp', 'meta_campaign_id', 'meta_adset_id', 'meta_ad_id', 'creative_id', 'creative_type'] as const
+export const ATTRIBUTION_KEYS = ['gclid', 'gbraid', 'wbraid', 'google_campaign_id', 'google_adgroup_id', 'google_ad_id', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'fbc', 'fbp', 'meta_campaign_id', 'meta_adset_id', 'meta_ad_id', 'creative_id', 'creative_type'] as const
 export type AttributionTouch = Partial<Record<typeof ATTRIBUTION_KEYS[number], string>> & { captured_at?: string; source_url?: string }
 export interface Attribution extends AttributionTouch {
   first_touch?: AttributionTouch
@@ -13,6 +13,14 @@ export function cleanTouch(input: unknown): AttributionTouch {
   if (!input || typeof input !== 'object') return {}
   const data = input as Record<string, unknown>, result: AttributionTouch = {}
   for (const key of ATTRIBUTION_KEYS) if (typeof data[key] === 'string') result[key] = data[key].slice(0, 150)
+  // Only campaigns explicitly configured with ID macros interpret UTM terms/content as IDs.
+  const idCampaigns = (process.env.NEXT_PUBLIC_META_UTM_ID_CAMPAIGNS ?? '').split(',').map(s => s.trim())
+  if (result.utm_source?.toLowerCase() === 'meta' && result.utm_medium === 'paid_social'
+    && !!result.utm_campaign && idCampaigns.includes(result.utm_campaign)) {
+    if (!result.meta_campaign_id) result.meta_campaign_id = result.utm_campaign
+    if (!result.meta_adset_id && /^\d{1,30}$/.test(result.utm_term ?? '')) result.meta_adset_id = result.utm_term
+    if (!result.meta_ad_id && /^\d{1,30}$/.test(result.utm_content ?? '')) result.meta_ad_id = result.utm_content
+  }
   if (typeof data.captured_at === 'string' && Number.isFinite(Date.parse(data.captured_at))) result.captured_at = data.captured_at
   if (typeof data.source_url === 'string') {
     try { const u = new URL(data.source_url); if (['http:','https:'].includes(u.protocol)) result.source_url = u.origin } catch {}
@@ -57,5 +65,6 @@ export function formatAttributionLabel(attr: Partial<Record<typeof ATTRIBUTION_K
   if (!attr) return null
   const source = attr.utm_source || (attr.gclid ? 'Google Ads' : attr.fbclid ? 'Meta (ad unknown)' : '')
   if (!source) return null
-  return [source, attr.utm_campaign, attr.utm_term, attr.utm_content, attr.creative_id, attr.creative_type].filter(Boolean).join(' · ')
+  return [source, attr.utm_campaign, attr.utm_term, attr.utm_content, attr.creative_id, attr.creative_type,
+    attr.google_campaign_id, attr.google_adgroup_id, attr.google_ad_id].filter(Boolean).join(' · ')
 }

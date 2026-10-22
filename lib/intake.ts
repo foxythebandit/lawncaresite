@@ -1,7 +1,8 @@
 import 'server-only'
+import { after } from 'next/server'
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { adminDb } from './supabase/admin'
-import { dispatchAlert } from './staff-alerts'
+import { dispatchAlert, staffRecipients } from './staff-alerts'
 
 export function leadToken(id: string) {
   return `${id}.${createHmac('sha256', process.env.SUPABASE_SECRET_KEY!).update(`lead:${id}`).digest('hex')}`
@@ -25,16 +26,19 @@ export async function recordIntake(source: string, submission: string, lead: Rec
   // Retry identity excludes server-generated timestamps, which naturally change on retries.
   const stableLead = { ...lead, consented_at: undefined }
   const hash = createHash('sha256').update(stableJSON({ lead: stableLead, booking, existing })).digest('hex')
-  const { data, error } = await adminDb().rpc('record_intake', {
+  const { data, error } = await adminDb().rpc('record_intake_v2', {
     p_source: source, p_submission: submission, p_hash: hash, p_lead: lead,
-    p_booking: booking ?? null, p_existing_lead: existing,
+    p_booking: booking ?? null, p_existing_lead: existing, p_recipients: staffRecipients(),
   })
   if (error) {
     console.error('Intake database error', error.code)
     throw new Error(error.code === '23505' ? 'Submission ID conflict' : 'Could not save inquiry')
   }
   const result = data as IntakeResult
-  // Outbox already committed; notification errors must never change intake success.
-  try { await dispatchAlert(result.event_id) } catch { console.error('Staff alert pending reconciliation', result.event_id) }
+  // The outbox is committed before responding. Recovery handles interrupted callbacks.
+  after(async () => {
+    try { await dispatchAlert(result.event_id) }
+    catch { console.error('Staff alert pending reconciliation', result.event_id) }
+  })
   return result
 }

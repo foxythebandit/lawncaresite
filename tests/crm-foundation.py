@@ -11,8 +11,8 @@ def check(sql):
     assert scalar("select count(*) from public.customers;") == '0'
     assert scalar("select count(*) from public.properties;") == '0'
     assert scalar("select count(*) from public.job_payments;") == '0'
-    assert scalar("select count(*) from public.staff_alerts where channel <> 'sms';") == '0'
-    assert scalar("select count(*) from public.staff_alerts where channel = 'sms';") == scalar("select count(*) from public.staff_alerts;")
+    assert scalar("select count(*) from public.staff_alerts a join public.intake_events e on e.id=a.event_id where e.source='historical' and a.channel='sms';") == '1'
+    assert scalar("select count(*) from public.staff_alerts a join public.intake_events e on e.id=a.event_id where e.source='historical' and a.channel='voice';") == '0'
     for role in ('anon', 'authenticated'):
         assert scalar(f"select has_table_privilege('{role}','public.customers','select');") == 'f'
         assert scalar(f"select has_table_privilege('{role}','public.job_payments','insert');") == 'f'
