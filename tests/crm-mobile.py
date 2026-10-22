@@ -34,7 +34,9 @@ def rpc(name, data):
 
 name = 'Mobile lead ' + uuid.uuid4().hex[:8]
 lead = db('leads', {'name': name, 'phone': '+15125550199', 'address': '807 E 47th St, Austin, TX',
-                    'services': ['Leaf cleanup'], 'source': 'website-service'})[0]
+                    'services': ['Leaf cleanup'], 'source': 'website-service',
+                    'answers': {'project_description': 'Bag the leaves by the back gate'},
+                    'attribution': {'first_touch': {'utm_source': 'meta', 'meta_ad_id': '900003', 'creative_type': 'ai'}}})[0]
 lead_id = lead['id']
 
 with sync_playwright() as playwright:
@@ -50,7 +52,14 @@ with sync_playwright() as playwright:
     page.get_by_role('button', name='Sign in').click()
     page.wait_for_url(BASE + '/admin/leads/' + lead_id)
     page.get_by_role('heading', name=name).wait_for()
+    page.add_style_tag(content='nextjs-portal { display: none !important; }')
     assert page.get_by_role('link', name='Call +15125550199').get_attribute('href') == 'tel:+15125550199'
+    assert page.get_by_role('link', name='Build quote').get_attribute('href') == '#map-quote'
+    assert page.locator('#map-quote').count() == 1
+    page.get_by_text('Answers and acquisition details', exact=True).click()
+    page.get_by_text('Bag the leaves by the back gate', exact=True).wait_for()
+    page.get_by_text('Meta ad', exact=True).wait_for()
+    page.get_by_text('Answers and acquisition details', exact=True).click()
     assert page.get_by_role('link', name='Open Messages').get_attribute('href').startswith('sms:+15125550199?body=')
     iphone_href = page.get_by_role('link', name='Open Messages').evaluate('''link => {
       document.addEventListener('click', event => { if (event.target === link) event.preventDefault() }, { capture: true, once: true });
@@ -103,6 +112,16 @@ with sync_playwright() as playwright:
     page.get_by_role('button', name='Add note').evaluate('(button) => button.click()')
     page.get_by_text('This lead changed since you opened it.', exact=False).first.wait_for(timeout=5000)
     assert len(db('lead_activities?lead_id=eq.' + lead_id + '&body=eq.Stale%20staff%20note')) == 0
+    page.reload()
+    page.get_by_text('Edit contact', exact=True).click()
+    page.get_by_label('Phone', exact=True).fill('+15125550198')
+    page.get_by_label('Property address', exact=True).fill('999 New Test Property, Austin, TX')
+    page.get_by_role('button', name='Save contact').click()
+    page.get_by_text('Contact address changed.', exact=False).wait_for()
+    corrected = db('leads?id=eq.' + lead_id)[0]
+    assert corrected['phone'] == '+15125550198'
+    assert corrected['accepted_quote_snapshot']['address'] == '807 E 47th St, Austin, TX'
+    assert db('bookings?lead_id=eq.' + lead_id)[0]['address'] == '807 E 47th St, Austin, TX'
     page.screenshot(path='/tmp/qg-crm-mobile-390.png', full_page=True)
     context.close()
     desktop = browser.new_context(viewport={'width': 1360, 'height': 900})

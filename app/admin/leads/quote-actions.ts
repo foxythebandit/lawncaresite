@@ -90,6 +90,7 @@ export async function requestLeadBooking(id: string, expectedUpdatedAt: string, 
   if (lead.quote_status !== 'accepted' || !lead.accepted_quote_snapshot) return { error: 'Mark the reviewed quote accepted first.' }
   if (!lead.name || !(lead.accepted_quote_snapshot.address || lead.address)) return { error: 'Add a contact name and property address first.' }
   const draft = lead.accepted_quote_snapshot as QuoteDraft
+  if (lead.address && draft.address && lead.address.trim() !== draft.address.trim()) return { error: 'The accepted quote is for a different address. Review and accept a quote for the current property first.' }
   const items: JobItemInput[] = []
   const mowingCents = draft.includeMowing === false ? 0 : Math.round((draft.overridePrice ?? draft.calculatedPrice) * 100)
   if (mowingCents > 0) items.push({ kind: 'service', description: 'Lawn care', amount: centsToAmount(mowingCents) })
@@ -115,6 +116,9 @@ export async function updateLeadContact(id: string, form: FormData) {
   const expectedUpdatedAt = String(form.get('updated_at') ?? '')
   const name = String(form.get('name') ?? '').trim()
   const email = String(form.get('email') ?? '').trim()
+  const phone = String(form.get('phone') ?? '').trim()
+  const address = String(form.get('address') ?? '').trim()
   if (!name || name.length > 150 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return { error: 'Enter a name and valid optional email.' }
-  return updateWorkflow(id, expectedUpdatedAt, { name, email }, { kind: 'note', outcome: 'contact_updated', body: 'Contact details updated.' })
+  if (!/^[+\d() -]{7,30}$/.test(phone) || phone.replace(/\D/g, '').length < 7 || !address || address.length > 500) return { error: 'Enter a valid phone and property address.' }
+  return updateWorkflow(id, expectedUpdatedAt, { name, email, phone, address }, { kind: 'note', outcome: 'contact_updated', body: 'Contact details updated.' })
 }

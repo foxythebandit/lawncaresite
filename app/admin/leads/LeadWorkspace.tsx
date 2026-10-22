@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { cleanAttribution, formatAttributionLabel, type Attribution } from '@/lib/attribution'
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
@@ -33,12 +34,31 @@ function initialMessage(lead: Lead) {
   return `Hi${firstName ? ` ${firstName}` : ''}, this is QuietGreen. Thanks for asking about ${lead.services?.join(', ') || 'lawn care'} at ${lead.address || 'your property'}. When is a good time to talk?`
 }
 
+function answerLabel(key: string) {
+  const labels: Record<string, string> = { utm_source: 'Source', utm_medium: 'Channel', utm_campaign: 'Campaign', utm_term: 'Search term / ad set tag', utm_content: 'Ad tag', meta_campaign_id: 'Meta campaign', meta_adset_id: 'Meta ad set', meta_ad_id: 'Meta ad', creative_id: 'Creative', creative_type: 'Creative type', google_campaign_id: 'Google campaign', google_adgroup_id: 'Google ad group', google_ad_id: 'Google ad', captured_at: 'Tracked at', source_url: 'Website' }
+  if (labels[key]) return labels[key]
+  return key.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ').replace(/^./, char => char.toUpperCase())
+}
+function answerText(value: unknown): string {
+  if (value == null || value === '') return 'Not supplied'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (Array.isArray(value)) return value.map(answerText).join(', ')
+  if (typeof value === 'object') return Object.entries(value).map(([key, item]) => `${answerLabel(key)}: ${answerText(item)}`).join('; ')
+  return String(value)
+}
+
 export default function LeadWorkspace({ lead, activities, events, bookings }: { lead: Lead; activities: Activity[]; events: Event[]; bookings: Booking[] }) {
   const router = useRouter()
+  const attribution = lead.attribution && typeof lead.attribution === 'object' && !Array.isArray(lead.attribution) ? lead.attribution as Attribution : {}
+  const cleanSource = cleanAttribution(attribution)
+  const sourceLabel = formatAttributionLabel(cleanSource.first_touch)
+  const answers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? Object.entries(lead.answers) : []
+  const usefulAnswers = answers.filter(([key]) => !key.startsWith('conviflo_') && !['address_needs_review', 'name', 'phone', 'email', 'address', 'contact'].includes(key))
   const addressNeedsReview = !!lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers)
     && (lead.answers as { address_needs_review?: unknown }).address_needs_review === true
   const [version, setVersion] = useState(lead.updated_at)
   const [draft, setDraft] = useState<QuoteDraft | null>(lead.quote_draft)
+  const propertyChanged = !!draft?.address && !!lead.address && draft.address.trim() !== lead.address.trim()
   const [reviewed, setReviewed] = useState(!!lead.quote_confirmed_at)
   const [quoteStatus, setQuoteStatus] = useState(lead.quote_status)
   const [feedback, setFeedback] = useState('')
@@ -77,8 +97,9 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
         <span className="crm-eyebrow">Lead workspace · {lead.stage}</span>
         <h1>{lead.name || 'Name not supplied'}</h1>
         <p className="crm-property">{lead.address || 'Address not yet provided'}</p>
-        {addressNeedsReview && <p className="crm-review-flag" role="alert">Submitted address needs review. Select the matching property in the map before using its measurement.</p>}
+        {(addressNeedsReview || propertyChanged) && <p className="crm-review-flag" role="alert">{propertyChanged ? 'Contact address changed. The saved quote still belongs to the previous address; review the property before quoting or booking.' : 'Submitted address needs review. Select the matching property in the map before using its measurement.'}</p>}
         <span className="crm-muted">Received {dateText(lead.created_at)} · {lead.source || 'Source unknown'}</span>
+        {sourceLabel && <p className="crm-muted" style={{ overflowWrap: 'anywhere' }}>{sourceLabel}</p>}
       </div>
       <div className="crm-workspace-grid">
         <div className="crm-panel">
@@ -86,6 +107,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
           <p className="crm-muted">{(lead.services ?? []).join(', ') || 'Services unknown'} · {lead.frequency || 'Frequency unknown'} · {lead.timing || 'Timing unknown'}</p>
           <div className="crm-action-row">
             <a className="crm-button crm-button-primary" href={`tel:${lead.phone}`}>Call {lead.phone}</a>
+            <a className="crm-button" href="#map-quote">Build quote</a>
             <a className="crm-button" href={`sms:${lead.phone}?body=${encodeURIComponent(messageDraft)}`}
               onClick={event => { if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) event.currentTarget.href = `sms:${lead.phone}&body=${encodeURIComponent(messageDraft)}` }}>Open Messages</a>
           </div>
@@ -186,15 +208,25 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
           <details className="crm-details"><summary>Edit contact</summary>
             <form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); form.set('updated_at', version); run(() => updateLeadContact(lead.id, form)) }}>
               <label className="crm-field">Name<input name="name" defaultValue={lead.name ?? ''} required maxLength={150} /></label>
+              <label className="crm-field">Phone<input name="phone" type="tel" defaultValue={lead.phone} required maxLength={30} /></label>
+              <label className="crm-field">Property address<input name="address" defaultValue={lead.address ?? ''} required maxLength={500} /></label>
               <label className="crm-field">Email<input name="email" type="email" defaultValue={lead.email ?? ''} maxLength={254} /></label>
               <button type="submit" className="crm-button" disabled={pending}>Save contact</button>
             </form>
           </details>
           <details className="crm-details"><summary>Answers and acquisition details</summary>
-            <pre>{JSON.stringify({ answers: lead.answers, attribution: lead.attribution, source: lead.source, form_version: lead.form_version,
-              external_submission_id: lead.external_submission_id, consent: lead.consent, consent_text: lead.consent_text,
-              consent_version: lead.consent_version, consented_at: lead.consented_at, score: lead.score, estimated_value: lead.estimated_value }, null, 2)}</pre>
-            <p className="crm-muted">External estimates are separate from quoted prices and payments. Missing attribution is unknown.</p>
+            <h3>What they requested</h3>
+            <p>{lead.services?.join(', ') || 'Services not supplied'}</p>
+            <dl className="crm-readable-details">{usefulAnswers.map(([key, value]) => <div key={key}><dt>{answerLabel(key)}</dt><dd>{answerText(value)}</dd></div>)}</dl>
+            {usefulAnswers.length === 0 && <p className="crm-muted">No additional answers submitted.</p>}
+            {[['First tracked visit', cleanSource.first_touch], ['Latest tracked visit', cleanSource.latest_touch]].map(([title, touch]) => <div key={String(title)}>
+              <h3>{String(title)}</h3>
+              {touch && typeof touch === 'object' ? <dl className="crm-readable-details">{Object.entries(touch).map(([key, value]) => <div key={key}><dt>{answerLabel(key)}</dt><dd>{answerText(value)}</dd></div>)}</dl> : <p className="crm-muted">Unknown</p>}
+            </div>)}
+            {lead.estimated_value != null && <p>Estimated potential value: ${String(lead.estimated_value)} · time horizon unknown</p>}
+            <p>Contact consent: {lead.consent == null ? 'Not recorded' : lead.consent ? 'Granted' : 'Not granted'}{lead.consented_at && ` · ${dateText(lead.consented_at)}`}</p>
+            {lead.consent_text && <p className="crm-muted">{lead.consent_text}</p>}
+            <p className="crm-muted">Potential value is separate from quotes and payments. Missing source details remain unknown.</p>
           </details>
           <details className="crm-details"><summary>Booking stages ({bookings.length})</summary>
             {bookings.map(booking => <p key={booking.id}>{booking.status} · Requested {dateText(booking.created_at)}
@@ -221,7 +253,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
     </div>
     <div className="crm-quote-wrap">
       <MapQuoteBuilder staffQuote={{ id: lead.id, address: lead.address, sq_ft: lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,
-        draft, updated_at: version, quote_status: quoteStatus, addressNeedsReview,
+        draft, updated_at: version, quote_status: quoteStatus, addressNeedsReview: addressNeedsReview || propertyChanged,
         onSaved: (updatedAt, wasReviewed, savedDraft) => { setVersion(updatedAt); setDraft(savedDraft); setReviewed(wasReviewed); setQuoteStatus('draft'); if (wasReviewed) setStage('quoted'); router.refresh() } }} />
     </div>
   </>

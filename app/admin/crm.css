@@ -89,3 +89,11 @@
   .crm-inline-fields { grid-template-columns: 1fr; }
   .crm-price-row { grid-template-columns: minmax(0, 1fr) 88px auto; }
 }
+
+.crm-readable-details { margin: 8px 0 16px; font-size: 13px; }
+.crm-readable-details > div { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--rule); }
+.crm-readable-details dt { color: var(--ink-soft); }
+.crm-readable-details dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Keep focused controls and the direct quote anchor clear of the sticky staff navigation. */
+.crm-workspace :is(input, select, textarea, button, summary), .crm-quote-wrap :is(input, button), #map-quote { scroll-margin-top: 125px; scroll-margin-bottom: 30px; }
