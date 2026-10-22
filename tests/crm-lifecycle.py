@@ -32,6 +32,16 @@ def check(sql):
     assert '0' in other_read.stdout.splitlines()
     fails("begin; set local role authenticated; "
           "select accepted_quote_snapshot from public.bookings where id='" + portal_booking + "'; rollback;", 'permission denied')
+    email_job = scalar("insert into public.bookings(name,phone,email,address,status,one_time) "
+                       "values('Email replay','5550003988','email-replay@example.test','38 Oak','pending',true) returning id;")
+    email_version = scalar(f"select updated_at from public.bookings where id='{email_job}';")
+    email_op = uuid.uuid4()
+    email_command = (f"select public.crm_job_command('{email_job}','{email_version}','{email_op}',"
+                     "'confirm','{\"date\":\"2027-01-03\",\"time\":\"Morning\"}'::jsonb);")
+    assert json.loads(scalar(email_command)).get('duplicate') is not True
+    assert json.loads(scalar(email_command))['duplicate'] is True
+    fails(email_command.replace('2027-01-03', '2027-01-04'), 'operation conflict')
+    assert scalar(f"select confirmed_date from public.bookings where id='{email_job}';") == '2027-01-03'
     fails("select public.crm_validate_items('[{\"kind\":\"service\",\"description\":\"A\",\"amount\":\"0.005\"},{\"kind\":\"service\",\"description\":\"B\",\"amount\":\"0.005\"}]'::jsonb);", 'Invalid priced item')
     fails("select public.crm_validate_items('[{\"description\":\"Missing kind\",\"amount\":\"1.00\"}]'::jsonb);", 'Invalid priced item')
 
