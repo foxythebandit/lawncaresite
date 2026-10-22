@@ -1,4 +1,6 @@
 import Image from 'next/image'
+import Link from 'next/link'
+import styles from './GeneralInquiry.module.css'
 
 export default function Nav() {
   return (
@@ -13,6 +15,7 @@ export default function Nav() {
         />
       </a>
       <ul className="nav-links">
+        <li className={styles.navServiceLink}><Link href="/#service-inquiry">Other services</Link></li>
         <li><a href="/#how">How it works</a></li>
         <li><a href="/#why">Why electric</a></li>
         <li><a href="/#reviews">Reviews</a></li>
