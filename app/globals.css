@@ -106,15 +106,6 @@ nav {
   padding: 40px 8vw 100px 8vw;
   max-width: 600px;
 }
-/* Desktop: hero + the trust strip ("5.0 on Google") fill exactly one screen,
-   so the rating is visible without scrolling. The generic `section` rule
-   was adding 100px of bottom padding on top of a full-height hero. */
-@media (min-width: 901px) {
-  .hero { padding-bottom: 0; }
-  .hero-left { min-height: calc(100svh - 68px - var(--trust-bar-h)); }
-  .hero-right { min-height: 0; }
-}
-:root { --trust-bar-h: 64px; }
 .hero-badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--green-pale); border: 1px solid var(--green-light);
