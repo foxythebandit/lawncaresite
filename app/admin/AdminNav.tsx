@@ -9,16 +9,16 @@ export default function AdminNav() {
   if (path === '/admin/login') return null
 
   const tabs = [
-    { href: '/admin',         label: 'Clients' },
     { href: '/admin/leads',   label: 'Leads'   },
+    { href: '/admin/route',   label: 'Today'   },
+    { href: '/admin',         label: 'Clients' },
     { href: '/admin/revenue', label: 'Revenue' },
     { href: '/admin/week',    label: 'Week'    },
-    { href: '/admin/route',   label: 'Today'   },
   ]
 
   return (
     <header className="admin-header">
-      <Link href="/admin" className="admin-header-logo">
+      <Link href="/admin/leads" className="admin-header-logo">
         <span className="logo-dot" style={{ background: 'var(--green-bright)', width: 9, height: 9, borderRadius: '50%', display: 'inline-block' }} />
         <span>QuietGreen</span>
       </Link>

@@ -24,6 +24,10 @@ export interface QuoteDraft {
   calculatedPrice: number
   calculatedFirstVisit: number
   overridePrice: number | null
+  includeMowing?: boolean
+  manualLines?: { id: string; service: string; amountCents: number }[]
+  discountCents?: number
+  totalCents?: number
   notes: string
 }
 export interface StaffQuote {
@@ -33,4 +37,15 @@ export interface StaffQuote {
   address: string | null
   sq_ft: number | null
   draft: QuoteDraft | null
+  updated_at: string
+  quote_status: 'draft' | 'accepted' | 'declined' | 'canceled'
+  addressNeedsReview?: boolean
+  onSaved?: (updatedAt: string, reviewed: boolean, draft: QuoteDraft) => void
+}
+
+export function quoteTotalCents(draft: QuoteDraft) {
+  const mowingCents = draft.includeMowing === false ? 0 : Math.round((draft.overridePrice ?? draft.calculatedPrice) * 100)
+  const lines = draft.manualLines ?? []
+  const discountCents = draft.discountCents ?? 0
+  return mowingCents + lines.reduce((sum, line) => sum + line.amountCents, 0) - discountCents
 }

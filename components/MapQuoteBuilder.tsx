@@ -1,6 +1,7 @@
 'use client'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
+import './map-waitlist.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/style.css'
@@ -8,6 +9,7 @@ import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 import TraceDemo        from '@/components/TraceDemo'
 import { submitLead }   from '@/app/actions/submit-lead'
+import { submitWaitlist } from '@/app/actions/submit-waitlist'
 import { getAttribution } from '@/lib/attribution'
 import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAddonInterest, trackBookingRequested } from '@/lib/gtag'
 import { trackWebsiteLead } from '@/lib/meta-events'
@@ -16,6 +18,7 @@ import { submissionId } from '@/lib/submission-id'
 import { OFFICE_LAT, OFFICE_LNG, photonSearch, type GeoResult } from '@/lib/address-search'
 import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
 import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
+import QuotePriceEditor, { type ManualPriceLine } from '@/app/admin/leads/QuotePriceEditor'
 import ManualQuoteForm from './ManualQuoteForm'
 
 /* ── Types ────────────────────────────────────────────── */
@@ -288,8 +291,19 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [saving, setSaving] = useState(false)
   const [overridePrice, setOverridePrice] = useState<number | null>(() => draft?.overridePrice ?? null)
   const [staffNotes, setStaffNotes] = useState(() => draft?.notes ?? '')
+  const [includeMowing, setIncludeMowing] = useState(() => draft?.includeMowing ?? (!!draft?.sections.length || requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
+  const [showStaffMap, setShowStaffMap] = useState(() => !staffQuote || !!draft?.sections.length || !!(draft?.includeMowing ?? requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
+  const [manualLines, setManualLines] = useState<ManualPriceLine[]>(() => draft?.manualLines ?? (staffQuote?.services ?? [])
+    .filter(service => !/mow|lawn/i.test(service)).map((service, index) => ({ id: `requested-${index}`, service, amountCents: 0 })))
+  const [discountCents, setDiscountCents] = useState(() => draft?.discountCents ?? 0)
   const [mapReady, setMapReady] = useState(false)
   const restored = useRef(false)
+
+  useEffect(() => {
+    if (!showStaffMap) return
+    const frame = requestAnimationFrame(() => mapRef.current?.resize())
+    return () => cancelAnimationFrame(frame)
+  }, [showStaffMap])
 
   const mapDivRef        = useRef<HTMLDivElement>(null)
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -317,6 +331,12 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [step,        setStep]        = useState<AppStep>(() => draft?.sections.length ? 'done' : 'idle')
   const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.address ?? '')
   const [error,       setError]       = useState('')
+  const [outsideArea, setOutsideArea] = useState(false)
+  const [waitlistName, setWaitlistName] = useState('')
+  const [waitlistPhone, setWaitlistPhone] = useState('')
+  const [waitlistEmail, setWaitlistEmail] = useState('')
+  const [waitlistState, setWaitlistState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [waitlistError, setWaitlistError] = useState('')
   const [suggestions, setSuggestions] = useState<GeoResult[]>([])
   // The suggestion the visitor picked — reused on search so we don't geocode it again
   const pickedRef = useRef<GeoResult | null>(null)
@@ -789,12 +809,19 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
     if (!address.trim()) { setError('Enter your address to find your property.'); return }
+    if (staffQuote?.addressNeedsReview && !draft?.jobLatLng && pickedRef.current?.label !== address) {
+      setError('Select the matching property from address suggestions before opening the map. The submitted address needs review.')
+      return
+    }
     if (!mapRef.current) return
     // Cancel any in-flight autocomplete so it can't reopen the dropdown over the result
     if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
     suggestAbortRef.current?.abort()
     setSuggestions([])
     setError('')
+    setOutsideArea(false)
+    const previousWaitlistProperty = sessionStorage.getItem('qg_waitlist_property')
+    if (previousWaitlistProperty && address !== previousWaitlistProperty) { sessionStorage.removeItem('qg_submission_waitlist'); setWaitlistState('idle') }
     setStep('searching')
     // Deferred a frame — calling this synchronously in the same tick as the
     // setStep above gets silently dropped (the state-driven re-render right
@@ -808,8 +835,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
       // Outside the service area: stop here rather than quote a huge travel fee
       const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, lat, lon)
-      if (miles > SERVICE_RADIUS_MILES) {
-        setError(`That address is about ${Math.round(miles).toLocaleString()} miles from us — we serve Austin and up to ${SERVICE_RADIUS_MILES} miles out. Double-check the address (add city or zip), or call (682) 352-8260.`)
+      if (!staffQuote && miles > SERVICE_RADIUS_MILES) {
+        setError(`That address is about ${Math.round(miles).toLocaleString()} miles from us. We serve Austin and up to ${SERVICE_RADIUS_MILES} miles out. Join our waitlist below and we'll contact you if coverage changes.`)
+        setOutsideArea(true)
+        sessionStorage.setItem('qg_waitlist_property', address)
         setStep('idle')
         scrollToNext(addressWrapRef, 'center')
         return
@@ -855,7 +884,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
         setPtCount(draft.unfinishedPoints.length)
         updateDrawSource()
       }
-    } else if (draft?.address || staffQuote.address) {
+    } else if ((draft?.address || staffQuote.address) && !staffQuote.addressNeedsReview) {
       void handleSearch()
     }
     })
@@ -965,6 +994,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) + distanceFee : 0
   const firstVisitFullPrice = ongoingPrice + overgrowthFee
   const firstVisitPrice = Math.round(firstVisitFullPrice * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
+  const mowingPriceCents = Math.round((overridePrice ?? ongoingPrice) * 100)
+  const staffTotalCents = (includeMowing ? mowingPriceCents : 0) + manualLines.reduce((sum, line) => sum + line.amountCents, 0) - discountCents
   const isDone         = step === 'done' || step === 'editing'
   // Once the price is unlocked the map shrinks to a preview and the quote takes over
   const compact        = leadUnlocked && step === 'done' && !isDrawing
@@ -1056,17 +1087,22 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       fertAreaChoice, fertCustomSqFt, fertIncluded, mulchAreaChoice, mulchCustomSqFt, mulchDepthIn, mulchIncluded,
       maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
       addonInterest, overgrowthFee, calculatedPrice: ongoingPrice, calculatedFirstVisit: firstVisitPrice, overridePrice, notes: staffNotes,
+      includeMowing, manualLines, discountCents, totalCents: staffTotalCents,
     }
     try {
-      const result = await saveLeadQuote(staffQuote.id, next, confirmed)
-      setSaveMessage(result.error ?? (confirmed ? 'Quote confirmed. No booking or message was created.' : 'Draft saved.'))
+      const result = await saveLeadQuote(staffQuote.id, staffQuote.updated_at, next, confirmed)
+      if ('error' in result) setSaveMessage(result.error)
+      else {
+        staffQuote.onSaved?.(result.updatedAt, confirmed, next)
+        setSaveMessage(confirmed ? 'Quote confirmed. No booking or message was created.' : 'Draft saved.')
+      }
     } catch { setSaveMessage('Could not save. Please retry.') }
     finally { setSaving(false) }
   }
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
-    <section className="mapq-section" id="map-quote">
+    <section className={`mapq-section${staffQuote ? ' crm-staff-map' : ''}${staffQuote && !showStaffMap ? ' crm-staff-map-hidden' : ''}${outsideArea ? ' mapq-outside' : ''}`} id="map-quote">
       <div className="mapq-blobs" aria-hidden="true">
         <div className="mapq-blob mapq-blob-a" />
         <div className="mapq-blob mapq-blob-b" />
@@ -1075,13 +1111,16 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       <div className="mapq-inner">
         {staffQuote && <div className="staff-quote-controls">
           <h2>Prepare this quote</h2>
-          <p>Trace the lawn and edit the estimate below. Saving does not contact the customer.</p>
-          <label>Staff price override per visit ($, optional)<input type="number" min="0" value={overridePrice ?? ''} onChange={e => setOverridePrice(e.target.value === '' ? null : Number(e.target.value))} /></label>
+          <p>Price any requested service. Trace the lawn only if mowing is part of this quote. Saving does not contact the customer.</p>
+          {includeMowing && <label>Staff price override per visit ($, optional)<input type="number" min="0" value={overridePrice ?? ''} onChange={e => setOverridePrice(e.target.value === '' ? null : Number(e.target.value))} /></label>}
+          <QuotePriceEditor lines={manualLines} onLinesChange={setManualLines} discountCents={discountCents} onDiscountChange={setDiscountCents} includeMowing={includeMowing} onIncludeMowingChange={included => { setIncludeMowing(included); if (included) setShowStaffMap(true) }} mowingPriceCents={mowingPriceCents} />
           <label>Quote notes<textarea value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} /></label>
-          <button disabled={saving} onClick={() => void saveStaffDraft(false)}>Save draft</button>
-          <button disabled={saving || isDrawing} onClick={() => void saveStaffDraft(true)}>Confirm quote</button>
+          <button disabled={saving || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(false)}>Save draft</button>
+          <button disabled={saving || isDrawing || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(true)}>Confirm quote</button>
+          {staffQuote.quote_status === 'accepted' && <p>This accepted quote is locked. Cancel acceptance before preparing a new draft.</p>}
           <p role="status">{saveMessage}</p>
         </div>}
+        {staffQuote && <div className="crm-map-heading"><span>Property map</span><button type="button" className="crm-map-toggle" onClick={() => setShowStaffMap(open => !open)}>{showStaffMap ? 'Hide map' : 'Open map'}</button></div>}
         <div className="mapq-header">
           <div className="section-label" style={{ color: 'var(--green-bright)' }}>Instant Quote</div>
           <h2 className="section-h2" style={{ color: '#fff', marginBottom: 0 }}>
@@ -1165,7 +1204,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                         aria-label="Your street address"
                         aria-autocomplete="list"
                         aria-expanded={suggestions.length > 0}
-                        onChange={e => { setAddress(e.target.value); setActiveSug(-1); fetchSuggestions(e.target.value) }}
+                        onChange={e => { setAddress(e.target.value); setActiveSug(-1); if (outsideArea) { setOutsideArea(false); setWaitlistState('idle'); setError('') }; fetchSuggestions(e.target.value) }}
                         onKeyDown={e => {
                           if (!suggestions.length) return
                           if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSug(i => Math.min(i + 1, suggestions.length - 1)) }
@@ -1196,6 +1235,26 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                     {error && <p className="mapq-error">{error}</p>}
                   </form>
                 )}
+                {outsideArea && !staffQuote && (waitlistState === 'saved' ? <p className="mapq-waitlist-success" role="status">You’re on the waitlist. We’ll reach out if service becomes available near this address.</p> :
+                  <form className="mapq-waitlist" onSubmit={async event => {
+                    event.preventDefault()
+                    if (waitlistState === 'saving') return
+                    setWaitlistState('saving'); setWaitlistError('')
+                    try {
+                      const result = await submitWaitlist({ submission_id: submissionId('waitlist'), name: waitlistName, phone: waitlistPhone,
+                        address, email: waitlistEmail, ...getAttribution() })
+                      if (result.success) setWaitlistState('saved')
+                      else { setWaitlistState('idle'); setWaitlistError(result.error ?? 'Could not save your request.') }
+                    } catch { setWaitlistState('idle'); setWaitlistError('Could not save your request. Please retry.') }
+                  }}>
+                    <h3>Join the service waitlist</h3>
+                    <label>Your name<input required autoComplete="name" value={waitlistName} onChange={event => setWaitlistName(event.target.value)} maxLength={150} /></label>
+                    <label>Phone number<input required type="tel" autoComplete="tel" value={waitlistPhone} onChange={event => setWaitlistPhone(event.target.value)} /></label>
+                    <label>Email (optional)<input type="email" autoComplete="email" value={waitlistEmail} onChange={event => setWaitlistEmail(event.target.value)} /></label>
+                    <p>Property: {address}</p>
+                    <button type="submit" className="mapq-btn-primary" disabled={waitlistState === 'saving'}>{waitlistState === 'saving' ? 'Saving…' : 'Join waitlist'}</button>
+                    {waitlistError && <p className="mapq-error" role="alert">{waitlistError}</p>}
+                  </form>)}
                 {step !== 'idle' && step !== 'searching' && (
                   <p className="mapq-step-done-text">{address}<button className="mapq-link" onClick={handleReset}> · new search</button></p>
                 )}

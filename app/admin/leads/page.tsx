@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getLeads, getBookings } from '../actions'
 import { formatAttributionLabel } from '@/lib/attribution'
 import LeadRow from './LeadRow'
@@ -5,7 +6,7 @@ import LeadRow from './LeadRow'
 export const dynamic = 'force-dynamic'
 
 function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime()
+  const diff = Math.max(0, Date.now() - new Date(dateStr).getTime())
   const mins = Math.floor(diff / 60000)
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
@@ -13,75 +14,40 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export default async function LeadsPage() {
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const view = (await searchParams).view ?? 'all'
   const [leads, bookings] = await Promise.all([getLeads(), getBookings()])
-
   const bookedLeadIds = new Set(bookings.filter(b => ['confirmed', 'completed'].includes(b.status)).map(b => b.lead_id).filter(Boolean))
+  // One request timestamp keeps queue ordering and due labels consistent.
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now()
+  const needsAction = (lead: typeof leads[number]) => !['booked','lost'].includes(lead.stage ?? 'new') &&
+    (lead.stage === 'new' || (!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now))
+  const needsCount = leads.filter(needsAction).length
+  const followupCount = leads.filter(lead => lead.follow_up_at && !['booked','lost'].includes(lead.stage ?? 'new')).length
+  const visible = leads.filter(lead => view === 'needs' ? needsAction(lead) : view === 'followup' ? !!lead.follow_up_at && !['booked','lost'].includes(lead.stage ?? 'new') : true)
+    .sort((a, b) => Number(needsAction(b)) - Number(needsAction(a)) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const totalConverted = leads.filter(lead => bookedLeadIds.has(lead.id)).length
 
-  const bySource = new Map<string, { total: number; converted: number }>()
-  for (const lead of leads) {
-    const label = formatAttributionLabel(lead) ?? 'Direct / unknown'
-    const entry = bySource.get(label) ?? { total: 0, converted: 0 }
-    entry.total += 1
-    if (bookedLeadIds.has(lead.id)) entry.converted += 1
-    bySource.set(label, entry)
-  }
-  const sourceRows = [...bySource.entries()].sort((a, b) => b[1].total - a[1].total)
-
-  const totalConverted = leads.filter(l => bookedLeadIds.has(l.id)).length
-
-  return (
-    <>
-      <div className="admin-stats">
-        <div className="admin-stat">
-          <span className="admin-stat-val">{leads.length}</span>
-          <span className="admin-stat-label">Total leads</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat">
-          <span className="admin-stat-val">{totalConverted}</span>
-          <span className="admin-stat-label">Confirmed booking conversion</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat">
-          <span className="admin-stat-val">{leads.length ? Math.round((totalConverted / leads.length) * 100) : 0}%</span>
-          <span className="admin-stat-label">Conversion rate</span>
-        </div>
-      </div>
-
-      {sourceRows.length > 0 && (
-        <div className="admin-card" style={{ marginBottom: 16, padding: '16px 18px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-soft)', marginBottom: 12 }}>
-            By source
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {sourceRows.map(([label, stats]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13.5 }}>
-                <span style={{ color: 'var(--ink)' }}>{label}</span>
-                <span style={{ color: 'var(--ink-soft)', whiteSpace: 'nowrap' }}>
-                  {stats.total} lead{stats.total !== 1 ? 's' : ''} · {stats.converted} booked
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {leads.length === 0 ? (
-        <div className="admin-empty">No leads yet.</div>
-      ) : (
-        <div className="admin-list">
-          {leads.map(lead => (
-            <LeadRow
-              key={lead.id}
-              lead={lead}
-              source={formatAttributionLabel(lead)}
-              converted={bookedLeadIds.has(lead.id)}
-              timeAgo={timeAgo(lead.created_at)}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  )
+  return <div className="crm-page">
+    <div className="crm-page-heading">
+      <div><span className="crm-eyebrow">QuietGreen · Response queue</span><h1>Leads</h1><span className="crm-muted">Call, quote, and follow up from one workspace.</span></div>
+      <Link className="crm-button" href="/admin/route">Today’s jobs →</Link>
+    </div>
+    <div className="crm-filter-row" aria-label="Lead views">
+      <Link className="crm-filter" href="/admin/leads" aria-current={view === 'all' ? 'page' : undefined}>All <strong>{leads.length}</strong></Link>
+      <Link className="crm-filter" href="/admin/leads?view=needs" aria-current={view === 'needs' ? 'page' : undefined}>Needs action <strong>{needsCount}</strong></Link>
+      <Link className="crm-filter" href="/admin/leads?view=followup" aria-current={view === 'followup' ? 'page' : undefined}>Follow-ups <strong>{followupCount}</strong></Link>
+    </div>
+    <div className="admin-stats" style={{ borderRadius: 12, marginBottom: 18, border: '1px solid var(--rule)' }}>
+      <div className="admin-stat"><span className="admin-stat-val">{leads.length}</span><span className="admin-stat-label">Total leads</span></div>
+      <div className="admin-stat-divider" />
+      <div className="admin-stat"><span className="admin-stat-val">{totalConverted}</span><span className="admin-stat-label">Confirmed booking conversion</span></div>
+      <div className="admin-stat-divider" />
+      <div className="admin-stat"><span className="admin-stat-val">{leads.length ? Math.round((totalConverted / leads.length) * 100) : 0}%</span><span className="admin-stat-label">Conversion rate</span></div>
+    </div>
+    {visible.length === 0 ? <div className="admin-empty">{view === 'all' ? 'No leads yet.' : 'Nothing in this view.'}</div> : <div className="crm-list">
+      {visible.map(lead => <LeadRow key={lead.id} lead={lead} source={formatAttributionLabel(lead)} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />)}
+    </div>}
+  </div>
 }

@@ -1,65 +1,24 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
-import { deleteLead } from '../actions'
 
 interface Lead {
-  id: string
-  phone: string
-  address: string | null
-  sq_ft: number | null
-  map_screenshot_url: string | null
+  id: string; name?: string | null; phone: string; address: string | null
+  sq_ft: number | null; services?: string[] | null; stage?: string | null; follow_up_at?: string | null
 }
 
-export default function LeadRow({
-  lead, source, converted, timeAgo,
-}: {
-  lead: Lead
-  source: string | null
-  converted: boolean
-  timeAgo: string
+export default function LeadRow({ lead, source, converted, timeAgo, needsAction, due }: {
+  lead: Lead; source: string | null; converted: boolean; timeAgo: string; needsAction: boolean; due: boolean
 }) {
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState('')
-
-  return (
-    <div className={`admin-card ${pending ? 'admin-card-loading' : ''}`}>
-      <div className="admin-card-summary" style={{ cursor: 'default' }}>
-        {lead.map_screenshot_url && (
-          <a
-            href={lead.map_screenshot_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="admin-lead-thumb"
-            title="Open traced lawn photo"
-          >
-            <img src={lead.map_screenshot_url} alt="Traced lawn" />
-          </a>
-        )}
-        <span className={`admin-badge ${converted ? 'admin-badge-confirmed' : 'admin-badge-pending'}`}>
-          {converted ? 'Booked' : 'Lead only'}
-        </span>
-        <a href={`tel:${lead.phone}`} className="admin-card-summary-name" style={{ color: 'inherit', textDecoration: 'none' }}>
-          {lead.phone}
-        </a>
-        <Link href={`/admin/leads/${lead.id}`}>Open quote</Link>
-        <span className="admin-card-summary-addr">
-          {lead.address ?? '—'}{lead.sq_ft ? ` · ${lead.sq_ft.toLocaleString()} sq ft` : ''}
-        </span>
-        <span className="admin-card-summary-sub" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
-          {source ?? 'Direct / unknown'} · {timeAgo}
-        </span>
-        <button
-          onClick={() => { if (window.confirm('Delete this lead?')) startTransition(async () => { const result = await deleteLead(lead.id); setError(result.error ?? '') }) }}
-          disabled={pending}
-          style={{ background: 'none', border: 'none', color: 'var(--ink-faint, #999)', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }}
-          aria-label="Delete lead"
-        >
-          ×
-        </button>
+  return <div className="admin-card crm-lead">
+    <Link className="crm-lead-main" href={`/admin/leads/${lead.id}`} aria-label={`Open quote for ${lead.name || lead.phone}`}>
+      <div className="crm-lead-top">
+        <span className="crm-lead-name">{lead.name || lead.phone}</span>
+        <span className={`crm-chip ${needsAction ? 'crm-chip-due' : ''}`}>{converted ? 'Booked' : due ? 'Follow up due' : lead.stage === 'new' || !lead.stage ? 'New' : lead.stage}</span>
       </div>
-      {error && <p role="alert">{error}</p>}
-    </div>
-  )
+      <div className="crm-lead-address">{lead.address ?? 'Address not provided'}{lead.sq_ft ? ` · ${lead.sq_ft.toLocaleString()} sq ft` : ''}</div>
+      <div className="crm-lead-meta">{(lead.services ?? []).join(', ') || 'Service not specified'} · {source ?? 'Direct / unknown'} · {timeAgo}</div>
+    </Link>
+    <div className="crm-lead-actions"><a className="crm-icon-link" href={`tel:${lead.phone}`} aria-label={`Call ${lead.phone}`}>Call</a></div>
+  </div>
 }
