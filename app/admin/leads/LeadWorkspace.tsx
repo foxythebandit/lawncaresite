@@ -61,6 +61,8 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
   const propertyChanged = !!draft && (draft.contactAddressAtReview !== undefined
     ? draft.contactAddressAtReview !== lead.address
     : activities.some(activity => activity.outcome === 'contact_address_changed' && activity.occurred_at > (lead.quote_saved_at ?? '')))
+  const [resetPropertyAddress, setResetPropertyAddress] = useState<string | null>(null)
+  const propertyReset = resetPropertyAddress !== null && resetPropertyAddress === lead.address
   const [reviewed, setReviewed] = useState(!!lead.quote_confirmed_at)
   const [quoteStatus, setQuoteStatus] = useState(lead.quote_status)
   const [feedback, setFeedback] = useState('')
@@ -254,9 +256,14 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
       </div>
     </div>
     <div className="crm-quote-wrap">
-      <MapQuoteBuilder staffQuote={{ id: lead.id, address: lead.address, sq_ft: lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,
-        draft, updated_at: version, quote_status: quoteStatus, addressNeedsReview: addressNeedsReview || propertyChanged,
-        onSaved: (updatedAt, wasReviewed, savedDraft) => { setVersion(updatedAt); setDraft(savedDraft); setReviewed(wasReviewed); setQuoteStatus('draft'); if (wasReviewed) setStage('quoted'); router.refresh() } }} />
+      {propertyChanged && !propertyReset ? <div className="crm-panel" id="map-quote">
+        <h2>Start a quote for the updated address</h2>
+        <p>The previous measurement and price belong to the old property. Start fresh for {lead.address}. Previous accepted quotes and jobs stay in history.</p>
+        <button className="crm-button" disabled={pending || quoteStatus === 'accepted'} onClick={() => { setResetPropertyAddress(lead.address); setReviewed(false) }}>Start quote for updated address</button>
+        {quoteStatus === 'accepted' && <p>Cancel acceptance above before starting the new quote.</p>}
+      </div> : <MapQuoteBuilder key={propertyReset ? `reset-${resetPropertyAddress}` : 'saved-property'} staffQuote={{ id: lead.id, address: lead.address, sq_ft: propertyReset ? null : lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,
+        draft: propertyReset ? null : draft, updated_at: version, quote_status: quoteStatus, addressNeedsReview: addressNeedsReview || propertyChanged,
+        onSaved: (updatedAt, wasReviewed, savedDraft) => { setVersion(updatedAt); setDraft(savedDraft); setReviewed(wasReviewed); setQuoteStatus('draft'); if (wasReviewed) setStage('quoted'); router.refresh() } }} />}
     </div>
   </>
 }

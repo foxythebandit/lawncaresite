@@ -36,7 +36,8 @@ export async function saveLeadQuote(id: string, expectedUpdatedAt: string, draft
   await requireStaff(`/admin/leads/${id}`)
   const { data: currentLead, error: addressError } = await adminDb().from('leads').select('address').eq('id', id).single()
   if (addressError || !currentLead) return { error: 'Could not load the current contact address.' }
-  const reviewedDraft = { ...draft, contactAddressAtReview: currentLead.address }
+  if (draft.contactAddressAtReview !== currentLead.address) return { error: 'The contact address changed. Start a quote for the updated address before saving.' }
+  const reviewedDraft = draft
   return updateWorkflow(id, expectedUpdatedAt, { quote_draft: reviewedDraft, quote_status: 'draft', review_quote: reviewed, ...(reviewed ? { stage: 'quoted' as const } : {}) },
     { kind: 'quote', outcome: reviewed ? 'reviewed' : 'draft_saved', body: reviewed ? 'Staff reviewed quote.' : 'Saved quote draft.' })
 }

@@ -34,7 +34,7 @@ def rpc(name, data):
 
 name = 'Mobile lead ' + uuid.uuid4().hex[:8]
 lead = db('leads', {'name': name, 'phone': '+15125550199', 'address': '807 E 47th St, Austin, TX',
-                    'services': ['Leaf cleanup'], 'source': 'website-service',
+                    'services': ['Leaf cleanup'], 'sq_ft': 2400, 'source': 'website-service',
                     'answers': {'project_description': 'Bag the leaves by the back gate'},
                     'attribution': {'first_touch': {'utm_source': 'meta', 'meta_ad_id': '900003', 'creative_type': 'ai'}}})[0]
 lead_id = lead['id']
@@ -104,10 +104,11 @@ with sync_playwright() as playwright:
     page.get_by_text('The contact address changed after this quote.', exact=False).first.wait_for()
     assert db('bookings?lead_id=eq.' + lead_id) == []
     assert db('leads?id=eq.' + lead_id)[0]['accepted_quote_snapshot']['address'] == '807 E 47th St, Austin, TX'
-    page.get_by_label('Property address', exact=True).fill('807 E 47th St, Austin, TX')
-    page.get_by_role('button', name='Save contact').click()
-    page.get_by_text('Saved.', exact=True).first.wait_for()
+    assert page.get_by_role('button', name='Confirm quote', exact=True).count() == 0
     page.get_by_role('button', name='Cancel acceptance').click()
+    page.get_by_role('button', name='Start quote for updated address').click()
+    assert page.get_by_label('Leaf cleanup price').input_value() in ('', '0', '0.00')
+    page.get_by_label('Leaf cleanup price').fill('125.50')
     page.get_by_role('button', name='Save draft', exact=True).click()
     page.get_by_role('status').filter(has_text='Draft saved.').wait_for()
     page.get_by_role('button', name='Confirm quote', exact=True).click()
@@ -118,7 +119,11 @@ with sync_playwright() as playwright:
     page.get_by_text('Booking request created.').first.wait_for()
     bookings = db('bookings?lead_id=eq.' + lead_id)
     assert len(bookings) == 1 and bookings[0]['status'] == 'pending'
+    assert bookings[0]['address'] == '999 Temporary Test Property, Austin, TX'
     assert bookings[0]['accepted_quote_snapshot']['total'] == 125.50
+    new_draft = db('leads?id=eq.' + lead_id)[0]['quote_draft']
+    assert new_draft['sections'] == [] and new_draft['jobLatLng'] is None
+    assert new_draft['contactAddressAtReview'] == '999 Temporary Test Property, Austin, TX'
     assert len(db('job_items?booking_id=eq.' + bookings[0]['id'])) == 1
     page.reload()
     page.locator('a[href^="sms:"][href*="body="]').wait_for()
@@ -139,8 +144,8 @@ with sync_playwright() as playwright:
     page.get_by_text('Contact address changed.', exact=False).wait_for()
     corrected = db('leads?id=eq.' + lead_id)[0]
     assert corrected['phone'] == '+15125550198'
-    assert corrected['accepted_quote_snapshot']['address'] == '807 E 47th St, Austin, TX'
-    assert db('bookings?lead_id=eq.' + lead_id)[0]['address'] == '807 E 47th St, Austin, TX'
+    assert corrected['accepted_quote_snapshot']['address'] == '999 Temporary Test Property, Austin, TX'
+    assert db('bookings?lead_id=eq.' + lead_id)[0]['address'] == '999 Temporary Test Property, Austin, TX'
     page.screenshot(path='/tmp/qg-crm-mobile-390.png', full_page=True)
     context.close()
     desktop = browser.new_context(viewport={'width': 1360, 'height': 900})

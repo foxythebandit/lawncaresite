@@ -284,6 +284,7 @@ const CheckIcon = () => (
 export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuote }) {
   const staffMode = !!staffQuote
   const draft = staffQuote?.draft
+  const contactAddressAtReview = useRef(draft?.contactAddressAtReview ?? staffQuote?.address ?? null)
   const requestedServices = (staffQuote?.services ?? []).map(s => s.toLowerCase().replace(/[^a-z]/g, ''))
   const requestedFrequency = staffQuote?.frequency?.toLowerCase().replace(/[^a-z]/g, '') as Frequency | undefined
   const [leadToken, setLeadToken] = useState<string | undefined>(undefined)
@@ -1083,7 +1084,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     const points = drawRef.current.points
     const savedSections = sections
     const next: QuoteDraft = {
-      address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
+      contactAddressAtReview: contactAddressAtReview.current, address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
       fertAreaChoice, fertCustomSqFt, fertIncluded, mulchAreaChoice, mulchCustomSqFt, mulchDepthIn, mulchIncluded,
       maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
       addonInterest, overgrowthFee, calculatedPrice: ongoingPrice, calculatedFirstVisit: firstVisitPrice, overridePrice, notes: staffNotes,
