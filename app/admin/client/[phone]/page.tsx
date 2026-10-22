@@ -14,21 +14,21 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
   const all   = await getBookings()
 
   const visits = all
-    .filter(b => b.phone === phone)
+    .filter(b => b.phone === phone && !b.customer_id)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
 
   if (visits.length === 0) {
     return (
       <div style={{ padding: 24 }}>
         <Link href="/admin" className="admin-client-back">← All clients</Link>
-        <div className="admin-empty">Client not found.</div>
+        <div className="admin-empty">No unlinked legacy visits found for this phone.</div>
       </div>
     )
   }
 
   const client    = visits[0]
   const completed = visits.filter(b => b.status === 'completed')
-  const totalSpent = completed.reduce((s, b) => s + (b.amount_charged ?? 0), 0)
+  const legacyRecorded = completed.reduce((s, b) => s + (b.amount_charged ?? 0), 0)
   const nextVisit  = visits.find(b => b.status === 'confirmed' && b.confirmed_date)
 
   return (
@@ -36,6 +36,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
       <div className="admin-client-header">
         <Link href="/admin" className="admin-client-back">← All clients</Link>
         <h1 className="admin-client-name">{client.name}</h1>
+        <p>Unlinked legacy visits sharing this phone. Review identity before linking customer history.</p>
         <div className="admin-client-meta">
           <a href={`tel:${client.phone}`} style={{ color: 'var(--green-mid)', textDecoration: 'none' }}>{client.phone}</a>
           {client.email && <> · <a href={`mailto:${client.email}`} style={{ color: 'var(--green-mid)', textDecoration: 'none' }}>{client.email}</a></>}
@@ -66,8 +67,8 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${totalSpent.toLocaleString()}</span>
-          <span className="admin-stat-label">Total spent</span>
+          <span className="admin-stat-val admin-stat-money">${legacyRecorded.toLocaleString()}</span>
+          <span className="admin-stat-label">Legacy amount recorded</span>
         </div>
         {nextVisit?.confirmed_date && (
           <>

@@ -8,6 +8,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
 import Stripe from 'stripe'
+import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'declined', 'completed'])
@@ -58,49 +59,24 @@ export async function updateNotes(id: string, notes: string) {
   revalidatePath('/admin')
 }
 
-export async function deleteBooking(id: string) {
+export async function deleteBooking(id: string): Promise<ActionResult> {
   await requireStaff()
-  if (!UUID_RE.test(id)) return
-  await getAdmin().from('bookings').delete().eq('id', id)
+  if (!UUID_RE.test(id)) return { success: false, error: 'Invalid job.' }
+  const db = getAdmin()
+  const { data: booking, error: readError } = await db.from('bookings')
+    .select('updated_at,status').eq('id', id).single()
+  if (readError || !booking) return { success: false, error: 'Job not found.' }
+  if (booking.status === 'completed') return { success: false, error: 'Completed work stays in history.' }
+  const { error } = await db.rpc('crm_job_command', {
+    p_booking_id: id, p_expected_updated_at: booking.updated_at,
+    p_operation_id: crypto.randomUUID(), p_action: 'cancel', p_payload: {},
+  })
+  if (error) return { success: false, error: commandError(error) }
   revalidatePath('/admin')
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
   revalidatePath('/admin/route')
-}
-
-export async function updateCompletedJob(id: string, data: { amount_charged: number; payment_method: string }) {
-  await requireStaff()
-  if (!UUID_RE.test(id)) return
-  if (!Number.isFinite(data.amount_charged) || data.amount_charged < 0) return
-  await getAdmin().from('bookings').update({
-    amount_charged: data.amount_charged,
-    payment_method: data.payment_method.trim() || null,
-  }).eq('id', id)
-  revalidatePath('/admin')
-  revalidatePath('/admin/revenue')
-}
-
-export async function setOneTime(id: string, oneTime: boolean) {
-  await requireStaff()
-  if (!UUID_RE.test(id)) return
-  await getAdmin().from('bookings').update({ one_time: oneTime }).eq('id', id)
-  revalidatePath('/admin')
-  revalidatePath('/admin/revenue')
-}
-
-export async function updateServiceDetails(id: string, data: { frequency: string; price_per_visit: number }) {
-  await requireStaff()
-  if (!UUID_RE.test(id)) return
-  const frequency = data.frequency.trim()
-  if (!frequency || !Number.isFinite(data.price_per_visit) || data.price_per_visit < 0) return
-  await getAdmin().from('bookings').update({
-    frequency,
-    price_per_visit: Math.round(data.price_per_visit),
-  }).eq('id', id)
-  revalidatePath('/admin')
-  revalidatePath('/admin/revenue')
-  revalidatePath('/admin/week')
-  revalidatePath('/admin/route')
+  return { success: true }
 }
 
 // Lets a booking's point-of-contact be swapped out (e.g. a renter at the
@@ -177,169 +153,26 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
   return { success: true }
 }
 
-export async function updateStatus(id: string, status: string, confirmedDate?: string, confirmedTime?: string) {
-  await requireStaff()
-  if (!UUID_RE.test(id) || !ALLOWED_STATUSES.has(status)) return
-  const db = getAdmin()
-  const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
-  const update: Record<string, unknown> = { status }
-  if (confirmedDate) update.confirmed_date = confirmedDate
-  if (confirmedTime) update.confirmed_time = confirmedTime
-  await db.from('bookings').update(update).eq('id', id)
-  revalidatePath('/admin')
-
-  if (!booking?.email || !process.env.RESEND_API_KEY) return
-
-  const resend = new Resend(process.env.RESEND_API_KEY)
-  const firstName = booking.name.split(' ')[0]
-  const scheduledDate = confirmedDate
-    ? new Date(confirmedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-    : booking.preferred_date
-      ? new Date(booking.preferred_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-      : null
-  const scheduledTime = confirmedTime ?? booking.confirmed_time ?? null
-
-  if (status === 'confirmed') {
-    await resend.emails.send({
-      from: 'QuietGreen <hello@quietgreen.co>',
-      to: booking.email,
-      subject: 'Your QuietGreen visit is confirmed ✓',
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
-          <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0">
-            <p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Booking Confirmed</p>
-            <h1 style="color:#fff;font-size:22px;margin:0">You're on the schedule, ${h(firstName)}.</h1>
-          </div>
-          <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
-            <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px">
-              Your QuietGreen visit has been confirmed. We'll arrive quietly, get it done, and be out of your hair — no fumes, no noise.
-            </p>
-            ${scheduledDate ? `
-            <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px;margin-bottom:20px">
-              <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Scheduled for</p>
-              <p style="margin:6px 0 0;font-size:18px;font-weight:600;color:#1a3a2a">${h(scheduledDate)}${scheduledTime ? ` · ${h(formatTimeLabel(scheduledTime))}` : ''}</p>
-            </div>` : ''}
-            <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;color:#4a5e54">
-              <p style="margin:0 0 4px">${h(booking.address)}</p>
-              <p style="margin:0">${booking.sq_ft?.toLocaleString()} sq ft · ${h(booking.frequency)} · $${booking.price_per_visit}/visit</p>
-              ${booking.overgrowth_fee ? `<p style="margin:6px 0 0;color:#b07800">First visit $${booking.first_visit_price} (incl. $${booking.overgrowth_fee} first-cut cleanup)</p>` : ''}
-            </div>
-            ${booking.map_screenshot_url ? `
-            <div style="margin-bottom:20px">
-              <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Your traced lawn</p>
-              <img src="${booking.map_screenshot_url}" alt="Your lawn trace" style="width:100%;border-radius:10px;border:1px solid #e0ede6;display:block"/>
-            </div>` : ''}
-            <div style="background:#fff;border:1px solid #e0ede6;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#4a5e54">
-              <strong style="color:#1a3a2a">Payment:</strong> You won't be charged today. An invoice will be sent to this email address once the job is complete.
-            </div>
-            <p style="font-size:13px;color:#4a5e54;margin:0">Questions? Reply to this email or email us any time.</p>
-          </div>
-        </div>
-      `,
-    }).catch((err: unknown) => { console.error('[Resend] confirmed email failed:', err) })
-  }
-
-  if (status === 'declined') {
-    await resend.emails.send({
-      from: 'QuietGreen <hello@quietgreen.co>',
-      to: booking.email,
-      subject: 'Re: Your QuietGreen quote request',
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
-          <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0">
-            <h1 style="color:#fff;font-size:22px;margin:0">Hi ${h(firstName)},</h1>
-          </div>
-          <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
-            <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 16px">
-              Thanks for reaching out to QuietGreen. Unfortunately we're not able to take on your visit at this time — we may be fully booked in your area or outside our current service zone.
-            </p>
-            <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px">
-              If you'd like to stay on our waitlist or discuss alternatives, just reply to this email and we'll get back to you.
-            </p>
-            <p style="font-size:13px;color:#4a5e54;margin:0">— The QuietGreen team</p>
-          </div>
-        </div>
-      `,
-    }).catch((err: unknown) => { console.error('[Resend] declined email failed:', err) })
-  }
-}
-
 export async function markComplete(
   id: string,
-  data: { completed_at: string; amount_charged: number; payment_method: string; one_time?: boolean; next_visit_date?: string }
-) {
+  data: { completed_at: string; expected_updated_at: string; operation_id: string }
+): Promise<ActionResult> {
   await requireStaff()
-  if (!UUID_RE.test(id)) return
+  if (!UUID_RE.test(id) || !UUID_RE.test(data.operation_id) || !/^\d{4}-\d{2}-\d{2}$/.test(data.completed_at)) {
+    return { success: false, error: 'Choose a valid completion date.' }
+  }
   const db = getAdmin()
-  const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
-  if (!booking) return
-
-  const oneTime = data.one_time ?? booking.one_time ?? false
-
-  if (oneTime) {
-    await db.from('bookings').update({
-      status: 'completed',
-      completed_at: data.completed_at,
-      amount_charged: data.amount_charged,
-      payment_method: data.payment_method,
-      one_time: true,
-      next_visit_date: null,
-    }).eq('id', id)
-
-    revalidatePath('/admin')
-    revalidatePath('/admin/revenue')
-    return
-  }
-
-  // next_visit_date lets the admin override the auto-scheduled date — e.g.
-  // the customer asked for a different day than the usual cadence.
-  let nextVisitDate = data.next_visit_date
-  if (!nextVisitDate) {
-    const base = new Date(data.completed_at)
-    const freq = (booking.frequency ?? '').toLowerCase()
-    const days = freq.includes('bi') ? 14 : freq.includes('month') ? 30 : 7
-    const nextDate = new Date(base)
-    nextDate.setDate(nextDate.getDate() + days)
-    nextVisitDate = nextDate.toISOString().split('T')[0]
-  }
-
-  await db.from('bookings').update({
-    status: 'completed',
-    completed_at: data.completed_at,
-    amount_charged: data.amount_charged,
-    payment_method: data.payment_method,
-    next_visit_date: nextVisitDate,
-  }).eq('id', id)
-
-  await db.from('bookings').insert({
-    lead_id: booking.lead_id,
-    attribution: booking.attribution,
-    gclid: booking.gclid,
-    utm_source: booking.utm_source,
-    utm_medium: booking.utm_medium,
-    utm_campaign: booking.utm_campaign,
-    utm_term: booking.utm_term,
-    utm_content: booking.utm_content,
-    name: booking.name,
-    phone: booking.phone,
-    email: booking.email,
-    address: booking.address,
-    sq_ft: booking.sq_ft,
-    frequency: booking.frequency,
-    price_per_visit: booking.price_per_visit,
-    first_visit_price: booking.price_per_visit,
-    overgrowth_fee: null,
-    last_mow: data.completed_at,
-    map_screenshot_url: booking.map_screenshot_url,
-    preferred_date: nextVisitDate,
-    confirmed_date: nextVisitDate,
-    confirmed_time: booking.confirmed_time ?? null,
-    status: 'confirmed',
-    notes: `Auto-scheduled. Previous visit ${data.completed_at.split('T')[0]}.`,
+  const { data: result, error } = await db.rpc('complete_job', {
+    p_booking_id: id, p_expected_updated_at: data.expected_updated_at,
+    p_operation_id: data.operation_id, p_completed_on: data.completed_at,
   })
+  if (error) return { success: false, error: commandError(error) }
 
   revalidatePath('/admin')
   revalidatePath('/admin/revenue')
+  revalidatePath('/admin/week')
+  revalidatePath('/admin/route')
+  return { success: true, data: result as Record<string, unknown> }
 }
 
 export async function getBookings() {
@@ -348,6 +181,222 @@ export async function getBookings() {
     .from('bookings')
     .select('*')
     .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+function refreshJobs() {
+  for (const path of ['/admin', '/admin/week', '/admin/route', '/admin/revenue', '/admin/customers']) {
+    revalidatePath(path)
+  }
+}
+
+function cleanJobLines(lines: JobLine[]): JobLine[] {
+  if (!lines.length) throw new Error('Add at least one priced service.')
+  return lines.map(item => {
+    if (!['service', 'discount'].includes(item.kind) || !item.description.trim()) {
+      throw new Error('Each item needs a description and type.')
+    }
+    if (item.kind === 'service' && item.amount.startsWith('-')) {
+      throw new Error('Service prices cannot be negative.')
+    }
+    return { kind: item.kind, description: item.description.trim(),
+      amount: `${item.kind === 'discount' ? '-' : ''}${centsAmount(moneyCents(item.amount.replace(/^-/, '')))}` }
+  })
+}
+
+export async function linkJobIdentity(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string
+  customerId?: string | null; propertyId?: string | null
+  customer?: { name: string; phone?: string; email?: string } | null
+  property?: { address: string } | null
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.bookingId, input.operationId, input.customerId, input.propertyId]
+    .filter(Boolean).every(v => UUID_RE.test(v!))) return { success: false, error: 'Invalid customer or job.' }
+  const { data, error } = await getAdmin().rpc('crm_link_job', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_customer_id: input.customerId || null,
+    p_property_id: input.propertyId || null,
+    p_customer: input.customer || null, p_property: input.property || null,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+export async function saveJobItems(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string; items: JobLine[]
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId) || !input.items.length) {
+    return { success: false, error: 'Add at least one priced service.' }
+  }
+  let items: JobLine[]
+  try {
+    items = cleanJobLines(input.items)
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_replace_job_items', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_items: items,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+export async function recordManualPayment(input: {
+  bookingId: string; operationId: string; amount: string; paidOn: string; method: string
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId)
+    || !/^\d{4}-\d{2}-\d{2}$/.test(input.paidOn) || !input.method.trim()) {
+    return { success: false, error: 'Enter a payment amount, date, and method.' }
+  }
+  let amount: string
+  try {
+    const cents = moneyCents(input.amount)
+    if (cents <= 0) throw new Error('Payment must be greater than zero.')
+    amount = centsAmount(cents)
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Invalid amount.' }
+  }
+  const { data, error } = await getAdmin().rpc('record_job_payment', {
+    p_booking_id: input.bookingId, p_operation_id: input.operationId,
+    p_amount: amount, p_paid_on: input.paidOn, p_method: input.method.trim(),
+    p_provenance: 'manual',
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: { payment_id: data } }
+}
+
+export async function startJobAgreement(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string
+  anchorOn: string; nextOn: string; endOn?: string | null
+  intervalUnit: 'week' | 'month'; intervalCount: number; itemsTemplate: JobLine[]
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId)) {
+    return { success: false, error: 'Invalid job.' }
+  }
+  let template: JobLine[]
+  try { template = cleanJobLines(input.itemsTemplate) }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
+  const { data, error } = await getAdmin().rpc('crm_start_agreement', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId,
+    p_config: { anchor_on: input.anchorOn, next_on: input.nextOn,
+      end_on: input.endOn || null, interval_unit: input.intervalUnit,
+      interval_count: input.intervalCount, items_template: template },
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+export async function changeJob(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string
+  action: 'confirm' | 'reschedule' | 'skip' | 'cancel' | 'mark_one_time'
+  date?: string; time?: string
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId)) {
+    return { success: false, error: 'Invalid job.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_job_command', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_action: input.action,
+    p_payload: input.action === 'confirm' || input.action === 'reschedule'
+      ? { date: input.date, time: input.time || null } : {},
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+export async function scheduleJobAndEmail(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string
+  action: 'confirm' | 'reschedule'; date: string; time?: string
+}): Promise<ActionResult> {
+  const result = await changeJob(input)
+  if (!result.success) return result
+  if (result.data?.duplicate) {
+    return { success: true, data: { warning: 'Visit was already saved. Check the customer email before sending again.' } }
+  }
+  const { data: booking } = await getAdmin().from('bookings')
+    .select('name,email,address,job_total,price_per_visit').eq('id', input.bookingId).single()
+  if (!booking?.email || !process.env.RESEND_API_KEY) return result
+  const when = new Date(input.date + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  })
+  const email = await new Resend(process.env.RESEND_API_KEY).emails.send({
+    from: 'QuietGreen <hello@quietgreen.co>', to: booking.email,
+    subject: input.action === 'confirm' ? 'Your QuietGreen visit is confirmed' : 'Your QuietGreen visit has a new date',
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;color:#1a3a2a"><h1>QuietGreen visit</h1><p>Hi ${h(booking.name.split(' ')[0])}, your visit is scheduled for <strong>${h(when)}${input.time ? ` · ${h(input.time)}` : ''}</strong>.</p><p>${h(booking.address)}</p><p>Current job total: $${jobPrice(booking).toFixed(2)}. No payment is due until your service is complete.</p><p>Questions? Reply to this email.</p></div>`,
+  }).catch(() => ({ error: { message: 'Email delivery failed' } }))
+  if (email.error) return { success: true, data: { warning: 'Visit saved, but the confirmation email could not be sent.' } }
+  return { success: true, data: { email_sent: true } }
+}
+
+export async function changeAgreement(input: {
+  agreementId: string; expectedUpdatedAt: string; operationId: string
+  action: 'price_template' | 'pause' | 'end' | 'resume'
+  futureJobIds?: string[]; nextOn?: string; itemsTemplate?: JobLine[]
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (!UUID_RE.test(input.agreementId) || !UUID_RE.test(input.operationId)) {
+    return { success: false, error: 'Invalid agreement.' }
+  }
+  let template: JobLine[] | undefined
+  if (input.action === 'price_template') {
+    try { template = cleanJobLines(input.itemsTemplate ?? []) }
+    catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
+  }
+  const payload = input.action === 'pause' || input.action === 'end'
+    ? { future_job_ids: [...(input.futureJobIds ?? [])].sort() }
+    : input.action === 'resume' ? { next_on: input.nextOn }
+    : { items_template: template }
+  const { data, error } = await getAdmin().rpc('crm_agreement_command', {
+    p_agreement_id: input.agreementId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_action: input.action, p_payload: payload,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+export async function getJobPayments() {
+  await requireStaff()
+  const { data, error } = await getAdmin().from('job_payments').select('*').order('paid_on', { ascending: false })
+  if (error) throw new Error(commandError(error))
+  return data ?? []
+}
+
+export async function getJobItems() {
+  await requireStaff()
+  const { data, error } = await getAdmin().from('job_items')
+    .select('booking_id,kind,description,amount').order('created_at', { ascending: true })
+  if (error) throw new Error(commandError(error))
+  return data ?? []
+}
+
+export async function getCustomers() {
+  await requireStaff()
+  const db = getAdmin()
+  const [customers, properties] = await Promise.all([
+    db.from('customers').select('*').order('created_at', { ascending: false }),
+    db.from('properties').select('*').order('created_at', { ascending: false }),
+  ])
+  if (customers.error || properties.error) throw new Error('Could not load customer records.')
+  return { customers: customers.data ?? [], properties: properties.data ?? [] }
+}
+
+export async function getAgreements() {
+  await requireStaff()
+  const { data, error } = await getAdmin().from('recurring_agreements').select('*')
+  if (error) throw new Error(commandError(error))
   return data ?? []
 }
 
@@ -362,41 +411,46 @@ export async function getLeads() {
 
 export async function deleteLead(id: string) {
   await requireStaff()
-  if (!UUID_RE.test(id)) return { error: 'Invalid lead.' }
-  const { error } = await getAdmin().from('leads').delete().eq('id', id)
-  if (error) return { error: error.code === '23503' ? 'This lead has intake or booking history and must be retained.' : 'Could not delete lead. Please retry.' }
-  revalidatePath('/admin/leads')
-  return { success: true }
+  return { error: UUID_RE.test(id) ? 'Inquiry history is retained. Mark it lost in the lead workspace.' : 'Invalid lead.' }
 }
 
 export async function createPaymentLink(
   bookingId: string,
-  amountDollars: number,
-  customerName: string,
-  address: string,
+  _amountDollars: number,
+  _customerName: string,
+  _address: string,
 ): Promise<{ url: string } | { error: string }> {
   await requireStaff()
   if (!UUID_RE.test(bookingId)) return { error: 'Invalid booking ID' }
   if (!process.env.STRIPE_SECRET_KEY) return { error: 'Stripe not configured' }
+  const db = getAdmin()
+  const { data: booking, error: readError } = await db.from('bookings')
+    .select('id,name,address,job_total,price_per_visit,status,updated_at').eq('id', bookingId).single()
+  if (readError || !booking) return { error: 'Job not found.' }
+  if (!['confirmed','completed'].includes(booking.status)) return { error: 'Confirm the visit first.' }
+  const amountCents = moneyCents(jobPrice(booking).toFixed(2))
+  if (amountCents <= 0) return { error: 'Set a positive job total first.' }
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
-  const amountCents = Math.round(amountDollars * 100)
 
   try {
     const price = await stripe.prices.create({
       currency: 'usd',
       unit_amount: amountCents,
       product_data: {
-        name: `QuietGreen lawn service — ${address}`,
+        name: `QuietGreen service — ${booking.address}`,
       },
     })
 
     const link = await stripe.paymentLinks.create({
       line_items: [{ price: price.id, quantity: 1 }],
-      metadata: { booking_id: bookingId, customer_name: customerName },
+      metadata: { booking_id: bookingId, customer_name: booking.name },
     })
 
-    await getAdmin().from('bookings').update({ payment_link: link.url }).eq('id', bookingId)
+    const { data: saved, error: saveError } = await db.from('bookings')
+      .update({ payment_link: link.url }).eq('id', bookingId)
+      .eq('updated_at', booking.updated_at).select('id').maybeSingle()
+    if (saveError || !saved) return { error: 'Job changed while creating the link. Refresh and review its current total.' }
 
     return { url: link.url }
   } catch (e: unknown) {
@@ -458,12 +512,5 @@ export async function updateExtraCharge(id: string, data: { charged_on: string; 
   const row = cleanCharge(data)
   if (!row) return
   await getAdmin().from('extra_charges').update(row).eq('id', id)
-  revalidatePath('/admin/revenue')
-}
-
-export async function deleteExtraCharge(id: string) {
-  await requireStaff()
-  if (!UUID_RE.test(id)) return
-  await getAdmin().from('extra_charges').delete().eq('id', id)
   revalidatePath('/admin/revenue')
 }

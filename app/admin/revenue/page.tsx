@@ -1,7 +1,8 @@
-import { getBookings, getExtraCharges } from '../actions'
+import { getAgreements, getBookings, getCustomers, getExtraCharges, getJobPayments } from '../actions'
 import CompletedJobRow from './CompletedJobRow'
 import RecurringClientRow from './RecurringClientRow'
 import ExtraCharges from './ExtraCharges'
+import { jobPrice, mowingForecast } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,63 +20,47 @@ function formatDate(dateStr: string) {
   })
 }
 
-// Austin season average: a recurring customer gets ~30 mows a year,
-// regardless of the weekly/bi-weekly label (growth slows in winter).
 const MOWS_PER_YEAR = 30
 
 export default async function RevenuePage() {
-  const [all, extras] = await Promise.all([getBookings(), getExtraCharges()])
+  const [all, extras, payments, agreements, identities] = await Promise.all([
+    getBookings(), getExtraCharges(), getJobPayments(), getAgreements(), getCustomers(),
+  ])
 
-  const completed = all.filter(b => b.status === 'completed' && b.completed_at && b.amount_charged)
+  const completed = all.filter(b => b.status === 'completed' && b.completed_at)
   completed.sort((a, b) => b.completed_at!.localeCompare(a.completed_at!))
 
   const monthMap = new Map<string, number>()
-  for (const b of completed) {
-    const k = monthKey(b.completed_at!)
-    monthMap.set(k, (monthMap.get(k) ?? 0) + (b.amount_charged ?? 0))
-  }
-  for (const c of extras) {
-    const k = monthKey(c.charged_on)
-    monthMap.set(k, (monthMap.get(k) ?? 0) + c.amount)
+  for (const payment of payments) {
+    const k = monthKey(payment.paid_on)
+    monthMap.set(k, (monthMap.get(k) ?? 0) + Number(payment.amount))
   }
   const monthly = [...monthMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))
 
   const extrasTotal   = extras.reduce((s, c) => s + c.amount, 0)
-  const totalEarned   = completed.reduce((s, b) => s + (b.amount_charged ?? 0), 0) + extrasTotal
-  const avgPerMonth   = monthly.length ? totalEarned / monthly.length : 0
+  const totalPaid     = payments.reduce((s, p) => s + Number(p.amount), 0)
+  const legacyRecorded = completed.filter(b => !payments.some(p => p.booking_id === b.id))
+    .reduce((s, b) => s + Number(b.amount_charged ?? 0), 0) + extrasTotal
+  const avgPerMonth   = monthly.length ? totalPaid / monthly.length : 0
   const maxVal        = Math.max(...monthly.map(([, v]) => v), 1)
 
-  const confirmedMRR = all
-    .filter(b => b.status === 'confirmed' && b.price_per_visit)
-    .reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
+  const confirmedMRR = all.filter(b => b.status === 'confirmed')
+    .reduce((s, b) => s + jobPrice(b), 0)
 
-  // One active recurring relationship per phone — the current confirmed booking,
-  // not the historical completed rows markComplete leaves behind.
-  const recurringByPhone = new Map<string, typeof all[number]>()
-  for (const b of all) {
-    if (b.status !== 'confirmed' || b.one_time || !b.frequency || !b.price_per_visit) continue
-    recurringByPhone.set(b.phone, b)
-  }
-  const recurringClients = [...recurringByPhone.values()]
-    .map(b => ({
-      id: b.id as string,
-      phone: b.phone as string,
-      name: b.name,
-      frequency: b.frequency as string,
-      perVisit: b.price_per_visit ?? 0,
-      annual: (b.price_per_visit ?? 0) * MOWS_PER_YEAR,
-    }))
-    .sort((a, b) => b.annual - a.annual)
+  const recurringClients = mowingForecast(all, agreements, identities.customers)
 
   const expectedAnnualTotal = recurringClients.reduce((s, c) => s + c.annual, 0)
   const maxAnnual = Math.max(...recurringClients.map(c => c.annual), 1)
 
-  // Everyone who's ever booked, for the extra-charge client picker
-  const clientByPhone = new Map<string, { name: string; phone: string }>()
+  // Keep same-phone properties distinct for staff review in the legacy charge picker.
+  const clientByProperty = new Map<string, { key: string; name: string; phone: string; address: string }>()
   for (const b of all) {
-    if (b.phone && !clientByPhone.has(b.phone)) clientByPhone.set(b.phone, { name: b.name, phone: b.phone })
+    const key = `${b.phone}:${b.address.trim().toLowerCase()}`
+    if (b.phone && !clientByProperty.has(key)) clientByProperty.set(key, {
+      key, name: b.name, phone: b.phone, address: b.address,
+    })
   }
-  const clients = [...clientByPhone.values()].sort((a, b) => a.name.localeCompare(b.name))
+  const clients = [...clientByProperty.values()].sort((a, b) => a.name.localeCompare(b.name))
 
   // SVG chart dimensions
   const chartW = 560
@@ -88,18 +73,23 @@ export default async function RevenuePage() {
     <>
       <div className="admin-stats">
         <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${Math.round(totalEarned).toLocaleString()}</span>
-          <span className="admin-stat-label">Total earned</span>
+          <span className="admin-stat-val admin-stat-money">${totalPaid.toLocaleString()}</span>
+          <span className="admin-stat-label">Job payments recorded</span>
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
           <span className="admin-stat-val admin-stat-money">${Math.round(avgPerMonth).toLocaleString()}</span>
-          <span className="admin-stat-label">Avg / month</span>
+          <span className="admin-stat-label">Avg payment month</span>
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
           <span className="admin-stat-val admin-stat-money">${confirmedMRR.toLocaleString()}</span>
-          <span className="admin-stat-label">Recurring / visit</span>
+          <span className="admin-stat-label">Scheduled work value</span>
+        </div>
+        <div className="admin-stat-divider" />
+        <div className="admin-stat">
+          <span className="admin-stat-val admin-stat-money">${legacyRecorded.toLocaleString()}</span>
+          <span className="admin-stat-label">Legacy amount records</span>
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat">
@@ -110,7 +100,7 @@ export default async function RevenuePage() {
 
       <div style={{ padding: '16px' }}>
         <div className="admin-revenue-card">
-          <div className="admin-revenue-card-title">Monthly Revenue</div>
+          <div className="admin-revenue-card-title">Monthly job payments recorded by paid date</div>
           {monthly.length === 0 ? (
             <div className="admin-empty" style={{ padding: '40px 20px' }}>No revenue yet.</div>
           ) : (
@@ -155,21 +145,21 @@ export default async function RevenuePage() {
         </div>
 
         <div className="admin-revenue-card" style={{ marginTop: 12 }}>
-          <div className="admin-revenue-card-title">Expected Annual Revenue — Recurring Customers</div>
+          <div className="admin-revenue-card-title">Conservative Annual Mowing Forecast</div>
           {recurringClients.length === 0 ? (
             <div className="admin-empty" style={{ padding: '40px 20px' }}>No active recurring customers yet.</div>
           ) : (
             <>
               <div className="admin-expected-total">
                 ${expectedAnnualTotal.toLocaleString()}
-                <span> / year across {recurringClients.length} recurring customer{recurringClients.length === 1 ? '' : 's'} · ~{MOWS_PER_YEAR} mows each</span>
+                <span> / year across {recurringClients.length} mowing relationship{recurringClients.length === 1 ? '' : 's'} · ~{MOWS_PER_YEAR} mows each. Excludes non-mowing agreements.</span>
               </div>
               <div className="admin-expected-bars">
                 {recurringClients.map(c => (
                   <RecurringClientRow
                     key={c.id}
                     id={c.id}
-                    phone={c.phone}
+                    href={c.href}
                     name={c.name}
                     annual={c.annual}
                     perVisit={c.perVisit}
@@ -198,7 +188,7 @@ export default async function RevenuePage() {
               </thead>
               <tbody>
                 {completed.map(b => (
-                  <CompletedJobRow key={b.id} job={b} />
+                  <CompletedJobRow key={b.id} job={b} payments={payments.filter(p => p.booking_id === b.id)} />
                 ))}
               </tbody>
             </table>

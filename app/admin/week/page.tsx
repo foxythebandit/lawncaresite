@@ -1,5 +1,6 @@
 import { getBookings } from '../actions'
 import DayJobs from '../DayJobs'
+import { jobPrice } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export default async function WeekPage() {
       isToday: key === todayKey,
       label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
       jobs,
-      revenue: jobs.reduce((s, b) => s + (b.price_per_visit ?? 0), 0),
+      revenue: jobs.reduce((s, b) => s + jobPrice(b), 0),
     }
   })
 
@@ -43,7 +44,7 @@ export default async function WeekPage() {
         <div className="admin-stat-divider" />
         <div className="admin-stat">
           <span className="admin-stat-val admin-stat-money">${weekRevenue.toLocaleString()}</span>
-          <span className="admin-stat-label">Week's revenue</span>
+          <span className="admin-stat-label">Scheduled job value</span>
         </div>
       </div>
 

@@ -1,0 +1,88 @@
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { getAgreements, getBookings, getCustomers, getJobPayments, getLeads } from '../../actions'
+import { jobPrice } from '@/lib/crm-jobs'
+import { requireStaff } from '@/lib/staff'
+
+export const dynamic = 'force-dynamic'
+
+const validId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function dateText(value: string | null) {
+  if (!value) return 'Not scheduled'
+  return new Date(value.length === 10 ? `${value}T12:00:00` : value).toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function money(value: number | string | null) {
+  return '$' + Number(value ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  await requireStaff(`/admin/customers/${id}`)
+  if (!validId.test(id)) notFound()
+  const [{ customers, properties }, allJobs, allLeads, allPayments, allAgreements] = await Promise.all([
+    getCustomers(), getBookings(), getLeads(), getJobPayments(), getAgreements(),
+  ])
+  const customer = customers.find(row => row.id === id)
+  if (!customer) notFound()
+  const ownProperties = properties.filter(row => row.customer_id === id)
+  const jobs = allJobs.filter(row => row.customer_id === id)
+  const leads = allLeads.filter(row => row.customer_id === id)
+  const jobIds = new Set(jobs.map(row => row.id))
+  const payments = allPayments.filter(row => jobIds.has(row.booking_id))
+  const jobsWithNewPayments = new Set(payments.map(row => row.booking_id))
+  const historicalAmounts = jobs.filter(row => row.amount_charged != null && !jobsWithNewPayments.has(row.id))
+  const agreements = allAgreements.filter(row => row.customer_id === id)
+  const addressById = new Map(ownProperties.map(row => [row.id, row.address]))
+
+  return <main className="crm-page crm-customer-detail">
+    <Link className="crm-back" href="/admin/customers">← Customers</Link>
+    <div className="crm-page-heading">
+      <div><span className="crm-eyebrow">Customer record</span><h1>{customer.name || 'Unnamed customer'}</h1>
+        <p className="crm-muted">{customer.phone || 'No phone'}{customer.email ? ` · ${customer.email}` : ''}</p></div>
+      {customer.phone && <a className="crm-button crm-button-primary" href={`tel:${customer.phone}`}>Call</a>}
+    </div>
+    <p className="crm-customer-help">This history contains only records explicitly linked to this customer. A matching phone number does not join separate records.</p>
+    <div className="crm-customer-sections">
+      <section className="crm-panel"><h2>Properties ({ownProperties.length})</h2>
+        {ownProperties.length ? ownProperties.map(property => <div className="crm-customer-entry" key={property.id}>
+          <strong>{property.address}</strong>
+          <span>{jobs.filter(job => job.property_id === property.id).length} visits{property.measured_at ? ` · Measured ${dateText(property.measured_at)}` : ''}</span>
+        </div>) : <p className="crm-muted">No property linked yet.</p>}
+      </section>
+      <section className="crm-panel"><h2>Recurring agreements ({agreements.length})</h2>
+        {agreements.length ? agreements.map(agreement => <div className="crm-customer-entry" key={agreement.id}>
+          <strong>{addressById.get(agreement.property_id) || 'Property'} · {agreement.status}</strong>
+          <span>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · Next {dateText(agreement.next_on)} · {money(agreement.price_per_visit)} per visit</span>
+        </div>) : <p className="crm-muted">No recurring agreement.</p>}
+      </section>
+      <section className="crm-panel crm-customer-wide"><h2>Visits ({jobs.length})</h2>
+        {jobs.length ? jobs.map(job => <div className="crm-customer-entry" key={job.id}>
+          <strong>{job.address} · {job.status}</strong>
+          <span>{dateText(job.confirmed_date || job.preferred_date || job.created_at)} · {money(jobPrice(job))} job total
+            {job.accepted_quote_snapshot ? ' · Accepted quote preserved' : ''}</span>
+          {job.lead_id && <Link href={`/admin/leads/${job.lead_id}`}>Open linked lead →</Link>}
+        </div>) : <p className="crm-muted">No linked visits yet.</p>}
+      </section>
+      <section className="crm-panel"><h2>Payments ({payments.length + historicalAmounts.length})</h2>
+        {payments.length ? payments.map(payment => <div className="crm-customer-entry" key={payment.id}>
+          <strong>{money(payment.amount)} · {payment.method}</strong>
+          <span>{dateText(payment.paid_on)} · {payment.provenance === 'manual' ? 'Staff recorded' : 'Processor verified'}</span>
+        </div>) : null}
+        {historicalAmounts.length > 0 && <><h3>Historical recorded amounts</h3>
+          {historicalAmounts.map(job => <div className="crm-customer-entry" key={job.id}>
+            <strong>{money(job.amount_charged)} · {job.payment_method || 'Method unknown'}</strong>
+            <span>{job.address} · Paid date unverified{job.payment_recorded_at ? ` · Recorded ${dateText(job.payment_recorded_at)}` : ''}</span>
+          </div>)}</>}
+        {payments.length === 0 && historicalAmounts.length === 0 && <p className="crm-muted">No payments recorded for linked visits.</p>}
+      </section>
+      <section className="crm-panel"><h2>Leads ({leads.length})</h2>
+        {leads.length ? leads.map(lead => <div className="crm-customer-entry" key={lead.id}>
+          <Link href={`/admin/leads/${lead.id}`}><strong>{lead.address || 'Address pending'} →</strong></Link>
+          <span>{dateText(lead.created_at)} · {lead.stage}</span>
+        </div>) : <p className="crm-muted">No lead linked to this customer.</p>}
+      </section>
+    </div>
+  </main>
+}

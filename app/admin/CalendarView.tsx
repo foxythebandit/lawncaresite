@@ -20,6 +20,7 @@ interface Booking {
   status: string
   price_per_visit: number | null
   phone: string
+  customer_id: string | null
 }
 
 export default function CalendarView({ bookings }: { bookings: Booking[] }) {
@@ -115,7 +116,7 @@ export default function CalendarView({ bookings }: { bookings: Booking[] }) {
               <div className="admin-cal-job-right">
                 {b.confirmed_time && <div className="admin-cal-job-time">{formatTime(b.confirmed_time)}</div>}
                 {b.price_per_visit && <div className="admin-cal-job-price">${b.price_per_visit}</div>}
-                <Link href={`/admin/client/${encodeURIComponent(b.phone)}`} className="admin-cal-job-hist">History →</Link>
+                <Link href={b.customer_id ? `/admin/customers/${b.customer_id}` : `/admin/client/${encodeURIComponent(b.phone)}`} className="admin-cal-job-hist">History →</Link>
               </div>
             </div>
           ))}

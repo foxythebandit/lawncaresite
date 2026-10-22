@@ -1,4 +1,5 @@
 import ReminderButtons from './ReminderButtons'
+import { jobPrice } from '@/lib/crm-jobs'
 
 export function formatTime(t: string) {
   const [h, m] = t.split(':').map(Number)
@@ -17,6 +18,7 @@ interface Job {
   sq_ft: number | null
   frequency: string | null
   price_per_visit: number | null
+  job_total?: number | string | null
   notes: string | null
   last_reminder_sent_at?: string | null
 }
@@ -38,7 +40,7 @@ export default function DayJobs({ jobs, emptyLabel = 'No jobs confirmed.' }: { j
               {b.confirmed_time && <span>{formatTime(b.confirmed_time)}</span>}
               {b.sq_ft        && <span>{b.sq_ft.toLocaleString()} sq ft</span>}
               {b.frequency    && <span>{b.frequency}</span>}
-              {b.price_per_visit && <span style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${b.price_per_visit}/visit</span>}
+              {jobPrice(b) > 0 && <span style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${jobPrice(b).toFixed(2)} job value</span>}
             </div>
             {b.notes && <div className="admin-route-notes">{b.notes}</div>}
             <ReminderButtons

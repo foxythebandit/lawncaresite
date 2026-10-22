@@ -1,5 +1,6 @@
 import { getBookings } from '../actions'
 import DayJobs from '../DayJobs'
+import { jobPrice } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +12,7 @@ export default async function RoutePage() {
     .filter(b => b.confirmed_date === today && b.status === 'confirmed')
     .sort((a, b) => (a.confirmed_time ?? '99:99').localeCompare(b.confirmed_time ?? '99:99'))
 
-  const todayRevenue = jobs.reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
+  const todayRevenue = jobs.reduce((s, b) => s + jobPrice(b), 0)
   const todayLabel   = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
   // Build a multi-stop Google Maps URL for the full route
@@ -31,7 +32,7 @@ export default async function RoutePage() {
         <div className="admin-stat-divider" />
         <div className="admin-stat">
           <span className="admin-stat-val admin-stat-money">${todayRevenue.toLocaleString()}</span>
-          <span className="admin-stat-label">Today's revenue</span>
+          <span className="admin-stat-label">Scheduled job value</span>
         </div>
         <div className="admin-stat-divider" />
         <div className="admin-stat" style={{ flex: 1, textAlign: 'left', paddingLeft: 20 }}>

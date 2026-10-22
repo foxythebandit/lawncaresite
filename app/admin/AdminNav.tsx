@@ -11,7 +11,8 @@ export default function AdminNav() {
   const tabs = [
     { href: '/admin/leads',   label: 'Leads'   },
     { href: '/admin/route',   label: 'Today'   },
-    { href: '/admin',         label: 'Clients' },
+    { href: '/admin',         label: 'Jobs' },
+    { href: '/admin/customers', label: 'Customers' },
     { href: '/admin/revenue', label: 'Revenue' },
     { href: '/admin/week',    label: 'Week'    },
   ]

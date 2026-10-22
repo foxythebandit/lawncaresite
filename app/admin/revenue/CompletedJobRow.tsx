@@ -1,90 +1,19 @@
-'use client'
+import { jobPrice } from '@/lib/crm-jobs'
 
-import { useState, useTransition } from 'react'
-import { updateCompletedJob, deleteBooking } from '../actions'
-
-interface Job {
-  id: string
-  name: string
-  address: string
-  payment_method: string | null
-  amount_charged: number | null
-  completed_at: string
+type Job = {
+  id: string; name: string; address: string; completed_at: string
+  job_total: number | string | null; price_per_visit: number | null
+  amount_charged: number | null; payment_method: string | null
 }
+type Payment = { amount: number | string; paid_on: string; method: string }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
-}
-
-export default function CompletedJobRow({ job }: { job: Job }) {
-  const [pending, startTransition] = useTransition()
-  const [editing, setEditing]   = useState(false)
-  const [amount, setAmount]     = useState(job.amount_charged ?? 0)
-  const [method, setMethod]     = useState(job.payment_method ?? 'Stripe')
-
-  function save() {
-    setEditing(false)
-    startTransition(() => updateCompletedJob(job.id, { amount_charged: amount, payment_method: method }))
-  }
-
-  if (editing) {
-    return (
-      <tr>
-        <td>{formatDate(job.completed_at)}</td>
-        <td style={{ fontWeight: 500 }}>{job.name}</td>
-        <td style={{ color: 'var(--ink-soft)' }}>{job.address}</td>
-        <td>
-          <select
-            value={method}
-            onChange={e => setMethod(e.target.value)}
-            className="admin-revenue-edit-select"
-          >
-            <option>Stripe</option>
-            <option>Cash</option>
-            <option>Venmo</option>
-            <option>Zelle</option>
-          </select>
-        </td>
-        <td>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="number" step="0.01"
-              value={amount}
-              onChange={e => setAmount(parseFloat(e.target.value) || 0)}
-              className="admin-revenue-edit-input"
-            />
-            <button className="admin-revenue-row-save" onClick={save} disabled={pending}>Save</button>
-            <button className="admin-revenue-row-cancel" onClick={() => setEditing(false)} disabled={pending}>×</button>
-          </div>
-        </td>
-      </tr>
-    )
-  }
-
-  return (
-    <tr>
-      <td>{formatDate(job.completed_at)}</td>
-      <td style={{ fontWeight: 500 }}>{job.name}</td>
-      <td style={{ color: 'var(--ink-soft)' }}>{job.address}</td>
-      <td>{job.payment_method ?? '—'}</td>
-      <td>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-          <span style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${(job.amount_charged ?? 0).toFixed(2)}</span>
-          <button className="admin-revenue-row-edit" onClick={() => setEditing(true)} disabled={pending} title="Edit amount / method">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-          </button>
-          <button
-            className="admin-revenue-row-delete"
-            onClick={() => { if (window.confirm(`Delete this completed job for ${job.name}?`)) startTransition(() => deleteBooking(job.id)) }}
-            disabled={pending}
-            title="Delete"
-          >
-            ×
-          </button>
-        </div>
-      </td>
-    </tr>
-  )
+export default function CompletedJobRow({ job, payments }: { job: Job; payments: Payment[] }) {
+  const paid = payments.reduce((sum, payment) => sum + Number(payment.amount), 0)
+  return <tr>
+    <td>{new Date(job.completed_at.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+    <td><a href={`/admin?search=${encodeURIComponent(job.name)}`}>{job.name}</a></td>
+    <td>{job.address}</td>
+    <td>{payments.length ? `${payments.length} payment${payments.length === 1 ? '' : 's'}` : job.amount_charged != null ? `Legacy: ${job.payment_method ?? 'method unknown'}` : 'Unpaid'}</td>
+    <td>{payments.length ? `$${paid.toFixed(2)}` : job.amount_charged != null ? `$${job.amount_charged.toFixed(2)} legacy` : '—'}<br /><small>Job {`$${jobPrice(job).toFixed(2)}`}</small></td>
+  </tr>
 }

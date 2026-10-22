@@ -29,7 +29,7 @@ export default async function PortalPage() {
 
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('id, email, created_at, status, confirmed_date, preferred_date, confirmed_time, address, sq_ft, frequency, price_per_visit, map_screenshot_url, completed_at, amount_charged, payment_method, payment_link')
+    .select('id, email, created_at, status, confirmed_date, preferred_date, confirmed_time, address, sq_ft, frequency, price_per_visit, job_total, map_screenshot_url, completed_at, amount_charged, payment_method, payment_link')
     .order('created_at', { ascending: false })
 
   const visits = bookings ?? []
@@ -73,7 +73,9 @@ export default async function PortalPage() {
                 {upcoming.address} · {upcoming.sq_ft?.toLocaleString()} sq ft · {upcoming.frequency}
               </div>
               <div className="portal-upcoming-price">
-                ${upcoming.price_per_visit}<span>/visit</span>
+                {(upcoming.job_total ?? upcoming.price_per_visit) != null
+                  ? <>${Number(upcoming.job_total ?? upcoming.price_per_visit).toFixed(2)}<span>/visit</span></>
+                  : 'Price not set'}
               </div>
               {upcoming.map_screenshot_url && (
                 <img src={upcoming.map_screenshot_url} alt="Your lawn" className="portal-upcoming-map" />

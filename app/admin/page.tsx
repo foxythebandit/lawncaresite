@@ -1,34 +1,9 @@
-import { getBookings } from './actions'
+import { getAgreements, getBookings, getCustomers, getJobItems, getJobPayments } from './actions'
 import BookingCard from './BookingCard'
 import AdminSearch from './AdminSearch'
 import AdminMap from './AdminMap'
 import CalendarView from './CalendarView'
-
-function normalizePhone(p: string) {
-  return (p ?? '').replace(/\D/g, '').slice(-10)
-}
-
-// A recurring client cycles the *same* relationship through
-// pending -> confirmed -> completed -> confirmed (next visit) -> ...
-// each transition can leave behind an old row (markComplete inserts a
-// fresh one for the next cycle), so the same person can show up as
-// several cards. Collapse to one card per phone number, preferring
-// whichever row represents their current active status.
-const STATUS_RANK: Record<string, number> = { confirmed: 0, pending: 1, completed: 2, declined: 3 }
-function dedupeByPhone<T extends { phone: string; status: string; created_at: string }>(rows: T[]): T[] {
-  const byPhone = new Map<string, T>()
-  for (const b of rows) {
-    const key = normalizePhone(b.phone) || b.created_at
-    const existing = byPhone.get(key)
-    if (!existing) { byPhone.set(key, b); continue }
-    const rNew = STATUS_RANK[b.status] ?? 9
-    const rOld = STATUS_RANK[existing.status] ?? 9
-    if (rNew < rOld || (rNew === rOld && b.created_at > existing.created_at)) {
-      byPhone.set(key, b)
-    }
-  }
-  return rows.filter(b => byPhone.get(normalizePhone(b.phone) || b.created_at) === b)
-}
+import { jobPrice } from '@/lib/crm-jobs'
 
 export default async function AdminPage({
   searchParams,
@@ -36,7 +11,9 @@ export default async function AdminPage({
   searchParams: Promise<{ filter?: string; search?: string; view?: string }>
 }) {
   const { filter = 'all', search = '', view = 'list' } = await searchParams
-  const all = await getBookings()
+  const [all, identities, agreements, allItems, allPayments] = await Promise.all([
+    getBookings(), getCustomers(), getAgreements(), getJobItems(), getJobPayments(),
+  ])
 
   const now = new Date()
   const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7)
@@ -71,15 +48,16 @@ export default async function AdminPage({
   }).length
 
   const confirmedBookings = all.filter(b => b.status === 'confirmed')
-  const totalFirstVisit   = confirmedBookings.reduce((s, b) => s + (b.first_visit_price ?? 0), 0)
-  const monthlyRecurring  = confirmedBookings.reduce((s, b) => s + (b.price_per_visit ?? 0), 0)
+  const totalFirstVisit   = confirmedBookings.reduce((s, b) => s + jobPrice(b), 0)
+  const monthlyRecurring  = confirmedBookings.filter(b => b.agreement_id).reduce((s, b) => s + jobPrice(b), 0)
 
   const visitCounts = new Map<string, number>()
   for (const b of all) {
-    const key = normalizePhone(b.phone)
+    const key = b.customer_id ?? b.id
     visitCounts.set(key, (visitCounts.get(key) ?? 0) + 1)
   }
-  const deduped = dedupeByPhone(filtered)
+  const chicagoParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+  const chicagoDate = `${chicagoParts.find(p => p.type === 'year')?.value}-${chicagoParts.find(p => p.type === 'month')?.value}-${chicagoParts.find(p => p.type === 'day')?.value}`
 
   return (
     <>
@@ -144,19 +122,34 @@ export default async function AdminPage({
           preferred_date: b.preferred_date ?? null,
           confirmed_time: b.confirmed_time ?? null,
           status: b.status,
-          price_per_visit: b.price_per_visit ?? null,
+          price_per_visit: jobPrice(b),
+          customer_id: b.customer_id ?? null,
           phone: b.phone,
         }))} />
       ) : (
         <div className="admin-body" style={{ padding: '12px 16px 90px' }}>
           <div className="admin-list">
-            {deduped.length === 0 ? (
+            {filtered.length === 0 ? (
               <div className="admin-empty">
                 {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
               </div>
             ) : (
-              deduped.map(b => (
-                <BookingCard key={b.id} booking={b as any} historyCount={visitCounts.get(normalizePhone(b.phone)) ?? 1} />
+              filtered.map(b => (
+                <BookingCard key={b.id} booking={b as any}
+                  emailConfigured={Boolean(process.env.RESEND_API_KEY)}
+                  historyCount={visitCounts.get(b.customer_id ?? b.id) ?? 1}
+                  customers={identities.customers} properties={identities.properties}
+                  agreement={agreements.find(a => a.id === b.agreement_id) as any}
+                  futureJobIds={all.filter(row => row.agreement_id === b.agreement_id
+                    && Boolean(b.agreement_id) && ['pending','confirmed'].includes(row.status)
+                    && (!((row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) as string | null)
+                      || (row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) >= chicagoDate))
+                    .map(row => row.id).sort()}
+                  items={allItems.filter(item => item.booking_id === b.id).map(item => ({
+                    kind: item.kind as 'service' | 'discount', description: item.description,
+                    amount: String(item.amount),
+                  }))}
+                  payments={allPayments.filter(payment => payment.booking_id === b.id)} />
               ))
             )}
           </div>
@@ -166,7 +159,7 @@ export default async function AdminPage({
             name: b.name,
             address: b.address,
             status: b.status,
-            price_per_visit: b.price_per_visit ?? null,
+            price_per_visit: jobPrice(b),
           }))} />
         </div>
       )}

@@ -16,6 +16,22 @@ def check(sql):
     for role in ('anon', 'authenticated'):
         assert scalar(f"select has_function_privilege('{role}','public.crm_job_command(uuid,timestamptz,uuid,text,jsonb)','execute');") == 'f'
         assert scalar(f"select has_table_privilege('{role}','public.crm_operations','select');") == 'f'
+        assert scalar(f"select has_table_privilege('{role}','public.job_items','delete');") == 'f'
+    assert scalar("select has_table_privilege('service_role','public.job_items','delete');") == 't'
+    assert scalar("select has_column_privilege('authenticated','public.bookings','job_total','select');") == 't'
+    assert scalar("select has_column_privilege('authenticated','public.bookings','accepted_quote_snapshot','select');") == 'f'
+    portal_booking = scalar("insert into public.bookings(name,phone,email,address,job_total,status) "
+                            "values('Portal A','5550003999','portal-a@example.test','39 Oak',125.50,'confirmed') returning id;")
+    own_read = sql("begin; set local role authenticated; "
+                   "select set_config('request.jwt.claims','{\"email\":\"portal-a@example.test\"}',true); "
+                   "select job_total from public.bookings where id='" + portal_booking + "'; rollback;")
+    assert '125.50' in own_read.stdout.splitlines()
+    other_read = sql("begin; set local role authenticated; "
+                     "select set_config('request.jwt.claims','{\"email\":\"portal-b@example.test\"}',true); "
+                     "select count(*) from public.bookings where id='" + portal_booking + "'; rollback;")
+    assert '0' in other_read.stdout.splitlines()
+    fails("begin; set local role authenticated; "
+          "select accepted_quote_snapshot from public.bookings where id='" + portal_booking + "'; rollback;", 'permission denied')
     fails("select public.crm_validate_items('[{\"kind\":\"service\",\"description\":\"A\",\"amount\":\"0.005\"},{\"kind\":\"service\",\"description\":\"B\",\"amount\":\"0.005\"}]'::jsonb);", 'Invalid priced item')
     fails("select public.crm_validate_items('[{\"description\":\"Missing kind\",\"amount\":\"1.00\"}]'::jsonb);", 'Invalid priced item')
 
@@ -77,6 +93,33 @@ def check(sql):
     assert scalar(f"select addon_interest is null from public.bookings where id='{next_id}';") == 't'
     assert scalar(f"select last_mow from public.bookings where id='{next_id}';") == '2027-01-31'
     assert scalar(f"select count(*) from public.bookings where agreement_id='{agreement}';") == '2'
+
+    # Starting before or after completing the anchor must honor the same
+    # explicitly chosen first date, then return to the weekly anchor cadence.
+    first_config = json.dumps({'anchor_on':'2027-01-01','next_on':'2027-01-03',
+                               'interval_unit':'week','interval_count':1,
+                               'items_template':[{'kind':'service','description':'Lawn care','amount':'50.00'}]})
+    before = scalar("insert into public.bookings(name,phone,address,status,confirmed_date,frequency,customer_id,property_id,job_total) "
+                    f"values('Before complete','5550003000','30 Oak','confirmed','2027-01-01','Weekly','{customer}','{property_id}',50.00) returning id;")
+    before_version = scalar(f"select updated_at from public.bookings where id='{before}';")
+    before_agreement = json.loads(scalar(f"select public.crm_start_agreement('{before}','{before_version}',"
+                                         f"'{uuid.uuid4()}','{first_config}'::jsonb);"))
+    assert before_agreement['next_booking_id'] is None
+    before_version = scalar(f"select updated_at from public.bookings where id='{before}';")
+    first_id = json.loads(scalar(f"select public.complete_job('{before}','{before_version}',"
+                                 f"'{uuid.uuid4()}','2027-01-01');"))['next_booking_id']
+    assert scalar(f"select occurrence_on from public.bookings where id='{first_id}';") == '2027-01-03'
+    first_version = scalar(f"select updated_at from public.bookings where id='{first_id}';")
+    second_id = json.loads(scalar(f"select public.complete_job('{first_id}','{first_version}',"
+                                  f"'{uuid.uuid4()}','2027-01-03');"))['next_booking_id']
+    assert scalar(f"select occurrence_on from public.bookings where id='{second_id}';") == '2027-01-08'
+    after = scalar("insert into public.bookings(name,phone,address,status,confirmed_date,completed_at,frequency,customer_id,property_id,job_total) "
+                   f"values('After complete','5550003000','30 Oak','completed','2027-01-01','2027-01-01','Weekly','{customer}','{property_id}',50.00) returning id;")
+    after_version = scalar(f"select updated_at from public.bookings where id='{after}';")
+    after_first_id = json.loads(scalar(f"select public.crm_start_agreement('{after}','{after_version}',"
+                                       f"'{uuid.uuid4()}','{first_config}'::jsonb);"))['next_booking_id']
+    assert scalar(f"select occurrence_on from public.bookings where id='{after_first_id}';") == '2027-01-03'
+    assert scalar(f"select next_on from public.recurring_agreements where id='{before_agreement['agreement_id']}';") == '2027-01-15'
 
     next_version = scalar(f"select updated_at from public.bookings where id='{next_id}';")
     skip_op = uuid.uuid4()

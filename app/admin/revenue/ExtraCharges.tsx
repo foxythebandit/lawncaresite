@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { addExtraCharge, updateExtraCharge, deleteExtraCharge, type ExtraCharge } from '../actions'
+import { addExtraCharge, updateExtraCharge, type ExtraCharge } from '../actions'
 
 const QUICK_SERVICES = ['Garden bed cleanup', 'Shrub trimming', 'Yard clearout', 'Leaf cleanup', 'Mulch install', 'Haul-off']
 const METHODS = ['Cash', 'Venmo', 'Zelle', 'Stripe']
 
-type Client = { name: string; phone: string }
+type Client = { key: string; name: string; phone: string; address: string }
 
 function today() {
   const d = new Date()
@@ -21,7 +21,7 @@ function formatDate(dateStr: string) {
 
 function AddChargeForm({ clients, onDone }: { clients: Client[]; onDone: () => void }) {
   const [pending, startTransition] = useTransition()
-  const [clientKey, setClientKey]  = useState(clients[0]?.phone ?? '__new')
+  const [clientKey, setClientKey]  = useState(clients[0]?.key ?? '__new')
   const [newName, setNewName]      = useState('')
   const [description, setDesc]     = useState('')
   const [amount, setAmount]        = useState('')
@@ -31,7 +31,7 @@ function AddChargeForm({ clients, onDone }: { clients: Client[]; onDone: () => v
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    const client = clients.find(c => c.phone === clientKey)
+    const client = clients.find(c => c.key === clientKey)
     const client_name = client ? client.name : newName
     startTransition(async () => {
       const res = await addExtraCharge({
@@ -52,7 +52,7 @@ function AddChargeForm({ clients, onDone }: { clients: Client[]; onDone: () => v
       <label className="admin-extra-field">
         <span>Client</span>
         <select value={clientKey} onChange={e => setClientKey(e.target.value)} className="admin-revenue-edit-select">
-          {clients.map(c => <option key={c.phone} value={c.phone}>{c.name}</option>)}
+          {clients.map(c => <option key={c.key} value={c.key}>{c.name} · {c.address}</option>)}
           <option value="__new">+ Someone not in bookings</option>
         </select>
       </label>
@@ -152,14 +152,6 @@ function ChargeRow({ charge }: { charge: ExtraCharge }) {
           <button className="admin-revenue-row-edit" onClick={() => setEditing(true)} disabled={pending} title="Edit">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
-          <button
-            className="admin-revenue-row-delete"
-            onClick={() => { if (window.confirm(`Delete "${charge.description}" for ${charge.client_name}?`)) startTransition(() => deleteExtraCharge(charge.id)) }}
-            disabled={pending}
-            title="Delete"
-          >
-            ×
-          </button>
         </div>
       </td>
     </tr>
@@ -180,7 +172,7 @@ export default function ExtraCharges({ charges, clients }: { charges: ExtraCharg
           <button className="admin-revenue-row-save" onClick={() => setAdding(true)}>+ Add charge</button>
         )}
       </div>
-      <p className="admin-extra-hint">Bed cleanups, trims and other one-time work you billed outside a booking. Counts toward total earned and the monthly chart.</p>
+      <p className="admin-extra-hint">Historical one-time charge records. These stay separate from the new job payment ledger and monthly payment chart.</p>
 
       {adding && <AddChargeForm clients={clients} onDone={() => setAdding(false)} />}
 
