@@ -32,6 +32,29 @@ export default function Hero() {
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     document.querySelectorAll<HTMLVideoElement>('.hero-vid-card video').forEach(v => v.pause())
   }, [])
+
+  // Desktop: the full-height hero pushes the trust strip ("5.0 on Google",
+  // guarantee) just below the fold. Shortly after landing, glide down so the
+  // strip's bottom meets the bottom of the screen — unless the visitor has
+  // already scrolled, arrived on a #link, or is on a phone/tablet.
+  useEffect(() => {
+    if (window.location.hash || window.scrollY > 0) return
+    if (!window.matchMedia('(min-width: 901px)').matches) return
+    const cancel = () => clearTimeout(timer)
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const
+    const timer = setTimeout(() => {
+      events.forEach(e => window.removeEventListener(e, cancel))
+      if (window.scrollY > 0) return
+      const strip = document.querySelector('.trust-bar')
+      if (!strip) return
+      const by = strip.getBoundingClientRect().bottom - window.innerHeight
+      if (by <= 0) return
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      window.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' })
+    }, 900)
+    events.forEach(e => window.addEventListener(e, cancel, { once: true, passive: true }))
+    return () => { cancel(); events.forEach(e => window.removeEventListener(e, cancel)) }
+  }, [])
   const mowerHoverRef     = useRef(false)
   const mowerLabelRef     = useRef<SVGGElement>(null)
   const mowerRef      = useRef<SVGGElement>(null)

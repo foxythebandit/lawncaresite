@@ -128,6 +128,58 @@ async function loadEsriTile(z: number, y: number, x: number, signal: AbortSignal
   return buf
 }
 
+/* ── Address lookup ───────────────────────────────────── */
+// Suggestions come from Photon: Nominatim's usage policy forbids
+// search-as-you-type, and it starts refusing (429/403, no CORS header) once
+// a visitor's IP sends a burst of requests — which broke the address box.
+// The final search still prefers Nominatim (better at exact house numbers)
+// and falls back to Photon if it errors, times out or finds nothing.
+type GeoResult = { label: string; lat: number; lon: number }
+
+type PhotonFeature = {
+  geometry: { coordinates: [number, number] }
+  properties: { name?: string; housenumber?: string; street?: string; city?: string; state?: string; postcode?: string; countrycode?: string }
+}
+
+function photonLabel(p: PhotonFeature['properties']): string {
+  const line1 = p.housenumber && p.street ? `${p.housenumber} ${p.street}` : p.street ?? p.name ?? ''
+  return [line1, p.city, [p.state, p.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+}
+
+async function photonSearch(query: string, limit: number, signal?: AbortSignal): Promise<GeoResult[]> {
+  const res = await fetch(
+    `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=${limit * 2}&lang=en&lat=${OFFICE_LAT}&lon=${OFFICE_LNG}`,
+    { signal }
+  )
+  if (!res.ok) throw new Error(`Photon ${res.status}`)
+  const { features } = await res.json() as { features: PhotonFeature[] }
+  const seen = new Set<string>()
+  const results: GeoResult[] = []
+  for (const f of features) {
+    if (f.properties.countrycode !== 'US') continue
+    const label = photonLabel(f.properties)
+    if (!label || seen.has(label)) continue
+    seen.add(label)
+    results.push({ label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] })
+  }
+  return results.slice(0, limit)
+}
+
+async function geocodeAddress(address: string): Promise<GeoResult | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&${GEOCODE_BIAS}`,
+      { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(5000) }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      if (data.length) return { label: data[0].display_name, lat: +data[0].lat, lon: +data[0].lon }
+    }
+  } catch { /* blocked, rate-limited or timed out — fall through to Photon */ }
+  const [hit] = await photonSearch(address, 1)
+  return hit ?? null
+}
+
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 3958.8
   const dLat = (lat2 - lat1) * Math.PI / 180
@@ -298,7 +350,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [step,        setStep]        = useState<AppStep>(() => draft?.sections.length ? 'done' : 'idle')
   const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.address ?? '')
   const [error,       setError]       = useState('')
-  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<GeoResult[]>([])
+  // The suggestion the visitor picked — reused on search so we don't geocode it again
+  const pickedRef = useRef<GeoResult | null>(null)
   const [activeSug,   setActiveSug]   = useState(-1)
   const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
   const [lawnSqFt, setLawnSqFt] = useState<number | null>(null)
@@ -473,15 +527,15 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       suggestAbortRef.current?.abort()
       suggestAbortRef.current = new AbortController()
       try {
-        const res  = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=0&${GEOCODE_BIAS}`,
-          { headers: { 'Accept-Language': 'en' }, signal: suggestAbortRef.current.signal }
-        )
-        const data = await res.json()
-        setSuggestions(data.map((d: { display_name: string }) => d.display_name))
+        setSuggestions(await photonSearch(query, 5, suggestAbortRef.current.signal))
       } catch { /* aborted or network error — ignore */ }
     }, 350)
   }, [])
+
+  const pickSuggestion = (s: GeoResult) => {
+    pickedRef.current = s
+    setAddress(s.label); setSuggestions([]); setActiveSug(-1)
+  }
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -780,10 +834,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     // after appears to cancel a scrollIntoView queued in the same handler).
     requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
     try {
-      const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&${GEOCODE_BIAS}`, { headers: { 'Accept-Language': 'en' } })
-      const data = await res.json()
-      if (!data.length) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
-      const lat = +data[0].lat, lon = +data[0].lon
+      const picked = pickedRef.current
+      const hit = picked && picked.label === address ? picked : await geocodeAddress(address)
+      if (!hit) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
+      const { lat, lon } = hit
 
       // Outside the service area: stop here rather than quote a huge travel fee
       const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, lat, lon)
@@ -1149,7 +1203,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                           if (!suggestions.length) return
                           if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSug(i => Math.min(i + 1, suggestions.length - 1)) }
                           else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSug(i => Math.max(i - 1, -1)) }
-                          else if (e.key === 'Enter' && activeSug >= 0) { e.preventDefault(); setAddress(suggestions[activeSug]); setSuggestions([]); setActiveSug(-1) }
+                          else if (e.key === 'Enter' && activeSug >= 0) { e.preventDefault(); pickSuggestion(suggestions[activeSug]) }
                           else if (e.key === 'Escape') { setSuggestions([]); setActiveSug(-1) }
                         }}
                       />
@@ -1161,9 +1215,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                               className={`mapq-suggestion${i === activeSug ? ' active' : ''}`}
                               role="option"
                               aria-selected={i === activeSug}
-                              onPointerDown={e => { e.preventDefault(); setAddress(s); setSuggestions([]); setActiveSug(-1) }}
+                              onPointerDown={e => { e.preventDefault(); pickSuggestion(s) }}
                             >
-                              {s}
+                              {s.label}
                             </div>
                           ))}
                         </div>
@@ -1245,12 +1299,12 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                           </button>
                         </div>
                         <button className="mapq-link" onClick={cancelTrace} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 12 }}>
-                          Restart trace
+                          {step === 'editing' ? 'Discard this zone' : 'Restart trace'}
                         </button>
                       </>
                     ) : (
                       <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ width: '100%' }}>
-                        Restart trace
+                        {step === 'editing' ? 'Done adding zones' : 'Restart trace'}
                       </button>
                     )}
                   </div>
@@ -1317,6 +1371,12 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                         {isDrawing && ptCount >= 3 && (
                           <button className="mapq-btn-primary" onClick={handleFinish} style={{ width: '100%', marginTop: 8 }}>
                             Add this zone ✓
+                          </button>
+                        )}
+                        {/* "+ Add zone" opens a fresh empty zone — give a way out right here */}
+                        {isDrawing && ptCount < 3 && (
+                          <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ width: '100%', marginTop: 8 }}>
+                            Done adding zones
                           </button>
                         )}
                       </div>
@@ -1940,6 +2000,13 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
           </button>
           <button className="mapq-btn-ghost" onClick={handleFinishAndAdd} style={{ flex: 1 }}>
             + Add zone
+          </button>
+        </div>
+      )}
+      {isDrawing && ptCount < 3 && step === 'editing' && !addonDrawTarget && (
+        <div className="mapq-mobile-draw-bar">
+          <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ flex: 1 }}>
+            Done adding zones
           </button>
         </div>
       )}
