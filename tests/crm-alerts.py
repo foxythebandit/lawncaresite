@@ -100,6 +100,23 @@ assert len(max_bodies)==2
 assert all(len(body)<=1600 and 'N'*150 in body and 'A'*500 in body
            and fixture['contact']['phone'] in body for body in max_bodies)
 
+# Click-only acquisition remains useful; vendor bookkeeping must not crowd out answers.
+for click_key, label in [('gclid','Google Ads'), ('gbraid','Google Ads'),
+                         ('wbraid','Google Ads'), ('fbclid','Meta (ad unknown)')]:
+    click_fixture = {**fixture, 'submission_id':'alert-'+uuid.uuid4().hex,
+        'attribution':{click_key:'synthetic-click'},
+        'answers':{'conviflo_response_id':'internal-response',
+                   'address_needs_review':True, 'gate':'Side access'}}
+    code, click_result = intake(click_fixture)
+    assert code == 201, (code, click_result)
+    wait_alerts(click_result['event_id'])
+    bodies = [urllib.parse.parse_qs(json.loads(line)['body'])['Body'][0]
+        for line in log.read_text().splitlines() if json.loads(line).get('channel')=='sms'
+        and click_result['lead_id'] in json.loads(line)['body']]
+    assert len(bodies) == 2
+    assert all('Source: '+label in body and 'Side access' in body
+               and 'conviflo_' not in body and 'address_needs_review' not in body for body in bodies)
+
 mode.write_text('reject-voice')
 other = {**fixture,'submission_id':'alert-'+uuid.uuid4().hex}
 code, result = intake(other)

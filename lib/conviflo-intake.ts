@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { canonicalIntake } from './canonical-intake'
+import { enrichMetaCreative } from './ad-registry'
 
 type FormConfig = { services: string[]; address_key: string; map_meta_utm_ids?: boolean }
 
@@ -58,7 +59,7 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
     answers: { ...fields, address_needs_review: true, conviflo_form_id: formId,
       conviflo_response_id: data.responseId, conviflo_form_slug: data.formSlug,
       conviflo_submitted_at: data.submittedAt, conviflo_lead_value_horizon: 'unknown' },
-    attribution,
+    attribution: enrichMetaCreative(attribution, process.env.META_AD_CREATIVES),
     estimated_value: value,
   })
 }

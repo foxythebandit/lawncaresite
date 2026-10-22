@@ -63,7 +63,7 @@ export function getAttribution(): Attribution {
 }
 export function formatAttributionLabel(attr: Partial<Record<typeof ATTRIBUTION_KEYS[number], string | null>> | null | undefined): string | null {
   if (!attr) return null
-  const source = attr.utm_source || (attr.gclid ? 'Google Ads' : attr.fbclid ? 'Meta (ad unknown)' : '')
+  const source = attr.utm_source || ((attr.gclid || attr.gbraid || attr.wbraid) ? 'Google Ads' : attr.fbclid ? 'Meta (ad unknown)' : '')
   if (!source) return null
   return [source, attr.utm_campaign, attr.utm_term, attr.utm_content, attr.creative_id, attr.creative_type,
     attr.google_campaign_id, attr.google_adgroup_id, attr.google_ad_id].filter(Boolean).join(' · ')

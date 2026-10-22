@@ -25,13 +25,17 @@ export function alertBody(lead: Record<string, unknown>, booking: boolean) {
   const attr = lead.attribution && typeof lead.attribution === 'object'
     ? (lead.attribution as Record<string, unknown>).first_touch as Record<string, unknown> | undefined : undefined
   const answerSummary = Object.entries(answers).filter(([key, value]) =>
-    !/(password|secret|token|key)/i.test(key) && ['string','number','boolean'].includes(typeof value))
+    !/(password|secret|token|key)/i.test(key) && !key.startsWith('conviflo_')
+    && !['address_needs_review', 'name', 'phone', 'email', 'address', 'contact'].includes(key)
+    && ['string','number','boolean'].includes(typeof value))
     .slice(0, 6).map(([key, value]) => `${compact(key, 30)}=${compact(value, 60)}`).join('; ')
   const details = [lead.timing && `Timing: ${compact(lead.timing, 150)}`,
     lead.frequency && `Frequency: ${compact(lead.frequency, 50)}`,
     answerSummary && `Answers: ${answerSummary}`,
     answers.waitlist && 'Outside service area: waitlist']
-  const source = [attr?.utm_source && `Source: ${compact(attr.utm_source, 100)}`,
+  const sourceName = attr?.utm_source || ((attr?.gclid || attr?.gbraid || attr?.wbraid)
+    ? 'Google Ads' : attr?.fbclid ? 'Meta (ad unknown)' : '')
+  const source = [sourceName && `Source: ${compact(sourceName, 100)}`,
     attr?.utm_campaign && `Campaign: ${compact(attr.utm_campaign, 150)}`,
     attr?.meta_adset_id && `Ad set: ${compact(attr.meta_adset_id, 150)}`,
     attr?.meta_ad_id && `Ad: ${compact(attr.meta_ad_id, 150)}`,
@@ -47,7 +51,8 @@ export function alertBody(lead: Record<string, unknown>, booking: boolean) {
     if (priority.length + 1 + line.length <= contentLimit) priority += `\n${line}`
     else omittedSource = true
   }
-  if (omittedSource && priority.length + 23 <= contentLimit) priority += '\nMore source details in CRM'
+  const sourceNotice = '\nMore source details in CRM'
+  if (omittedSource && priority.length + sourceNotice.length <= contentLimit) priority += sourceNotice
   const room = Math.max(0, contentLimit - priority.length)
   const extra = details.filter(Boolean).join('\n')
   return `${priority}${room > 1 && extra ? `\n${extra.slice(0, room - 1)}` : ''}\n${link}`

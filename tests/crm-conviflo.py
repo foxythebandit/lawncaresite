@@ -68,6 +68,8 @@ meta_lead = rows('leads','id=eq.'+meta_result['lead_id'])[0]
 assert meta_lead['attribution']['first_touch']['meta_campaign_id'] == '900001'
 assert meta_lead['attribution']['first_touch']['meta_adset_id'] == '900002'
 assert meta_lead['attribution']['first_touch']['meta_ad_id'] == '900003'
+assert meta_lead['attribution']['first_touch']['creative_id'] == 'AI video: leaf cleanup'
+assert meta_lead['attribution']['first_touch']['creative_type'] == 'ai'
 second_form = {**completed,'formId':'11111111-1111-4111-8111-111111111111'}
 second_status,second_result = send(second_form)
 assert second_status == 201,(second_status,second_result)
