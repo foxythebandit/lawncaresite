@@ -1,0 +1,27 @@
+{
+  "event": "lead.partial",
+  "formId": "925f7fdc-70c1-4221-955d-c14f75d67ddc",
+  "formSlug": "2501km2x",
+  "formName": "TEST ONLY — QuietGreen CRM connection",
+  "sessionId": "bdb60634-9dd6-48ed-aeac-c9ee9de14a1a",
+  "outcome": "partial",
+  "leadValue": 60,
+  "answers": {
+    "name": "TEST ONLY Morgan Example",
+    "email": "quietgreen-test@example.test",
+    "phone": "+15125550147",
+    "budget": "mid",
+    "contact": "TEST ONLY Morgan Example · (512) 555-0147 · quietgreen-test@example.test",
+    "decision_maker": "yes"
+  },
+  "meta": {
+    "utm": {
+      "utm_term": "900002",
+      "utm_medium": "paid_social",
+      "utm_source": "meta",
+      "utm_content": "900003",
+      "utm_campaign": "900001"
+    }
+  },
+  "partial": true
+}
