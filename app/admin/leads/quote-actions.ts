@@ -33,7 +33,11 @@ export async function saveLeadQuote(id: string, expectedUpdatedAt: string, draft
   const totalCents = quoteTotalCents(draft)
   if (!Number.isSafeInteger(totalCents) || totalCents < 0 || totalCents > 100000000 || draft.totalCents !== totalCents) return { error: 'Discount exceeds the service total or quote total changed.' }
   if (reviewed && totalCents <= 0) return { error: 'Enter a price before marking this quote reviewed.' }
-  return updateWorkflow(id, expectedUpdatedAt, { quote_draft: draft, quote_status: 'draft', review_quote: reviewed, ...(reviewed ? { stage: 'quoted' as const } : {}) },
+  await requireStaff(`/admin/leads/${id}`)
+  const { data: currentLead, error: addressError } = await adminDb().from('leads').select('address').eq('id', id).single()
+  if (addressError || !currentLead) return { error: 'Could not load the current contact address.' }
+  const reviewedDraft = { ...draft, contactAddressAtReview: currentLead.address }
+  return updateWorkflow(id, expectedUpdatedAt, { quote_draft: reviewedDraft, quote_status: 'draft', review_quote: reviewed, ...(reviewed ? { stage: 'quoted' as const } : {}) },
     { kind: 'quote', outcome: reviewed ? 'reviewed' : 'draft_saved', body: reviewed ? 'Staff reviewed quote.' : 'Saved quote draft.' })
 }
 
@@ -85,12 +89,14 @@ export async function requestLeadBooking(id: string, expectedUpdatedAt: string, 
   if (!uuidPattern.test(id) || !uuidPattern.test(operationId) || !Number.isFinite(Date.parse(expectedUpdatedAt))) return { error: 'Refresh this lead and try again.' }
   if (preferredDate && !/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)) return { error: 'Choose a valid visit date.' }
   const db = adminDb()
-  const { data: lead, error: readError } = await db.from('leads').select('name,address,quote_status,accepted_quote_snapshot').eq('id', id).single()
+  const { data: lead, error: readError } = await db.from('leads').select('name,address,quote_status,quote_accepted_at,accepted_quote_snapshot').eq('id', id).single()
   if (readError || !lead) return { error: 'Could not load the accepted quote.' }
   if (lead.quote_status !== 'accepted' || !lead.accepted_quote_snapshot) return { error: 'Mark the reviewed quote accepted first.' }
   if (!lead.name || !(lead.accepted_quote_snapshot.address || lead.address)) return { error: 'Add a contact name and property address first.' }
   const draft = lead.accepted_quote_snapshot as QuoteDraft
-  if (lead.address && draft.address && lead.address.trim() !== draft.address.trim()) return { error: 'The accepted quote is for a different address. Review and accept a quote for the current property first.' }
+  const { data: addressChanges, error: addressHistoryError } = await db.from('lead_activities').select('id').eq('lead_id', id).eq('outcome', 'contact_address_changed').gt('occurred_at', lead.quote_accepted_at).limit(1)
+  if (addressHistoryError) return { error: 'Could not verify the accepted property. Refresh and retry.' }
+  if ((draft.contactAddressAtReview !== undefined && draft.contactAddressAtReview !== lead.address) || addressChanges?.length) return { error: 'The contact address changed after this quote. Review and accept a quote for the current property first.' }
   const items: JobItemInput[] = []
   const mowingCents = draft.includeMowing === false ? 0 : Math.round((draft.overridePrice ?? draft.calculatedPrice) * 100)
   if (mowingCents > 0) items.push({ kind: 'service', description: 'Lawn care', amount: centsToAmount(mowingCents) })
@@ -120,5 +126,9 @@ export async function updateLeadContact(id: string, form: FormData) {
   const address = String(form.get('address') ?? '').trim()
   if (!name || name.length > 150 || email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return { error: 'Enter a name and valid optional email.' }
   if (!/^[+\d() -]{7,30}$/.test(phone) || phone.replace(/\D/g, '').length < 7 || !address || address.length > 500) return { error: 'Enter a valid phone and property address.' }
-  return updateWorkflow(id, expectedUpdatedAt, { name, email, phone, address }, { kind: 'note', outcome: 'contact_updated', body: 'Contact details updated.' })
+  await requireStaff(`/admin/leads/${id}`)
+  const { data: currentLead, error } = await adminDb().from('leads').select('address').eq('id', id).single()
+  if (error || !currentLead) return { error: 'Could not load contact details.' }
+  const addressChanged = currentLead.address !== address
+  return updateWorkflow(id, expectedUpdatedAt, { name, email, phone, address }, { kind: 'note', outcome: addressChanged ? 'contact_address_changed' : 'contact_updated', body: addressChanged ? 'Contact address changed; review any previous property quote.' : 'Contact details updated.' })
 }

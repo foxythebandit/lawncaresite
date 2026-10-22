@@ -58,7 +58,9 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
     && (lead.answers as { address_needs_review?: unknown }).address_needs_review === true
   const [version, setVersion] = useState(lead.updated_at)
   const [draft, setDraft] = useState<QuoteDraft | null>(lead.quote_draft)
-  const propertyChanged = !!draft?.address && !!lead.address && draft.address.trim() !== lead.address.trim()
+  const propertyChanged = !!draft && (draft.contactAddressAtReview !== undefined
+    ? draft.contactAddressAtReview !== lead.address
+    : activities.some(activity => activity.outcome === 'contact_address_changed' && activity.occurred_at > (lead.quote_saved_at ?? '')))
   const [reviewed, setReviewed] = useState(!!lead.quote_confirmed_at)
   const [quoteStatus, setQuoteStatus] = useState(lead.quote_status)
   const [feedback, setFeedback] = useState('')

@@ -95,6 +95,25 @@ with sync_playwright() as playwright:
     accepted = db('leads?id=eq.' + lead_id)[0]
     assert accepted['quote_status'] == 'accepted'
     assert accepted['accepted_quote_snapshot']['totalCents'] == 12550
+    # A later contact-address change must not silently book the earlier accepted property.
+    page.get_by_text('Edit contact', exact=True).click()
+    page.get_by_label('Property address', exact=True).fill('999 Temporary Test Property, Austin, TX')
+    page.get_by_role('button', name='Save contact').click()
+    page.get_by_text('Contact address changed.', exact=False).wait_for()
+    page.get_by_role('button', name='Create booking request').click()
+    page.get_by_text('The contact address changed after this quote.', exact=False).first.wait_for()
+    assert db('bookings?lead_id=eq.' + lead_id) == []
+    assert db('leads?id=eq.' + lead_id)[0]['accepted_quote_snapshot']['address'] == '807 E 47th St, Austin, TX'
+    page.get_by_label('Property address', exact=True).fill('807 E 47th St, Austin, TX')
+    page.get_by_role('button', name='Save contact').click()
+    page.get_by_text('Saved.', exact=True).first.wait_for()
+    page.get_by_role('button', name='Cancel acceptance').click()
+    page.get_by_role('button', name='Save draft', exact=True).click()
+    page.get_by_role('status').filter(has_text='Draft saved.').wait_for()
+    page.get_by_role('button', name='Confirm quote', exact=True).click()
+    page.get_by_role('status').filter(has_text='Quote confirmed.').wait_for()
+    page.get_by_role('button', name='Mark accepted').click()
+    page.get_by_text('Saved.', exact=True).first.wait_for()
     page.get_by_role('button', name='Create booking request').click()
     page.get_by_text('Booking request created.').first.wait_for()
     bookings = db('bookings?lead_id=eq.' + lead_id)

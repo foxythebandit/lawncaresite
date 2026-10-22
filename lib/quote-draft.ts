@@ -1,4 +1,5 @@
 export interface QuoteDraft {
+  contactAddressAtReview?: string | null
   address: string
   sections: { id: string; name: string; sqFt: number; coords: [number, number][] | null }[]
   unfinishedPoints?: [number, number][]
