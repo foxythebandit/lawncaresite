@@ -17,6 +17,7 @@ def check(sql):
         assert scalar(f"select has_function_privilege('{role}','public.crm_job_command(uuid,timestamptz,uuid,text,jsonb)','execute');") == 'f'
         assert scalar(f"select has_table_privilege('{role}','public.crm_operations','select');") == 'f'
     fails("select public.crm_validate_items('[{\"kind\":\"service\",\"description\":\"A\",\"amount\":\"0.005\"},{\"kind\":\"service\",\"description\":\"B\",\"amount\":\"0.005\"}]'::jsonb);", 'Invalid priced item')
+    fails("select public.crm_validate_items('[{\"description\":\"Missing kind\",\"amount\":\"1.00\"}]'::jsonb);", 'Invalid priced item')
 
     customer = scalar("insert into public.customers(name,phone) values('Lifecycle A','5550003000') returning id;")
     property_id = scalar(f"insert into public.properties(customer_id,address) values('{customer}','30 Oak') returning id;")
@@ -113,4 +114,42 @@ def check(sql):
     scalar(f"select public.record_job_payment('{booking}','{uuid.uuid4()}',35.00,'2027-02-09','cash','manual');")
     assert scalar(f"select sum(amount) from public.job_payments where booking_id='{booking}';") == '60.00'
     assert scalar(f"select count(*) from public.job_payments where booking_id='{booking}';") == '2'
+
+    completed_oneoff = scalar("insert into public.bookings(name,phone,address,status,completed_at,confirmed_date,customer_id,property_id,job_total,amount_charged,accepted_quote_snapshot,one_time) "
+                              f"values('Lifecycle A','5550003000','30 Oak','completed','2027-05-01','2027-05-01','{customer}','{property_id}',60.00,60.00,"
+                              "'{\"original_total\":60}'::jsonb,true) returning id;")
+    prior_version = scalar(f"select updated_at from public.bookings where id='{completed_oneoff}';")
+    two_week = json.dumps({'anchor_on':'2027-05-01','next_on':'2027-05-15','interval_unit':'week',
+                           'interval_count':2,'items_template':[{'kind':'service','description':'Lawn care','amount':'80.00'}]})
+    start_op = uuid.uuid4()
+    start_after = f"select public.crm_start_agreement('{completed_oneoff}','{prior_version}','{start_op}','{two_week}'::jsonb);"
+    result = json.loads(scalar(start_after))
+    assert json.loads(scalar(start_after)) == result
+    next_job = result['next_booking_id']
+    assert scalar(f"select status || ':' || job_total || ':' || amount_charged || ':' || (accepted_quote_snapshot->>'original_total') from public.bookings where id='{completed_oneoff}';") == 'completed:60.00:60.00:60'
+    assert scalar(f"select confirmed_date || ':' || job_total from public.bookings where id='{next_job}';") == '2027-05-15:80.00'
+    next_version = scalar(f"select updated_at from public.bookings where id='{next_job}';")
+    canceled = json.loads(scalar(f"select public.crm_job_command('{next_job}','{next_version}','{uuid.uuid4()}','cancel','{{}}'::jsonb);"))
+    assert scalar(f"select status from public.bookings where id='{next_job}';") == 'canceled'
+    assert scalar(f"select confirmed_date from public.bookings where id='{canceled['next_booking_id']}';") == '2027-05-29'
+
+    legacy = scalar("insert into public.bookings(name,phone,address,status,confirmed_date,frequency,one_time) "
+                    "values('Legacy cadence','5550003010','40 Oak','confirmed','2027-06-01','Every two weeks',false) returning id;")
+    legacy_version = scalar(f"select updated_at from public.bookings where id='{legacy}';")
+    fails(f"select public.complete_job('{legacy}','{legacy_version}','{uuid.uuid4()}','2027-06-01');",
+          'start an agreement')
+    assert scalar(f"select status from public.bookings where id='{legacy}';") == 'confirmed'
+    scalar(f"select public.crm_job_command('{legacy}','{legacy_version}','{uuid.uuid4()}',"
+           "'mark_one_time','{}'::jsonb);")
+    legacy_version = scalar(f"select updated_at from public.bookings where id='{legacy}';")
+    legacy_completed = json.loads(scalar(f"select public.complete_job('{legacy}','{legacy_version}',"
+                                         f"'{uuid.uuid4()}','2027-06-01');"))
+    assert legacy_completed['next_booking_id'] is None
+    assert scalar(f"select status from public.bookings where id='{legacy}';") == 'completed'
+    once_week = scalar("insert into public.bookings(name,phone,address,status,confirmed_date,frequency,one_time) "
+                       "values('Legacy once weekly','5550003011','41 Oak','confirmed','2027-06-01','once a week',false) returning id;")
+    once_version = scalar(f"select updated_at from public.bookings where id='{once_week}';")
+    fails(f"select public.complete_job('{once_week}','{once_version}','{uuid.uuid4()}','2027-06-01');",
+          'start an agreement')
+    assert scalar(f"select status from public.bookings where id='{once_week}';") == 'confirmed'
     print('PASS: CRM lifecycle explicit identity, exact cents, immutable job price, recurrence transitions, operation retries, partial payments')
