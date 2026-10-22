@@ -168,14 +168,24 @@ function calcMulchPrice(sqFt: number, depthIn: number): number {
 const FERT_DISCLAIMER =
   "Base price covers a standard fertilizer treatment. Final price may be higher depending on your lawn's needs, such as weed control, organic products, soil amendments, or treating disease and pests. We'll confirm before any extra work."
 
-type AddonKey = 'fertilization' | 'mulch' | 'maintenance' | 'yardClearout'
-type DrawableAddonKey = Exclude<AddonKey, 'maintenance'>
+type AddonKey = 'fertilization' | 'mulch' | 'leafCleanup' | 'maintenance' | 'yardClearout'
+type DrawableAddonKey = Exclude<AddonKey, 'maintenance' | 'leafCleanup'>
 
 const ADDON_META: Record<AddonKey, { label: string; blurb: string; priceHint: string; color: string }> = {
   fertilization: { label: 'Fertilization',  blurb: "A feeding and weed-control schedule matched to Central Texas grasses like St. Augustine, Bermuda and Zoysia.", priceHint: 'Starting around $70/treatment.',                                        color: '#ffd166' },
   mulch:         { label: 'Mulch',          blurb: 'Fresh mulch for your beds, with edging and cleanup.',                                                         priceHint: 'Starting around $150 installed (3" depth).',                           color: '#c08552' },
-  maintenance:   { label: 'Maintenance',    blurb: 'Garden bed care, seasonal cleanups, leaf removal and weed pulling — so beds and lawn stay sharp between mows.', priceHint: 'Billed hourly, starting around $55/hr.',                                color: '#95dbb8' },
+  leafCleanup:   { label: 'Leaf Cleanup',   blurb: 'Leaves cleared from your lawn, beds and walkways with quiet battery blowers — no gas fumes.',                 priceHint: 'From $99 · most yards $150–$250 · haul-away +$50.',                     color: '#e9a23b' },
+  maintenance:   { label: 'Bed Maintenance', blurb: 'Weeding, bed care and touch-ups between mows — so your beds stay as sharp as the lawn.',                     priceHint: 'Visits from $75.',                                                      color: '#95dbb8' },
   yardClearout:  { label: 'Yard Clearout',  blurb: "Clearing overgrown beds, bushes, vines, cactus and brush — we'll bring a jungle back under control.",          priceHint: 'Starting around $75 — e.g. ~$125 for a 200 sq ft heavy clearout.',      color: '#e07a5f' },
+}
+
+/* Leaf cleanup: flat tiers by traced lawn size, so customers see a fixed
+   price instead of an hourly rate. Starting rates — revisit once real jobs
+   show how long each tier takes. */
+const LEAF_HAUL_AWAY_FEE = 50
+function calcLeafPrice(sqFt: number, haulAway: boolean): number {
+  const base = sqFt <= 2000 ? 99 : sqFt <= 5000 ? 175 : sqFt <= 10000 ? 300 : 450
+  return base + (haulAway ? LEAF_HAUL_AWAY_FEE : 0)
 }
 
 /* Yard clearout: $/sq ft by overgrowth level. "Heavy" is anchored to a real
@@ -351,6 +361,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [mulchCustomSqFt, setMulchCustomSqFt] = useState<number | null>(() => draft?.mulchCustomSqFt ?? null)
   const [mulchDepthIn,    setMulchDepthIn]    = useState(() => draft?.mulchDepthIn ?? MULCH_DEFAULT_DEPTH_IN)
   const [mulchIncluded,   setMulchIncluded]   = useState(() => draft?.mulchIncluded ?? requestedServices.includes('mulch'))
+
+  const [leafIncluded, setLeafIncluded] = useState(() => draft?.leafIncluded ?? requestedServices.includes('leafcleanup'))
+  const [leafHaulAway, setLeafHaulAway] = useState(() => draft?.leafHaulAway ?? false)
 
   const [maintenanceInterested, setMaintenanceInterested] = useState(() => draft?.maintenanceInterested ?? requestedServices.includes('maintenance'))
 
@@ -1004,6 +1017,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     setOpenAddon(null); setAddonDrawTarget(null); setTeaserTip(null)
     setFertAreaChoice(null); setFertCustomSqFt(null); setFertIncluded(false)
     setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchDepthIn(MULCH_DEFAULT_DEPTH_IN); setMulchIncluded(false)
+    setLeafIncluded(false); setLeafHaulAway(false)
     setMaintenanceInterested(false)
     setYardAreaChoice(null); setYardCustomSqFt(null); setYardSeverity('moderate'); setYardHazards([]); setYardIncluded(false)
     scrollToNext(addressWrapRef, 'center')
@@ -1095,6 +1109,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const mulchCuYd  = mulchSqFt ? calcMulchCuYd(mulchSqFt, mulchDepthIn) : 0
   const mulchPrice = mulchSqFt ? calcMulchPrice(mulchSqFt, mulchDepthIn) : 0
 
+  const leafPrice  = lawnSqFt ? calcLeafPrice(lawnSqFt, leafHaulAway) : 0
+
   const yardSqFt       = yardAreaChoice === 'same' ? lawnSqFt : yardAreaChoice === 'custom' ? yardCustomSqFt : null
   const yardBasePrice  = yardSqFt ? calcClearoutPrice(yardSqFt, yardSeverity) : 0
   const yardHasHazard  = yardHazards.length > 0
@@ -1105,6 +1121,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     const obj: Record<string, unknown> = {}
     if (fertIncluded && fertSqFt) obj.fertilization = { included: true, sq_ft: fertSqFt, price: fertPrice, area: fertAreaChoice }
     if (mulchIncluded && mulchSqFt) obj.mulch = { included: true, sq_ft: mulchSqFt, depth_in: mulchDepthIn, cu_yd: Math.round(mulchCuYd * 10) / 10, price: mulchPrice, area: mulchAreaChoice }
+    if (leafIncluded && lawnSqFt) obj.leafCleanup = { included: true, sq_ft: lawnSqFt, haul_away: leafHaulAway, price: leafPrice }
     if (maintenanceInterested) obj.maintenance = { interested: true }
     if (yardIncluded && yardSqFt) obj.yardClearout = { included: true, sq_ft: yardSqFt, severity: yardSeverity, hazards: yardHazards, base_price: yardBasePrice, hazard_fee: yardHazardFee, price: yardPrice, area: yardAreaChoice }
     return Object.keys(obj).length ? obj : null
@@ -1149,7 +1166,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     const next: QuoteDraft = {
       contactAddressAtReview: contactAddressAtReview.current, propertyConfirmation, address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
       fertAreaChoice, fertCustomSqFt, fertIncluded, mulchAreaChoice, mulchCustomSqFt, mulchDepthIn, mulchIncluded,
-      maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
+      leafIncluded, leafHaulAway, maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
       addonInterest, overgrowthFee, calculatedPrice: ongoingPrice, calculatedFirstVisit: firstVisitPrice, overridePrice, notes: staffNotes,
       includeMowing, manualLines, discountCents, totalCents: staffTotalCents,
     }
@@ -1618,9 +1635,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                         <div className="mapq-addons" ref={addonsRef}>
                           <div className="mapq-addons-title">Also available — add to this visit</div>
                           <div className="mapq-addons-chips">
-                            {(['fertilization', 'mulch', 'maintenance', 'yardClearout'] as AddonKey[]).map(key => {
+                            {(['fertilization', 'mulch', 'leafCleanup', 'maintenance', 'yardClearout'] as AddonKey[]).map(key => {
                               const meta = ADDON_META[key]
-                              const included = { fertilization: fertIncluded, mulch: mulchIncluded, maintenance: maintenanceInterested, yardClearout: yardIncluded }[key]
+                              const included = { fertilization: fertIncluded, mulch: mulchIncluded, leafCleanup: leafIncluded, maintenance: maintenanceInterested, yardClearout: yardIncluded }[key]
                               return (
                                 <button
                                   key={key}
@@ -1733,10 +1750,42 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                             </div>
                           )}
 
+                          {openAddon === 'leafCleanup' && (
+                            <div className="mapq-addon-panel">
+                              <p className="mapq-addon-blurb">{ADDON_META.leafCleanup.blurb}</p>
+
+                              <div className="mapq-addon-price-row">
+                                <span>Your {lawnSqFt?.toLocaleString()} sq ft yard</span>
+                                <span className="mapq-addon-price-val">${leafPrice}</span>
+                              </div>
+
+                              <label className="mapq-addon-include-row">
+                                <input
+                                  type="checkbox"
+                                  className="mapq-consent-checkbox"
+                                  checked={leafHaulAway}
+                                  onChange={e => setLeafHaulAway(e.target.checked)}
+                                />
+                                <span>Haul the leaves away (+${LEAF_HAUL_AWAY_FEE}) — otherwise bagged at the curb</span>
+                              </label>
+                              <p className="mapq-addon-disclaimer">Fixed price, confirmed before we start. Very deep or wet leaf piles may cost more. Austin&apos;s live oaks drop in spring, so we do leaf cleanups year-round.</p>
+
+                              <label className="mapq-addon-include-row">
+                                <input
+                                  type="checkbox"
+                                  className="mapq-consent-checkbox"
+                                  checked={leafIncluded}
+                                  onChange={e => { setLeafIncluded(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('leafCleanup') }}
+                                />
+                                <span>Include leaf cleanup with my booking request</span>
+                              </label>
+                            </div>
+                          )}
+
                           {openAddon === 'maintenance' && (
                             <div className="mapq-addon-panel">
                               <p className="mapq-addon-blurb">{ADDON_META.maintenance.blurb}</p>
-                              <p className="mapq-addon-disclaimer">Billed hourly, starting around $55/hr — we&apos;ll quote the exact time once we see your yard.</p>
+                              <p className="mapq-addon-disclaimer">Visits from $75 — we&apos;ll confirm the scope once we see your beds.</p>
                               <label className="mapq-addon-include-row">
                                 <input
                                   type="checkbox"
@@ -1744,7 +1793,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                                   checked={maintenanceInterested}
                                   onChange={e => { setMaintenanceInterested(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('maintenance') }}
                                 />
-                                <span>Include maintenance interest with my booking request</span>
+                                <span>Include bed maintenance interest with my booking request</span>
                               </label>
                             </div>
                           )}
@@ -2019,7 +2068,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                     <div className="booking-summary-addons">
                       {fertIncluded && <span>+ Fertilization interest (${fertPrice} starting)</span>}
                       {mulchIncluded && <span>+ Mulch interest (${mulchPrice})</span>}
-                      {maintenanceInterested && <span>+ Maintenance interest</span>}
+                      {leafIncluded && <span>+ Leaf cleanup (${leafPrice}{leafHaulAway ? ', hauled away' : ''})</span>}
+                      {maintenanceInterested && <span>+ Bed maintenance interest</span>}
                       {yardIncluded && <span>+ Yard clearout interest (${yardPrice} starting)</span>}
                     </div>
                   )}

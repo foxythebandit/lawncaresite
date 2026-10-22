@@ -17,6 +17,8 @@ export interface QuoteDraft {
   mulchCustomSqFt: number | null
   mulchDepthIn: number
   mulchIncluded: boolean
+  leafIncluded?: boolean
+  leafHaulAway?: boolean
   maintenanceInterested: boolean
   yardAreaChoice: 'same' | 'custom' | null
   yardCustomSqFt: number | null
