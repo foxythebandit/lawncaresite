@@ -1,6 +1,6 @@
 # CRM build contract and worker tasks
 
-Read SPINE.md first. Parent approved this local-build plan. Implementation is pending dispatch; no coding workers are active. It is not a production migration or permission to activate integrations. Work from merge `4accb51751a8ad4ee62256cac444a251f37409b4`, including website release `f4f7af9`. Astra owns contracts, integration and final review; Sol workers implement bounded tasks after dispatch. Preserve all existing data and website paths.
+Read SPINE.md first. Parent approved this local-build plan. Implementation is active with Astra integration and two Sol coding workers. It is not a production migration or permission to activate integrations. Work from merge `4accb51751a8ad4ee62256cac444a251f37409b4`, including website release `f4f7af9`. Astra owns contracts, integration and final review; Sol workers implement bounded tasks after dispatch. Preserve all existing data and website paths.
 
 ## Smallest additive model
 
@@ -76,7 +76,7 @@ The existing website-service browser harness already demonstrates this approach 
 6. A $60 one-time job becomes an $80 recurring agreement; original history remains $60, a one-visit leaf add-on stays local to that visit, and skip/reschedule/pause remain distinct.
 7. Replayed completion/payment commands cannot duplicate visits or revenue; conservative forecasts and received money remain separate.
 
-ConviFlo remains read-only under the current instruction. A later isolated vendor test requires an actual documented/sanitized payload or an explicitly authorized separate test flow with synthetic data and a dedicated staging receiver. Never reuse or publish over existing flows. Receiving a real vendor test must not trigger production alerts, bookings or advertising conversion events. Until that receipt is inspected, payload/signature/attribution forwarding are marked unverified.
+The user authorized a separate synthetic ConviFlo test flow and staging receiver; existing production flows remain untouched. Never reuse or publish over existing flows. Receiving a real vendor test must not trigger production alerts, bookings or advertising conversion events. Real signed receipts now establish HMAC-SHA256 over the raw body, completed response identity, partial events and address object shape. See the current SPINE checkpoint; production activation remains pending.
 
 ## Cutover and context handoff
 
@@ -84,4 +84,4 @@ Use expand/backfill/switch, not delete/recreate. Preserve legacy columns until e
 
 Friend inspects actual production migration history/schema and creates a current recoverable backup before applying reviewed migrations. Rehearse on staging/representative copy; compare data and permissions. Record exact reviewed commit, migration sequence, preservation checks and supported rollback/forward-fix. Never assume rolling back application code is safe after new lifecycle data exists. Follow PRODUCTION-HANDOFF.md; no production work from coding workers.
 
-Before every agent handoff update SPINE ledger: exact commit, owned/changed files, tests/results, active workers, unresolved real vendor facts and next action. Parent receives a compact milestone update, waits for dispatched workers, and checks completion. No coding workers are currently active. Do not invent context percentages or mark vendor integration complete because a mock passes.
+Before every agent handoff update SPINE ledger: exact commit, owned/changed files, tests/results, active workers, unresolved real vendor facts and next action. Parent receives a compact milestone update, waits for dispatched workers, and checks completion. See SPINE for the active workers and current checkpoint. Do not invent context percentages or mark vendor integration complete because a mock passes.

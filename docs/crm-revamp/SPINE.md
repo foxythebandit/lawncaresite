@@ -1,6 +1,6 @@
 # QuietGreen CRM revamp — project spine
 
-This is the authoritative planning and handoff document for this revamp. Update decisions and the execution ledger here as work proceeds; do not replace them with a fresh interpretation after a context handoff. **Build planning: confirmed requirements and delegated defaults below govern implementation. Vendor facts still require verification; they do not block unrelated local work. Parent approved the implementation spine; implementation is pending explicit worker dispatch. No coding workers are active.**
+This is the authoritative planning and handoff document for this revamp. Update decisions and the execution ledger here as work proceeds; do not replace them with a fresh interpretation after a context handoff. **Confirmed requirements and delegated defaults below govern the implementation. Build is integrated at `4650d79`; final independent Astra review is clear (no P1/P2 findings) and local verification passes. Production remains untouched.**
 
 ## Scope and fixed requirements
 
@@ -31,7 +31,7 @@ Planning branch: `codex/crm-revamp`, based on fetched `origin/main` **`4aebdaa6d
 | Lifecycle | `app/admin/actions.ts:267–339`; `app/admin/client/[phone]/page.tsx:16–18` | Booking completion/payment/next visits exist; customer history groups by exact phone. Completion and next-visit insert are separate writes. Lead ownership/contact/follow-up lifecycle is absent. |
 | Preservation | `supabase/migrations/20261021235412_backup_before_crm_20261021.sql`; CRM migration's legacy ID mapping | Backup/migration files express intent, not proof of production state. Preserve IDs/history; no guessed historical merges or blind reruns. |
 
-## ConviFlo and Meta evidence boundaries
+## Historical ConviFlo and Meta evidence boundaries (superseded by verified receipts below)
 
 Parent inspected the current ConviFlo UI: no integrations connected; native CAPI marked **SOON**. Actual webhook payload, authentication/signature, stable submission identity, retry behavior and address selection output remain unknown. These are engineering verification tasks, not questions for the user to guess.
 
@@ -104,7 +104,7 @@ Conceptually distinguish customer, property, inquiry, quote, booking/visit, recu
 
 ## Phased build and ownership
 
-Concrete contracts, schema candidates, task boundaries and test gates are in [BUILD-CONTRACT.md](BUILD-CONTRACT.md). It supersedes older coarse ownership assignments below where more specific. Parent approved the plan; no coding workers are active and implementation awaits dispatch.
+Concrete contracts, schema candidates, task boundaries and test gates are in [BUILD-CONTRACT.md](BUILD-CONTRACT.md). It supersedes older coarse ownership assignments below where more specific. Implementation active under this plan; see latest execution checkpoint.
 
 1. **Decisions and contracts:** Astra records confirmed direction and delegated defaults, verifies source payload/field mapping and notification semantics, reads applicable skills and installed Next.js guidance, and defines the smallest additive data change. Verification: sanitized fixtures and current-schema evidence resolve integration assumptions.
 2. **Durable intake and alerts:** preserve website paths, add verified ConviFlo adapter, required property context and per-recipient/channel voice + SMS. Verification: concurrent/retried intake produces one inquiry and one intent per staff/channel; provider failure cannot lose the inquiry.
@@ -112,7 +112,7 @@ Concrete contracts, schema candidates, task boundaries and test gates are in [BU
 4. **Customer lifecycle and reporting:** accepted quote, booking, payment, recurrence and attribution according to decisions. Verification: repeat completion cannot duplicate next visits; customer history and original acquisition survive.
 5. **Final review and handoff:** Astra reviews integrated behavior/security/spec, fixes findings, runs appropriate local database upgrade and browser tests, prepares friend handoff. Deliver branch for review/push when authorized; no automatic deployment or production migration.
 
-Execution model: **one GPT-6 Astra lead** owns planning, contracts, integration and final review; **gpt-6-sol workers** own bounded, non-overlapping work after the decisions needed for their work are resolved. Explicit user authorization permits that model; no coding workers are running during this planning stage.
+Execution model: **one GPT-6 Astra lead** owns planning, contracts, integration and final review; **gpt-6-sol workers** own bounded, non-overlapping work after the decisions needed for their work are resolved. Explicit user authorization permits that model; coding workers are dispatched in bounded capacity waves.
 
 | Owner | File/responsibility boundary |
 | --- | --- |
@@ -132,7 +132,7 @@ Integrate contract/schema foundation first; intake/alerts and UI may proceed in 
 - Product stages and explicit customer sends follow recorded decisions. Repeated completion cannot create duplicate recurring visits; pause/cancel preserves history and resume uses an explicit date.
 - Actual payments and predicted value remain separate. Available first/latest ad identifiers and creative classification survive inquiry → booking → repeat visits; unknowns are labeled rather than inferred.
 - Local upgrade tests start with representative existing records and verify preservation. Test behavior through public interfaces with real disposable database/auth; mock only external network systems. Do not send real calls, SMS or Meta events during local tests.
-- Friend verifies actual schema/migration history, backups and deployment configuration on his machine. No credentials enter repository or handoff. Use `PRODUCTION-HANDOFF.md` only after branch completion; current document is not a release-ready claim.
+- Friend verifies actual schema/migration history, backups and deployment configuration on his machine. No credentials enter repository or handoff. Use `PRODUCTION-HANDOFF.md` only after branch completion; reviewed code is ready for the friend’s guarded production preflight, not automatic deployment.
 
 ## Execution ledger and context handoff
 
@@ -140,10 +140,10 @@ Integrate contract/schema foundation first; intake/alerts and UI may proceed in 
 | --- | --- | --- |
 | Done | Read-only remote-main audit and historical voice trace | Baseline commit above; code references recorded. No production access or notifications. |
 | Done | Parent's ConviFlo UI and pinned CRM source study | Findings and exact pinned source locations recorded above. |
-| Done | Planning documents and parent review | `docs/crm-revamp/SPINE.md`, `PRODUCTION-HANDOFF.md`, and `AGENTS.md` pointer. All 20 decision IDs checked; documentation whitespace check passed. No runtime implementation changes. |
-| Parent-approved; awaiting dispatch | Product implementation | BUILD-CONTRACT.md defines foundation then intake/alerts gates; no active coding workers. Vendor-dependent configuration stays pending. |
-| Pending engineering evidence | Integration readiness | Actual ConviFlo payload/security/retries/address/attribution and actual deployed schema/config unknown. |
-| Not run | Build/runtime/upgrade tests | Documentation-only stage; no new runtime claims. |
+| Done | Planning documents and parent review | `docs/crm-revamp/SPINE.md`, `PRODUCTION-HANDOFF.md`, and `AGENTS.md` pointer. All 20 decision IDs checked; documentation whitespace check passed. Initial planning receipt; implementation evidence follows. |
+| Done | Product implementation and final independent review | Integrated code `4650d79`; all six final-review findings resolved, first-visit preservation reviewed, no P1/P2 findings remain. Coding workers finished. |
+| Partially verified | Integration readiness | Synthetic vendor receipts establish signature/payload/address/retry behavior. Production form configuration, Meta access/receipt and deployed DB remain unverified. |
+| Done | Build/runtime/upgrade tests | Final optimized build, typecheck, real DB upgrade and behavioral suites pass; exact receipt below. |
 
 Before handing off context, update this ledger with exact working commit, changed files, completed tests/results, unresolved decisions/findings, active worker ownership/status and a single next action. Record what is actually known; context percentage is not exposed and must not be invented. A context handoff does not restart the task or reopen settled requirements. Preserve this spine and read it first when resuming.
 
@@ -159,10 +159,72 @@ Working merge commit **`4accb51751a8ad4ee62256cac444a251f37409b4`** includes lat
 
 Revenue audit: `app/admin/revenue/page.tsx:22–24,52–71,157–182` preserves an intentional conservative **30 mows/year × recurring per-visit price** forecast, not an exact schedule prediction. Keep this capability visibly labeled with assumptions; support other service forecasts only from explicit agreement terms. Existing monthly totals combine completed-job recorded amounts and extra charges; preserve historical totals as recorded history while new paid-date reporting remains distinguishable. `RecurringClientRow.tsx:32` currently deletes a booking to remove a projection: replace that action with pause/end agreement, never delete customer history.
 
-Latest ledger: planning docs updated; Supabase/Postgres skills and current RLS documentation read before schema candidates. No code, migrations or runtime tests performed in this update. Next action: parent finishes connector-review response; implementation remains pending dispatch under the approved BUILD-CONTRACT.md.
+Historical planning checkpoint: Supabase/Postgres skills and current RLS documentation were read before schema design. The implementation and verified build checkpoints below supersede the former pending-dispatch status.
 
-## Connector review checkpoint — parent verified
+## Historical connector review checkpoint — before isolated vendor test
 
 Fresh read-only ConviFlo gutter-form integration inspection: **Nothing connected**; Meta Pixel and Webhook **NOT SET UP**; CAPI and Google Ads **SOON**. Webhook UI describes JSON POST with up to three retries and exposes URL plus secret controls, but no custom Authorization-header control. Our canonical endpoint expects Bearer authentication and our own JSON contract. Actual payload and secret/signature mechanism remain unavailable: this is not a plug-and-play connection. Obtain a sanitized real fixture and verified authentication contract before implementing its adapter or enabling delivery.
 
 Google source capture is a separate website/account task: existing capture retains gclid/UTMs and first/latest touches for 90 days, but lacks gbraid/wbraid and explicit Google campaign/ad-group/ad identifiers. Add capture/validation/persistence for these fields in the website contract; verify account URL tagging independently. Official [ValueTrack mapping](https://developers.google.com/google-ads/api/docs/reporting/valuetrack-mapping) identifies `{campaignid}`, `{adgroupid}` and `{creative}` (ad ID). Never decode gclid into invented identifiers or claim person-level attribution absent evidence. Preserve source-specific first/latest fields. Normalize Meta UTM values into typed Meta IDs only for explicitly identified campaign tagging mappings; generic utm_campaign/term/content remain generic otherwise. No external account edits were made in this connector review.
+
+## Historical implementation kickoff
+
+Starting commit `303e65e73ebcecd953f51f051dd7b0db07f7a27e`. User authorized complete build/test, Astra lead and Sol coding. T1a `/root/astra_crm_plan/sol_foundation` owns additive SQL/types and exclusive disposable database mutation; T2 `/root/astra_crm_plan/sol_mobile` owns mobile leads/quote UI and is preparing independent styles pending foundation contract gate. No production access. Dependencies installed; revamp app uses port 3102 and API 56421, separate test notification log/mode, strict outbound fetch guard. Existing website3101 remains untouched. The later verified build checkpoint records the actual ConviFlo wire/signature evidence; canonical authentication remains intact.
+
+## Verified build checkpoint — 22 October 2026
+
+- Reviewed foundation commit `963461a`: additive customer/property/agreement/items/payments/activities contracts and real-database upgrade coverage. Parent review identified follow-on lifecycle hardening: reject sub-cent amounts, enforce agreement ownership consistency, prevent one-off extras recurring, and update last-mow semantics. Apply these in a new migration, not the applied foundation.
+- T1b durable four-intent alerts and authenticated recovery passed independent local `crm-alerts.py` and full-chain `crm-upgrade.py`. Worst-case SMS bounds passed; committed as `b0205e5`. Signed adapter is committed as `2dd053d`. Scheduler activation remains a deployment readiness requirement.
+- Sol A completed intake/alerts/adapter and now owns T3 lifecycle plus exclusive new SQL; Sol B finishes mobile lead/quote and outside-area waitlist behavior. No production mutation occurred.
+- Real isolated ConviFlo receipts verify `X-Conviflow-Signature` as raw-body HMAC-SHA256, `event: lead` + `outcome: completed`, stable `formId`/`responseId`, duplicate completed deliveries despite success, and `lead.partial` without responseId. Only completed events create leads/alerts; partial events are acknowledged without intake. The adapter scopes identity to form + response, requires an allowlisted form and configured service/address mapping, and retains submitted answers.
+- Verified address shape is `{street, unit, city}` with no coordinates, state or ZIP. Preserve those components and flag staff address review; do not fabricate location certainty. Real test receipts retained UTMs but omitted supplied synthetic click identifiers; this does not establish behavior for every valid click identifier. Per-form explicit Meta macro mapping may normalize known ID UTMs. Vendor `meta.events` is not proof of delivery to Meta.
+- Production ConviFlo flows remain unconnected. No accessible intended Meta dataset was verified; account access, destination URLs and actual event receipt/dedup remain launch checks. The isolated test form was subsequently unpublished and its receiver/tunnel stopped, as recorded below.
+- Disposable app3102/API56421 has only local database credentials, dummy Twilio values and test secrets. The preload blocks unexpected fetch destinations; it does not intercept every possible Node transport. No Stripe/Resend production keys are present. Existing website3101 is untouched.
+
+Historical next action at this checkpoint: finish and commit reviewed intake/mobile slices, transfer exclusive SQL ownership for the lifecycle hardening migration, then complete customer/jobs/money workflows and integrated regression checks.
+
+### Real vendor-to-local receipt
+
+Parent completed a fresh synthetic ConviFlo browser submission through the isolated relay into local3102 with original body/signature unchanged. Partial returned200 ignored; completed returned201; duplicate completed returned200 with duplicate=true. Local lead `628981f5-ab52-48ba-8357-f4fd7a7ee9a5`, event `0b195647-2b49-42f2-9d3a-4b7563c3c0a7`, response `ff8be81d-e08f-4691-865e-4b99a713702c`. Address components and explicit mapped Meta campaign900001/adset900002/ad900003 survived. Exactly four mocked provider intents (two voice/two SMS) reached accepted with one attempt each. This establishes the tested form's vendor→adapter→CRM path, not production delivery or Meta platform receipt. Cleanup verified: the synthetic form is now DRAFT; the original four remain LIVE. Receiver and tunnel are stopped.
+
+### Existing ConviFlo form launch changes
+
+Parent read-only inspection found existing production contact copy still calls address/email optional, and out-of-area ZIP exits occur before contact collection. The friend must make address required and collect contact/address before the outside-area ending if a CRM waitlist is intended. Existing flows were not changed. Verify each production form's actual field names, choice values and completed address with a designated dry run before allowlisting it. Mowing choices include mowing-only, mowing + edging, cleanup and regular maintenance: a configured Lawn care category does not replace these selected answers; retain/display them as useful submitted context. The isolated synthetic form receipt does not establish compatibility for all existing flow variants.
+
+### Reviewed implementation checkpoints
+
+- `b0205e5`: durable dual-channel alerts and recovery; `2dd053d`: verified signed ConviFlo adapter.
+- `b20ec08`: guarded lifecycle commands and real-database tests. Applied only to disposable56422. Parent findings fixed: cents precision, agreement ownership, one-off extra isolation and last-mow handling. Original accepted quote context persists into jobs. New optimistic conflicts use PT409 because intentional40001 errors retried inside local PostgREST and exhausted the test pool; stale requests now return409 promptly. Full fresh/legacy upgrade, role isolation and lifecycle tests pass.
+- `a9451a1`: explicit Meta ad creative registry at signed adapter boundary; click-only source labels, filtered internal answer bookkeeping, bounded SMS. Independent alert, adapter and public service-inquiry suites pass with mocked external notifications; registry tests pass.
+- Mobile workflow, native actions, manual quote acceptance and stale conflict browser tests pass. Fresh screenshot confirms marketing removed; compacting management/activity sections before final UI review. Sol A continues customer/jobs/payments/forecast UI; Sol B owns mobile plus legacy browser regressions.
+
+Historical next action at this checkpoint: review/freeze UI slices, complete final integrated tests/build, independent parent review, update production handoff with exact final commit and pending real configuration.
+
+## Integrated verification checkpoint (completed)
+
+- **Implemented:** `829ba05` customer/job/recurrence/payment/forecast UI; `dfb3a53` explicit property reset after contact-address changes; `22709ba` guarded regression harness. Sol coding workers are finished. Independent Astra reviewer owns final branch spec/security review; Astra integration lead owns final tests/docs.
+- **Preservation:** accepted snapshots and existing job prices stay immutable; legacy recurring jobs require reviewed agreement conversion or explicit one-time confirmation before completion. Completed one-off work can start recurrence. Explicit first next date is honored, then anchored cadence resumes. Pause/end retains history; one-visit cancel advances an active agreement. Legacy mowing forecasts remain separate from paid-date payments and non-mowing agreements.
+- **Address correction:** A→B contact edits block old quote reuse. Staff cancels acceptance, starts a fresh B quote, and re-enters/reviews property context. Old geometry/area/location is cleared; old accepted snapshots/jobs remain. Geocoder formatting of the same reviewed contact address is allowed.
+- **Verified at `22709ba`:** production webpack build in a separate temporary checkout; typecheck; full isolated fresh/legacy database upgrade, role isolation and lifecycle concurrency/exact-money tests; forecast/creative tests; mobile A→B regression and public manual intake→formatted map address→accepted booking→recurrence/payment browser flow. Remaining final sequential suites and independent review are recorded in the final receipt when complete.
+- **Production untouched:** all SQL applied only to disposable DB56422. Preview3102 remains available with fake records and no real external credentials. No deployment, production migration, real staff calls/texts or Meta writes.
+- **Next:** friend-only production preflight and activation using the completed handoff; no coding workers remain active.
+
+### Independent final review corrections
+
+Independent Astra review accepted the property-reset and explicit-first-date fixes. Subsequent corrections preserve legacy recorded amounts alongside new payment entries, show authorized payment totals in the customer portal, clear displayed stale payment links after price edits, and flag scheduling-command replays to prevent duplicate confirmation email. Real local provider-mock browser replay and customer portal privacy/payment tests pass. First-visit/overgrowth preservation was also completed and reviewed. No production changes.
+
+### Final integrated candidate — `4650d79148a596c873f0494eac21b17a914b926f`
+
+All accepted review corrections are integrated, including confirmation-email replay migration `cb612cb`, customer-authorized payment summaries, retained unreconciled legacy amounts, stale-link invalidation and preserved first-visit/cleanup/ongoing price terms. Future agreements require staff review of their template; introductory discounts and one-off cleanup are not assumed future pricing. Calendar and legacy phone history use the same exact current-job amount. User-requested phone display formatting and inset dropdown arrows are included; storage and native call/text destinations remain unchanged.
+
+Completed local acceptance includes public map/manual/general intake, signed ConviFlo completed/partial/retry handling, both staff channels, failed/unknown recovery, customer/staff isolation and secure deep links, property normalization/reset, customer identity/history, lifecycle/recurrence, exact payment amounts and conservative forecast. Final candidate build/mobile/payment regressions pass and independent review is clear. Friend-only checks remain actual production schema/configuration, production form mappings, scheduler activation, actual calls/SMS receipt and Meta dataset/event setup.
+
+### Final local verification receipt
+
+At code checkpoint `4650d79`, optimized production build (`next build --webpack`, isolated temporary checkout) and TypeScript pass. Scoped changed-code lint has no errors; remaining warnings concern existing image/compatibility argument patterns. The full repository lint baseline is not claimed clean.
+
+Behavioral suites passed against disposable local data: `crm-upgrade.py` (runs foundation/lifecycle contracts, full fresh/legacy chain and role checks), `crm-alerts.py`, `crm-conviflo.py`, `service-inquiry.py`, `crm-map-booking.py`, `crm-integration.py`, `crm-addressless.py`, `crm-customers.py`, `crm-lifecycle-ui.py`, `crm-mobile.py`, `crm-workflow.py`, `crm-portal-payments.py`, `crm-email-replay.py`, plus `crm-forecast.mjs` and `ad-registry.test.mjs`. Outside-area waitlist behavior passed `crm-waitlist.py` during the mobile checkpoint. The latest build passed and repeated the affected mobile/property, price/payment, lifecycle and email replay checks. No real Stripe processing, email delivery, phone ringing or Meta event delivery is claimed. The earlier real synthetic ConviFlo vendor receipt is recorded above.
+
+### Release status — complete local build and review
+
+Independent GPT-6 Astra final review at `4650d79148a596c873f0494eac21b17a914b926f` reports no remaining P1/P2 findings. Parent independently reviewed portal authorization, preservation and presentation. All final tests above pass, including real mock-provider confirmation replay and the complete migration chain. No implementation blockers remain. The subsequent documentation-only commit carries this handoff; deliver only `codex/crm-revamp`, without merge, PR or deployment. Production readiness checks in PRODUCTION-HANDOFF.md remain deliberately external. No active coding workers or unattended monitor remain.
