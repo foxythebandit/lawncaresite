@@ -9,12 +9,13 @@ import pathlib
 import urllib.parse
 import urllib.request
 import uuid
+import time
 from playwright.sync_api import sync_playwright
 
 CFG = json.loads(pathlib.Path('/tmp/qg-test-config.json').read_text())
-BASE = os.environ.get('QG_TEST_BASE', 'http://localhost:3101')
+BASE = os.environ.get('QG_TEST_BASE', 'http://localhost:3102')
 assert CFG['API_URL'] == 'http://127.0.0.1:56421'
-assert urllib.parse.urlparse(BASE).hostname in ('localhost', '127.0.0.1')
+assert BASE in ('http://localhost:3102', 'http://127.0.0.1:3102')
 
 
 def db(path):
@@ -28,7 +29,7 @@ def db(path):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     context = browser.new_context(viewport={'width': 390, 'height': 844})
-    context.route('**/*', lambda r: r.continue_() if r.request.url.startswith((BASE, CFG['API_URL'])) else r.abort())
+    context.route('**/*', lambda r: r.continue_() if urllib.parse.urlsplit(r.request.url).netloc in (urllib.parse.urlsplit(BASE).netloc, urllib.parse.urlsplit(CFG['API_URL']).netloc) else r.abort())
     def address_response(route):
         if 'unavailable' in route.request.url:
             route.fulfill(status=503, body='Unavailable')
@@ -99,8 +100,13 @@ with sync_playwright() as p:
     assert db('bookings?lead_id=eq.' + lead['id']) == []
     events = db('intake_events?lead_id=eq.' + lead['id'])
     assert len(events) == 1
-    alerts = db('staff_alerts?event_id=eq.' + events[0]['id'])
-    assert len(alerts) == 2 and all(a['state'] == 'accepted' and a['attempts'] == 1 for a in alerts)
+    for _ in range(100):
+        alerts = db('staff_alerts?event_id=eq.' + events[0]['id'])
+        if len(alerts) == 4 and all(a['state'] == 'accepted' for a in alerts):
+            break
+        time.sleep(0.1)
+    assert len(alerts) == 4 and all(a['state'] == 'accepted' and a['attempts'] == 1 for a in alerts), alerts
+    assert sorted(a['channel'] for a in alerts) == ['sms', 'sms', 'voice', 'voice']
     action = captured[0]
     headers = {'Next-Action': action['headers']['next-action'],
                'Content-Type': action['headers']['content-type'], 'Origin': BASE}
@@ -140,7 +146,7 @@ with sync_playwright() as p:
     assert page.get_by_role('link', name='Call +15125550123').is_visible()
     # Storage failures must give a recoverable error rather than a stuck button.
     broken = browser.new_context()
-    broken.route('**/*', lambda r: r.continue_() if r.request.url.startswith((BASE, CFG['API_URL'])) else r.abort())
+    broken.route('**/*', lambda r: r.continue_() if urllib.parse.urlsplit(r.request.url).netloc in (urllib.parse.urlsplit(BASE).netloc, urllib.parse.urlsplit(CFG['API_URL']).netloc) else r.abort())
     broken.add_init_script("Storage.prototype.getItem = function () { throw new Error('Test: unavailable storage') }")
     blocked = broken.new_page()
     blocked.goto(BASE + '/#service-inquiry')
@@ -155,4 +161,4 @@ with sync_playwright() as p:
     broken.close()
     browser.close()
 
-print('PASS: responsive layout, required address, unpriced landscaping inquiry, attribution, no booking, two simulated SMS alerts, retry deduplication, server validation, new-inquiry reset, existing manual mowing intake, staff visibility, storage-failure recovery.')
+print('PASS: responsive layout, required address, unpriced landscaping inquiry, attribution, no booking, four simulated voice/SMS alerts, retry deduplication, server validation, new-inquiry reset, existing manual mowing intake, staff visibility, storage-failure recovery.')
