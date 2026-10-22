@@ -1,0 +1,6 @@
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS amount_charged NUMERIC(10,2);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS next_visit_date DATE;
+;

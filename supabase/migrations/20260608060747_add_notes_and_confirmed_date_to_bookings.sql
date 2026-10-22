@@ -1,0 +1,4 @@
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS confirmed_date DATE;
+;

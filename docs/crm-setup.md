@@ -96,7 +96,7 @@ Remove obsolete `ADMIN_PASSWORD` / `ADMIN_TOKEN` configuration after rollout. Ol
 
 ## Database rollout (not executed on production)
 
-Review and apply `supabase/migrations/20261021203451_crm_lead_workspace.sql` to the existing database **before** deploying this code. Back up and inspect the actual schema/policies first. Historical repo migrations do not fully describe the deployed schema: duplicate `002` filenames, completion preceding table creation, and missing `status`, `confirmed_date`, and `notes` definitions prevent a clean historical replay. The disposable test baseline adds these existing application prerequisites; this does not establish the actual production migration history. Do not blindly reset or replay all migrations against production.
+Review and apply `supabase/migrations/20261022000000_crm_lead_workspace.sql` to the existing database **before** deploying this code. Back up and inspect the actual schema/policies first. Historical repo migrations do not fully describe the deployed schema: duplicate `002` filenames, completion preceding table creation, and missing `status`, `confirmed_date`, and `notes` definitions prevent a clean historical replay. The disposable test baseline adds these existing application prerequisites; this does not establish the actual production migration history. Do not blindly reset or replay all migrations against production.
 
 The new migration:
 

@@ -13,13 +13,10 @@ create table if not exists bookings (
   last_mow          text,
   created_at        timestamptz default now() not null
 );
-
 alter table bookings enable row level security;
-
 create policy "public_insert_bookings"
   on bookings for insert
   with check (true);
-
 create policy "authenticated_read_bookings"
   on bookings for select
   using (auth.role() = 'authenticated');
