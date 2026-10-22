@@ -1,5 +1,13 @@
 # General service inquiries — deploy before the CRM revamp
 
+## Website release authorization and SEO checks — 2026-10-22
+
+The user subsequently authorized this agent to make confident SEO improvements and release the website directly. GitHub's successful Vercel Production deployment 7256666323 identifies `4aebdaa` as the current production revision, matching this feature branch's base. This supersedes the earlier friend-only website handoff below for this release; database changes and live test submissions remain outside the release.
+
+SEO changes link the six existing service-area pages from the public footer, give each area its own Open Graph metadata, update the homepage description, remove unsupported generic-city coordinates and incomplete opening hours, mark staff/customer pages noindex with crawlable login exceptions, and omit artificial sitemap modification dates. No new service claims, address-lookup timing changes, map-animation changes or database migrations are included.
+
+Verification: `tests/seo-smoke.py` checks rendered homepage, all six area pages, both login pages, robots and sitemap. `tests/service-inquiry.py` exercises the existing local database and simulated alerts. Build, TypeScript, scoped lint, mobile footer inspection and independent Astra review passed. Existing portal anchor lint findings remain outside this change. Release verification uses read-only public-page requests; it does not create production inquiries or send real notifications. Search Console indexing and ranking changes have not been measured.
+
 The homepage now offers landscaping and other outdoor project inquiries alongside the existing mowing estimator. A visible hero link and a desktop navigation link lead to the form. Name, phone, address and a service selection are required; project details and email are optional. Services are Landscaping, Yard cleanup, Gutter cleaning, Lawn mowing and Other. The required address field now offers the same Photon suggestions and address labels as the mowing estimator, with keyboard/touch selection and manual entry when lookup is unavailable. The service dropdown arrow is inset from its right edge. Scope and price are discussed by phone; submission does not quote, accept or book work.
 
 ## Storage and current limitations

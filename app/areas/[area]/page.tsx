@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
+import Footer from '@/components/Footer'
 
 interface AreaData {
   name: string
@@ -109,10 +110,20 @@ export async function generateMetadata({ params }: { params: Promise<{ area: str
   const { area } = await params
   const data = AREAS[area]
   if (!data) return {}
+  const title = `${data.name} Lawn Care — QuietGreen Electric Mowing`
+  const description = `${data.tagline}. Fixed pricing, instant quotes. Serving ${data.zips.join(', ')}.`
   return {
-    title: `${data.name} Lawn Care — QuietGreen Electric Mowing`,
-    description: `${data.tagline}. Fixed pricing, instant quotes. Serving ${data.zips.join(', ')}.`,
+    title,
+    description,
     alternates: { canonical: `/areas/${area}` },
+    openGraph: {
+      title,
+      description,
+      url: `https://quietgreen.co/areas/${area}`,
+      siteName: 'QuietGreen',
+      locale: 'en_US',
+      type: 'website',
+    },
   }
 }
 
@@ -204,7 +215,7 @@ export default async function AreaPage({ params }: { params: Promise<{ area: str
         </section>
 
         {/* FAQs */}
-        <section style={{ paddingBottom: 52 }}>
+        <section id="faq" style={{ paddingBottom: 52 }}>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--green-deep)', marginBottom: 20 }}>
             Common questions about {data.name} lawn care
           </h2>
@@ -239,6 +250,7 @@ export default async function AreaPage({ params }: { params: Promise<{ area: str
         </section>
 
       </div>
+      <Footer />
     </main>
   )
 }
