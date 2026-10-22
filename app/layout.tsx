@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   },
   title: 'QuietGreen — Electric Lawn Care in Austin, TX',
   description:
-    'Battery-powered lawn mowing in Austin, TX. No noise, no fumes, fixed pricing. Get an instant quote and book online — available as soon as tomorrow.',
+    'Electric lawn mowing in Austin, TX. Get a mowing estimate online or request a quote for landscaping and other outdoor projects.',
   keywords: 'lawn care Austin TX, lawn mowing Austin, electric lawn service, quiet lawn mower Austin, lawn care near me',
   metadataBase: new URL('https://quietgreen.co'),
   alternates: { canonical: '/' },
@@ -77,17 +77,8 @@ export default function RootLayout({
               addressRegion: 'TX',
               addressCountry: 'US',
             },
-            geo: {
-              '@type': 'GeoCoordinates',
-              latitude: 30.2672,
-              longitude: -97.7431,
-            },
             areaServed: { '@type': 'City', name: 'Austin', addressRegion: 'TX' },
             priceRange: '$$',
-            openingHoursSpecification: {
-              '@type': 'OpeningHoursSpecification',
-              dayOfWeek: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'],
-            },
           })}}
         />
       </body>

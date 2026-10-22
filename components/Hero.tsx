@@ -1,6 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import HeroMediaModal, { type HeroMedia } from './HeroMediaModal'
+import styles from './GeneralInquiry.module.css'
 
 const MOWER_W  = 130
 const START_X  = 20
@@ -227,6 +228,7 @@ export default function Hero() {
         <h1 className="hero-h1" style={{ color: '#fff', fontSize: 'clamp(32px, 3.8vw, 58px)' }}>
           Your lawn. <em>Finally</em> quiet.
         </h1>
+        <a href="#service-inquiry" className={styles.heroLink}>Landscaping &amp; other projects <span aria-hidden="true">→</span></a>
         <div className="hero-scroll-cue">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M6 9l6 6 6-6"/>

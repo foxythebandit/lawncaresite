@@ -999,7 +999,7 @@ footer {
 .mapq-section {
   background: var(--green-deep);
   /* the dark trust strip above already opens this section, so keep the gap tight */
-  padding: 44px 0 0;
+  padding: 44px 0 48px;
   position: relative;
 }
 /* Glows live in their own clipped layer: overflow:hidden on the section itself

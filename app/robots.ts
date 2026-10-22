@@ -4,8 +4,8 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
-      allow: '/',
-      disallow: '/admin/',
+      allow: ['/', '/admin/login', '/portal/login'],
+      disallow: ['/admin/', '/portal/'],
     },
     sitemap: 'https://quietgreen.co/sitemap.xml',
   }
