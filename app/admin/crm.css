@@ -97,3 +97,16 @@
 
 /* Keep focused controls and the direct quote anchor clear of the sticky staff navigation. */
 .crm-workspace :is(input, select, textarea, button, summary), .crm-quote-wrap :is(input, button), #map-quote { scroll-margin-top: 125px; scroll-margin-bottom: 30px; }
+
+/* Keep select arrows inset consistently across all CRM forms. */
+.admin-wrap select:not([multiple]):not([size]) {
+  appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%232d6a4f' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 12px 8px;
+}
+@media (forced-colors: active) {
+  .admin-wrap select:not([multiple]):not([size]) { appearance: auto; background-image: none; }
+}

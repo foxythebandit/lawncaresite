@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { jobPrice } from '@/lib/crm-jobs'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -19,6 +20,8 @@ interface Booking {
   confirmed_time: string | null
   status: string
   price_per_visit: number | null
+  job_total?: number | string | null
+  first_visit_price?: number | null
   phone: string
   customer_id: string | null
 }
@@ -115,7 +118,7 @@ export default function CalendarView({ bookings }: { bookings: Booking[] }) {
               </div>
               <div className="admin-cal-job-right">
                 {b.confirmed_time && <div className="admin-cal-job-time">{formatTime(b.confirmed_time)}</div>}
-                {b.price_per_visit && <div className="admin-cal-job-price">${b.price_per_visit}</div>}
+                {(b.job_total ?? b.first_visit_price ?? b.price_per_visit) != null && <div className="admin-cal-job-price">${jobPrice(b).toFixed(2)}</div>}
                 <Link href={b.customer_id ? `/admin/customers/${b.customer_id}` : `/admin/client/${encodeURIComponent(b.phone)}`} className="admin-cal-job-hist">History →</Link>
               </div>
             </div>

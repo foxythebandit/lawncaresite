@@ -1,6 +1,6 @@
 /** Operational job price; accepted quote snapshots are separate and immutable. */
-export function jobPrice(job: { job_total?: number | string | null; price_per_visit?: number | null }): number {
-  return Number(job.job_total ?? job.price_per_visit ?? 0)
+export function jobPrice(job: { job_total?: number | string | null; first_visit_price?: number | null; price_per_visit?: number | null }): number {
+  return Number(job.job_total ?? job.first_visit_price ?? job.price_per_visit ?? 0)
 }
 
 export function moneyCents(value: number | string): number {
@@ -72,7 +72,7 @@ export function mowingForecast(jobs: ForecastJob[], agreements: ForecastAgreemen
     if (!previous || job.created_at > previous.created_at) legacy.set(key, job)
   }
   for (const job of legacy.values()) {
-    const perVisit = jobPrice(job)
+    const perVisit = Number(job.job_total ?? job.price_per_visit ?? 0)
     if (perVisit <= 0) continue
     rows.push({ id: job.id, href: job.customer_id ? `/admin/customers/${job.customer_id}`
       : `/admin/client/${encodeURIComponent(job.phone)}`,

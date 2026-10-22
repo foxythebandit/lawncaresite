@@ -57,11 +57,12 @@ with sync_playwright() as playwright:
     page.get_by_label('Paid amount').fill('125.00')
     page.get_by_role('button', name='Record payment').click()
     page.get_by_role('status').filter(has_text='Payment recorded.').wait_for()
-    rows('bookings', {'name': name + ' older visit', 'phone': phone, 'address': lead['address'],
+    old_job = rows('bookings', {'name': name + ' older visit', 'phone': phone, 'address': lead['address'],
                       'status': 'completed', 'price_per_visit': 75, 'job_total': 75,
                       'customer_id': linked['customer_id'], 'property_id': linked['property_id'],
                       'amount_charged': 75, 'payment_method': 'Cash',
-                      'payment_recorded_at': '2026-10-20T15:00:00Z', 'completed_at': '2026-10-20T15:00:00Z'})
+                      'payment_recorded_at': '2026-10-20T15:00:00Z', 'completed_at': '2026-10-20T15:00:00Z'})[0]
+    rows('job_payments', {'booking_id': old_job['id'], 'operation_id': str(uuid.uuid4()), 'amount': 20, 'paid_on': '2026-10-22', 'method': 'Cash', 'provenance': 'manual'})
     page.goto(BASE + '/admin/customers')
     page.get_by_role('link', name=name, exact=False).wait_for()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -70,9 +71,11 @@ with sync_playwright() as playwright:
     assert page.get_by_role('heading', name=name).is_visible()
     assert page.get_by_role('heading', name='Properties (1)').is_visible()
     assert page.get_by_role('heading', name='Visits (2)').is_visible()
-    assert page.get_by_role('heading', name='Payments (2)').is_visible()
+    assert page.get_by_role('heading', name='Payments (3)').is_visible()
     assert page.get_by_role('heading', name='Leads (1)').is_visible()
-    assert page.get_by_text('Staff recorded').is_visible()
+    assert page.get_by_text('Staff recorded').first.is_visible()
+    assert page.get_by_text('$20.00 · Cash', exact=True).is_visible()
+    assert page.get_by_text('$75.00 · Cash', exact=True).is_visible()
     assert page.get_by_role('heading', name='Historical recorded amounts').is_visible()
     assert page.get_by_text('Paid date unverified', exact=False).is_visible()
     assert page.get_by_text('99 Different Rd, Austin, TX').count() == 0

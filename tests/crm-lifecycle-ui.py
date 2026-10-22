@@ -31,7 +31,7 @@ anchor = '2027-01-31'
 next_on = '2027-02-28'
 job = db('bookings', 'POST', {'name': name, 'phone': phone, 'address': address,
     'status': 'pending', 'preferred_date': anchor, 'frequency': 'Monthly', 'price_per_visit': 60,
-    'job_total': '60.00', 'accepted_quote_snapshot': {'original_total': 60},
+    'job_total': '60.00', 'payment_link': 'https://example.test/old-job-price', 'accepted_quote_snapshot': {'original_total': 60},
     'one_time': False, 'manual_quote': False, 'notify_failed': False})[0]
 
 with sync_playwright() as p:
@@ -55,13 +55,16 @@ with sync_playwright() as p:
     linked = db('bookings?id=eq.' + job['id'])[0]
     assert linked['customer_id'] and linked['property_id']
     card = page.locator('.admin-card', has_text=name)
+    assert card.get_by_role('link', name='Text link').count() == 1
     card.get_by_role('button', name='Job items and price').click()
     card.get_by_label('Item 1 description').fill('Lawn care')
     card.get_by_role('button', name='Add discount').click()
     card.get_by_label('Item 2 amount').fill('5.00')
     card.get_by_role('button', name='Save current job price').click()
     page.get_by_text('Current job price saved. Accepted quote preserved.').wait_for(timeout=15000)
+    assert card.get_by_role('link', name='Text link').count() == 0
     priced = db('bookings?id=eq.' + job['id'])[0]
+    assert priced['payment_link'] is None
     assert float(priced['job_total']) == 55 and priced['accepted_quote_snapshot']['original_total'] == 60
     card = page.locator('.admin-card', has_text=name)
     card.get_by_role('button', name='Make recurring').click()

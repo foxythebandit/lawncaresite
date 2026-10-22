@@ -14,12 +14,6 @@ function monthLabel(key: string) {
   return new Date(key + '-15').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
-}
-
 const MOWS_PER_YEAR = 30
 
 export default async function RevenuePage() {
@@ -39,7 +33,7 @@ export default async function RevenuePage() {
 
   const extrasTotal   = extras.reduce((s, c) => s + c.amount, 0)
   const totalPaid     = payments.reduce((s, p) => s + Number(p.amount), 0)
-  const legacyRecorded = completed.filter(b => !payments.some(p => p.booking_id === b.id))
+  const legacyRecorded = completed
     .reduce((s, b) => s + Number(b.amount_charged ?? 0), 0) + extrasTotal
   const avgPerMonth   = monthly.length ? totalPaid / monthly.length : 0
   const maxVal        = Math.max(...monthly.map(([, v]) => v), 1)

@@ -1,3 +1,5 @@
+import { formatPhone } from '@/lib/format-phone'
+import { jobPrice } from '@/lib/crm-jobs'
 import { getBookings } from '../../actions'
 import Link from 'next/link'
 import ReminderButtons from '../../ReminderButtons'
@@ -38,7 +40,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
         <h1 className="admin-client-name">{client.name}</h1>
         <p>Unlinked legacy visits sharing this phone. Review identity before linking customer history.</p>
         <div className="admin-client-meta">
-          <a href={`tel:${client.phone}`} style={{ color: 'var(--green-mid)', textDecoration: 'none' }}>{client.phone}</a>
+          <a href={`tel:${client.phone}`} style={{ color: 'var(--green-mid)', textDecoration: 'none' }}>{formatPhone(client.phone)}</a>
           {client.email && <> · <a href={`mailto:${client.email}`} style={{ color: 'var(--green-mid)', textDecoration: 'none' }}>{client.email}</a></>}
         </div>
         <div className="admin-client-addr">{client.address} · {client.sq_ft?.toLocaleString()} sq ft · {client.frequency}</div>
@@ -99,8 +101,8 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
                 <div className="admin-client-visit-right">
                   {b.amount_charged != null
                     ? <span style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${b.amount_charged.toFixed(2)}</span>
-                    : b.price_per_visit != null
-                    ? <span style={{ color: 'var(--ink-soft)', fontSize: 13 }}>${b.price_per_visit}/visit</span>
+                    : (b.job_total ?? b.first_visit_price ?? b.price_per_visit) != null
+                    ? <span style={{ color: 'var(--ink-soft)', fontSize: 13 }}>${jobPrice(b).toFixed(2)}/visit</span>
                     : null}
                   {b.payment_method && <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{b.payment_method}</span>}
                 </div>

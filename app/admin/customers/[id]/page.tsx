@@ -1,3 +1,4 @@
+import { formatPhone } from '@/lib/format-phone'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getAgreements, getBookings, getCustomers, getJobPayments, getLeads } from '../../actions'
@@ -31,8 +32,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const leads = allLeads.filter(row => row.customer_id === id)
   const jobIds = new Set(jobs.map(row => row.id))
   const payments = allPayments.filter(row => jobIds.has(row.booking_id))
-  const jobsWithNewPayments = new Set(payments.map(row => row.booking_id))
-  const historicalAmounts = jobs.filter(row => row.amount_charged != null && !jobsWithNewPayments.has(row.id))
+  const historicalAmounts = jobs.filter(row => row.amount_charged != null)
   const agreements = allAgreements.filter(row => row.customer_id === id)
   const addressById = new Map(ownProperties.map(row => [row.id, row.address]))
 
@@ -40,7 +40,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     <Link className="crm-back" href="/admin/customers">← Customers</Link>
     <div className="crm-page-heading">
       <div><span className="crm-eyebrow">Customer record</span><h1>{customer.name || 'Unnamed customer'}</h1>
-        <p className="crm-muted">{customer.phone || 'No phone'}{customer.email ? ` · ${customer.email}` : ''}</p></div>
+        <p className="crm-muted">{formatPhone(customer.phone) || 'No phone'}{customer.email ? ` · ${customer.email}` : ''}</p></div>
       {customer.phone && <a className="crm-button crm-button-primary" href={`tel:${customer.phone}`}>Call</a>}
     </div>
     <p className="crm-customer-help">This history contains only records explicitly linked to this customer. A matching phone number does not join separate records.</p>
@@ -70,7 +70,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <strong>{money(payment.amount)} · {payment.method}</strong>
           <span>{dateText(payment.paid_on)} · {payment.provenance === 'manual' ? 'Staff recorded' : 'Processor verified'}</span>
         </div>) : null}
-        {historicalAmounts.length > 0 && <><h3>Historical recorded amounts</h3>
+        {historicalAmounts.length > 0 && <><h3>Historical recorded amounts</h3><p className="crm-muted">Kept separately from dated payments; these records have not been reconciled.</p>
           {historicalAmounts.map(job => <div className="crm-customer-entry" key={job.id}>
             <strong>{money(job.amount_charged)} · {job.payment_method || 'Method unknown'}</strong>
             <span>{job.address} · Paid date unverified{job.payment_recorded_at ? ` · Recorded ${dateText(job.payment_recorded_at)}` : ''}</span>

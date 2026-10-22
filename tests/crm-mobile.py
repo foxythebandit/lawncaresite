@@ -53,7 +53,7 @@ with sync_playwright() as playwright:
     page.wait_for_url(BASE + '/admin/leads/' + lead_id)
     page.get_by_role('heading', name=name).wait_for()
     page.add_style_tag(content='nextjs-portal { display: none !important; }')
-    assert page.get_by_role('link', name='Call +15125550199').get_attribute('href') == 'tel:+15125550199'
+    assert page.get_by_role('link', name='Call 512-555-0199').get_attribute('href') == 'tel:+15125550199'
     assert page.get_by_role('link', name='Build quote').get_attribute('href') == '#map-quote'
     assert page.locator('#map-quote').count() == 1
     page.get_by_text('Answers and acquisition details', exact=True).click()

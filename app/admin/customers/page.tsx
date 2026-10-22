@@ -1,3 +1,4 @@
+import { formatPhone } from '@/lib/format-phone'
 import Link from 'next/link'
 import { getBookings, getCustomers } from '../actions'
 import { requireStaff } from '@/lib/staff'
@@ -22,7 +23,7 @@ export default async function CustomersPage() {
     {customers.length === 0 ? <div className="admin-empty">No linked customers yet. Open a job to review and link its customer and property.</div>
       : <div className="crm-list">{customers.map(customer => <Link key={customer.id} className="crm-customer-card" href={`/admin/customers/${customer.id}`}>
         <span className="crm-customer-card-name">{customer.name || 'Unnamed customer'}</span>
-        <span className="crm-customer-card-contact">{customer.phone || customer.email || 'No contact details'}</span>
+        <span className="crm-customer-card-contact">{formatPhone(customer.phone) || customer.email || 'No contact details'}</span>
         <span className="crm-customer-card-counts">{propertyCount.get(customer.id) ?? 0} properties · {jobCount.get(customer.id) ?? 0} visits <span aria-hidden="true">→</span></span>
       </Link>)}</div>}
   </main>

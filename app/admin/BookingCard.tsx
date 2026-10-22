@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPhone } from '@/lib/format-phone'
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { changeAgreement, changeJob, createPaymentLink, linkJobIdentity, markComplete, recordManualPayment, saveJobItems, scheduleJobAndEmail, startJobAgreement, updateContactDetails, updateNotes } from './actions'
@@ -11,6 +12,7 @@ export type Booking = {
   id: string; updated_at: string; name: string; phone: string; email: string | null
   address: string; status: string; preferred_date: string | null; confirmed_date: string | null
   confirmed_time: string | null; completed_at: string | null; frequency: string | null
+  first_visit_price?: number | null; overgrowth_fee?: number | null
   price_per_visit: number | null; job_total: number | string | null; sq_ft: number | null
   notes: string | null; customer_notes: string | null; map_screenshot_url: string | null
   payment_link: string | null; amount_charged: number | null; payment_method: string | null
@@ -133,6 +135,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         {notice && <p role="status" style={{ color: 'var(--green-mid)' }}>{notice}</p>}
         <div className="admin-card-row"><strong>Property</strong> {booking.address}</div>
         <div className="admin-card-row"><strong>Visit</strong> {booking.confirmed_date ? dateLabel(booking.confirmed_date) : booking.preferred_date ? `Requested ${dateLabel(booking.preferred_date)}` : 'No date set'} {booking.confirmed_time ?? ''}</div>
+        {booking.first_visit_price != null && <div className="admin-card-row">Original first-visit quote: {money(booking.first_visit_price)}{booking.overgrowth_fee ? ` (cleanup component before discount: ${money(booking.overgrowth_fee)}; already included)` : ''}. Ongoing price: {money(booking.price_per_visit)} per visit.</div>}
         {booking.sq_ft != null && <div className="admin-card-row">{booking.sq_ft.toLocaleString()} sq ft</div>}
         {source && <div className="admin-card-row">Source: {source}</div>}
         {booking.accepted_quote_snapshot != null && <div className="admin-card-row">Accepted quote is saved with this job. Operational edits below preserve it.</div>}
@@ -140,7 +143,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         {booking.customer_notes && <div className="admin-customer-note"><strong>Customer note</strong><p>{booking.customer_notes}</p></div>}
         {booking.addon_interest && Object.keys(booking.addon_interest).length > 0 && <div className="admin-customer-note"><strong>Submitted add-on interest</strong><p>{addonDetails(booking.addon_interest)}</p></div>}
         <div className="admin-card-actions">
-          <a href={`tel:${booking.phone}`} className="admin-action-call">Call {booking.phone}</a>
+          <a href={`tel:${booking.phone}`} className="admin-action-call">Call {formatPhone(booking.phone)}</a>
           <a href={`sms:${booking.phone}`} className="admin-action-text">Text</a>
           {booking.email && <a href={`mailto:${booking.email}`} className="admin-action-email">Email</a>}
         </div>
@@ -168,8 +171,8 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
           <label>Customer</label>
           <select value={selectedCustomerId} onChange={e => { setSelectedCustomerId(e.target.value); setSelectedPropertyId('new') }} className="admin-confirm-date-input">
             <option value="new">Create new customer</option>
-            {samePhone.map(c => <option key={c.id} value={c.id}>Possible match: {c.name || c.phone} · {c.phone}</option>)}
-            {customers.filter(c => !samePhone.some(match => match.id === c.id)).map(c => <option key={c.id} value={c.id}>{c.name || c.phone || c.id}</option>)}
+            {samePhone.map(c => <option key={c.id} value={c.id}>Possible match: {c.name || formatPhone(c.phone)} · {formatPhone(c.phone)}</option>)}
+            {customers.filter(c => !samePhone.some(match => match.id === c.id)).map(c => <option key={c.id} value={c.id}>{c.name || formatPhone(c.phone) || c.id}</option>)}
           </select>
           {selectedCustomerId === 'new' && <input aria-label="New customer name" value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} className="admin-confirm-date-input" />}
           <label>Property</label>
@@ -199,7 +202,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
             </div>)}
             <button onClick={() => setLines([...lines, { kind: 'service', description: '', amount: '0.00' }])}>Add service</button>
             <button onClick={() => setLines([...lines, { kind: 'discount', description: 'Discount', amount: '0.00' }])}>Add discount</button>
-            {current && <button disabled={pending} onClick={() => run('items:'+JSON.stringify(lines), id => saveJobItems({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, items: lines }), 'Current job price saved. Accepted quote preserved.')}>Save current job price</button>}
+            {current && <button disabled={pending} onClick={() => run('items:'+JSON.stringify(lines), async id => { const result = await saveJobItems({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, items: lines }); if (result.success) setPaymentLink(null); return result }, 'Current job price saved. Accepted quote preserved.')}>Save current job price</button>}
             {!current && <p>Finished job prices stay in history.</p>}
           </>}
         </section>
@@ -215,7 +218,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         {(current || booking.status === 'completed') && !agreement && linked && <section className="admin-edit-service-panel" aria-label="Start recurring agreement">
           <button className="admin-edit-service-link" onClick={() => setShowAgreement(!showAgreement)}>Make recurring {showAgreement ? '⌃' : '⌄'}</button>
           {showAgreement && <>
-            <p>This visit keeps its price, completion, and payments. New visits use the agreement items below.</p>
+            <p>This visit keeps its price, completion, and payments. New visits use the items entered in Services and price above. Review those items and remove any first-visit discount or one-time cleanup before starting the agreement.</p>
             <label>Interval</label><div className="admin-complete-fields">
               <input aria-label="Interval count" type="number" min="1" max="52" value={intervalCount} onChange={e => setIntervalCount(Number(e.target.value))} className="admin-confirm-date-input" />
               <select value={intervalUnit} onChange={e => setIntervalUnit(e.target.value as 'week'|'month')}><option value="week">Weeks</option><option value="month">Months</option></select>
@@ -256,7 +259,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         <section className="admin-edit-service-panel" aria-label="Payments">
           <h3>Payments received · {money(actualPaid)}</h3>
           {payments.map(p => <div key={p.id} className="admin-card-row">{dateLabel(p.paid_on)} · {money(p.amount)} · {p.method} ({p.provenance === 'manual' ? 'staff recorded' : 'processor verified'})</div>)}
-          {booking.amount_charged != null && payments.length === 0 && <p>Legacy amount recorded: {money(booking.amount_charged)} via {booking.payment_method ?? 'unspecified method'}. Date and settlement were not independently verified.</p>}
+          {booking.amount_charged != null && <p>Legacy amount recorded: {money(booking.amount_charged)} via {booking.payment_method ?? 'unspecified method'}. Date and settlement were not independently verified.</p>}
           <div className="admin-complete-fields">
             <input aria-label="Paid amount" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="admin-confirm-date-input" />
             <input aria-label="Date paid" type="date" value={paidOn} onChange={e => setPaidOn(e.target.value)} className="admin-confirm-date-input" />

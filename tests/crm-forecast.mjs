@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mowingForecast } from '../lib/crm-jobs.ts'
+import { jobPrice, mowingForecast } from '../lib/crm-jobs.ts'
 
 const base = { status: 'confirmed', one_time: false, frequency: 'Biweekly', sq_ft: 1000,
   created_at: '2026-10-22T00:00:00Z', price_per_visit: 60, job_total: null,
@@ -28,3 +28,10 @@ const gutterAgreement = { ...mowingAgreement, id: 'gutter', property_id: 'gutter
 rows = mowingForecast([converted], [mowingAgreement, gutterAgreement], [{ id: 'customer', name: 'Customer' }])
 assert.equal(rows.length, 1, 'gutter work must not be multiplied by 30 mows')
 console.log('PASS: conservative mowing forecast keeps legacy properties, deduplicates conversion, excludes non-mowing agreements')
+
+const introductory = { ...old, first_visit_price: 48, overgrowth_fee: 20 }
+assert.equal(jobPrice(introductory), 48, 'accepted first-visit amount already includes cleanup/discount')
+assert.equal(jobPrice({ ...introductory, job_total: '75.25' }), 75.25, 'explicit reviewed job price takes precedence')
+assert.equal(jobPrice({ ...introductory, first_visit_price: 0 }), 0, 'honor an explicit free first visit')
+assert.equal(mowingForecast([introductory], [], [])[0].annual, 60 * 30, 'ongoing forecast must not use introductory price')
+console.log('PASS: first-visit job amount and ongoing forecast remain distinct')

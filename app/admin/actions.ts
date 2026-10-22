@@ -11,7 +11,6 @@ import Stripe from 'stripe'
 import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const ALLOWED_STATUSES = new Set(['pending', 'confirmed', 'declined', 'completed'])
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function h(s: string | null | undefined) {
@@ -326,7 +325,7 @@ export async function scheduleJobAndEmail(input: {
     return { success: true, data: { warning: 'Visit was already saved. Check the customer email before sending again.' } }
   }
   const { data: booking } = await getAdmin().from('bookings')
-    .select('name,email,address,job_total,price_per_visit').eq('id', input.bookingId).single()
+    .select('name,email,address,job_total,first_visit_price,price_per_visit').eq('id', input.bookingId).single()
   if (!booking?.email || !process.env.RESEND_API_KEY) return result
   const when = new Date(input.date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -425,7 +424,7 @@ export async function createPaymentLink(
   if (!process.env.STRIPE_SECRET_KEY) return { error: 'Stripe not configured' }
   const db = getAdmin()
   const { data: booking, error: readError } = await db.from('bookings')
-    .select('id,name,address,job_total,price_per_visit,status,updated_at').eq('id', bookingId).single()
+    .select('id,name,address,job_total,first_visit_price,price_per_visit,status,updated_at').eq('id', bookingId).single()
   if (readError || !booking) return { error: 'Job not found.' }
   if (!['confirmed','completed'].includes(booking.status)) return { error: 'Confirm the visit first.' }
   const amountCents = moneyCents(jobPrice(booking).toFixed(2))

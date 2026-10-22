@@ -14,6 +14,6 @@ export default function CompletedJobRow({ job, payments }: { job: Job; payments:
     <td><a href={`/admin?search=${encodeURIComponent(job.name)}`}>{job.name}</a></td>
     <td>{job.address}</td>
     <td>{payments.length ? `${payments.length} payment${payments.length === 1 ? '' : 's'}` : job.amount_charged != null ? `Legacy: ${job.payment_method ?? 'method unknown'}` : 'Unpaid'}</td>
-    <td>{payments.length ? `$${paid.toFixed(2)}` : job.amount_charged != null ? `$${job.amount_charged.toFixed(2)} legacy` : '—'}<br /><small>Job {`$${jobPrice(job).toFixed(2)}`}</small></td>
+    <td>{payments.length ? `$${paid.toFixed(2)} payments` : '—'}{job.amount_charged != null && <><br /><small>${job.amount_charged.toFixed(2)} legacy record (unreconciled)</small></>}<br /><small>Job {`$${jobPrice(job).toFixed(2)}`}</small></td>
   </tr>
 }

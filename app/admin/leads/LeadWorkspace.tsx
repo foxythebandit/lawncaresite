@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPhone } from '@/lib/format-phone'
 import Link from 'next/link'
 import { cleanAttribution, formatAttributionLabel, type Attribution } from '@/lib/attribution'
 import { useRef, useState, useTransition } from 'react'
@@ -110,7 +111,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings }: { 
           <h2>Respond</h2>
           <p className="crm-muted">{(lead.services ?? []).join(', ') || 'Services unknown'} · {lead.frequency || 'Frequency unknown'} · {lead.timing || 'Timing unknown'}</p>
           <div className="crm-action-row">
-            <a className="crm-button crm-button-primary" href={`tel:${lead.phone}`}>Call {lead.phone}</a>
+            <a className="crm-button crm-button-primary" href={`tel:${lead.phone}`}>Call {formatPhone(lead.phone)}</a>
             <a className="crm-button" href="#map-quote">Build quote</a>
             <a className="crm-button" href={`sms:${lead.phone}?body=${encodeURIComponent(messageDraft)}`}
               onClick={event => { if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) event.currentTarget.href = `sms:${lead.phone}&body=${encodeURIComponent(messageDraft)}` }}>Open Messages</a>
