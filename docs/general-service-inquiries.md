@@ -1,6 +1,6 @@
 # General service inquiries — deploy before the CRM revamp
 
-The homepage now offers landscaping and other outdoor project inquiries alongside the existing mowing estimator. A visible hero link and a desktop navigation link lead to the form. Name, phone, address and a service selection are required; project details and email are optional. Services are Landscaping, Yard cleanup, Gutter cleaning, Lawn mowing and Other. Scope and price are discussed by phone; submission does not quote, accept or book work.
+The homepage now offers landscaping and other outdoor project inquiries alongside the existing mowing estimator. A visible hero link and a desktop navigation link lead to the form. Name, phone, address and a service selection are required; project details and email are optional. Services are Landscaping, Yard cleanup, Gutter cleaning, Lawn mowing and Other. The required address field now offers the same Photon suggestions and address labels as the mowing estimator, with keyboard/touch selection and manual entry when lookup is unavailable. The service dropdown arrow is inset from its right edge. Scope and price are discussed by phone; submission does not quote, accept or book work.
 
 ## Storage and current limitations
 

@@ -29,6 +29,17 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     context = browser.new_context(viewport={'width': 390, 'height': 844})
     context.route('**/*', lambda r: r.continue_() if r.request.url.startswith((BASE, CFG['API_URL'])) else r.abort())
+    def address_response(route):
+        if 'unavailable' in route.request.url:
+            route.fulfill(status=503, body='Unavailable')
+            return
+        def feature(number, country='US'):
+            return {'geometry': {'coordinates': [-97.7, 30.3]}, 'properties': {
+                'housenumber': number, 'street': 'Test Garden Lane', 'city': 'Austin',
+                'state': 'Texas', 'postcode': '78701', 'countrycode': country,
+            }}
+        route.fulfill(json={'features': [feature('123'), feature('123'), feature('456'), feature('789', 'GB')]})
+    context.route('https://photon.komoot.io/api/**', address_response)
     page = context.new_page()
     page.goto(BASE + '/?utm_source=google&utm_medium=cpc&utm_campaign=landscaping-test&utm_content=door-project#service-inquiry')
     page.wait_for_load_state('networkidle')
@@ -46,7 +57,27 @@ with sync_playwright() as p:
     form.locator('textarea[name=notes]').fill('Please discuss the front garden; no mowing requested.')
     form.get_by_role('button', name='Send project inquiry').click()
     assert form.locator('input[name=address]').evaluate('(e) => e.validity.valueMissing')
-    form.locator('input[name=address]').fill('123 Test Garden Lane, Austin, TX 78701')
+    address_input = form.locator('input[name=address]')
+    address_input.fill('123 Test')
+    form.get_by_role('option', name='123 Test Garden Lane, Austin, Texas 78701', exact=True).wait_for()
+    assert form.get_by_role('listbox').get_by_role('option').count() == 2
+    address_input.press('ArrowDown')
+    address_input.press('Enter')
+    assert address_input.input_value() == '123 Test Garden Lane, Austin, Texas 78701'
+    assert form.get_by_role('listbox').count() == 0
+    address_input.fill('456 Test')
+    form.get_by_role('option', name='456 Test Garden Lane, Austin, Texas 78701', exact=True).click()
+    assert address_input.input_value() == '456 Test Garden Lane, Austin, Texas 78701'
+    address_input.fill('123 Test')
+    address_input.press('Escape')
+    page.wait_for_timeout(700)
+    assert form.get_by_role('listbox').count() == 0
+    address_input.fill('unavailable provider address')
+    page.wait_for_timeout(700)
+    assert form.get_by_role('listbox').count() == 0
+    assert address_input.input_value() == 'unavailable provider address'
+    address_input.fill('123 Test')
+    form.get_by_role('option', name='123 Test Garden Lane, Austin, Texas 78701', exact=True).click()
     form.locator('input[name=email]').fill('garden@example.test')
     captured = []
     page.on('request', lambda r: captured.append({'headers': r.all_headers(), 'body': r.post_data})
@@ -59,6 +90,7 @@ with sync_playwright() as p:
     assert len(rows) == 1
     lead = rows[0]
     assert lead['services'] == ['Landscaping']
+    assert lead['address'] == '123 Test Garden Lane, Austin, Texas 78701'
     assert lead['answers']['notes'] == 'Please discuss the front garden; no mowing requested.'
     assert lead['sq_ft'] is None and lead['quote_confirmed_at'] is None
     assert lead['email'] == 'garden@example.test'

@@ -13,6 +13,7 @@ import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAdd
 import { trackWebsiteLead } from '@/lib/meta-events'
 import { QUOTE_CONSENT_TEXT as LEAD_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
+import { OFFICE_LAT, OFFICE_LNG, photonSearch, type GeoResult } from '@/lib/address-search'
 import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
 import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
 import ManualQuoteForm from './ManualQuoteForm'
@@ -53,9 +54,6 @@ const LAST_MOW_WEEKS: Record<string, number> = {
 }
 
 /* ── Constants ────────────────────────────────────────── */
-// 807 E 47th St, Austin TX
-const OFFICE_LAT = 30.3049
-const OFFICE_LNG = -97.7184
 // Mapbox Satellite (sharper, more current) when a token is configured; Esri World Imagery otherwise
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 // Addresses farther than this get an "outside our area" message instead of a quote
@@ -134,37 +132,6 @@ async function loadEsriTile(z: number, y: number, x: number, signal: AbortSignal
 // a visitor's IP sends a burst of requests — which broke the address box.
 // The final search still prefers Nominatim (better at exact house numbers)
 // and falls back to Photon if it errors, times out or finds nothing.
-type GeoResult = { label: string; lat: number; lon: number }
-
-type PhotonFeature = {
-  geometry: { coordinates: [number, number] }
-  properties: { name?: string; housenumber?: string; street?: string; city?: string; state?: string; postcode?: string; countrycode?: string }
-}
-
-function photonLabel(p: PhotonFeature['properties']): string {
-  const line1 = p.housenumber && p.street ? `${p.housenumber} ${p.street}` : p.street ?? p.name ?? ''
-  return [line1, p.city, [p.state, p.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
-}
-
-async function photonSearch(query: string, limit: number, signal?: AbortSignal): Promise<GeoResult[]> {
-  const res = await fetch(
-    `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=${limit * 2}&lang=en&lat=${OFFICE_LAT}&lon=${OFFICE_LNG}`,
-    { signal }
-  )
-  if (!res.ok) throw new Error(`Photon ${res.status}`)
-  const { features } = await res.json() as { features: PhotonFeature[] }
-  const seen = new Set<string>()
-  const results: GeoResult[] = []
-  for (const f of features) {
-    if (f.properties.countrycode !== 'US') continue
-    const label = photonLabel(f.properties)
-    if (!label || seen.has(label)) continue
-    seen.add(label)
-    results.push({ label, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] })
-  }
-  return results.slice(0, limit)
-}
-
 async function geocodeAddress(address: string): Promise<GeoResult | null> {
   try {
     const res = await fetch(
