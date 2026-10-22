@@ -1222,12 +1222,12 @@ export default function MapQuoteBuilder() {
                           </button>
                         </div>
                         <button className="mapq-link" onClick={cancelTrace} style={{ display: 'block', width: '100%', textAlign: 'center', fontSize: 12 }}>
-                          Restart trace
+                          {step === 'editing' ? 'Discard this zone' : 'Restart trace'}
                         </button>
                       </>
                     ) : (
                       <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ width: '100%' }}>
-                        Restart trace
+                        {step === 'editing' ? 'Done adding zones' : 'Restart trace'}
                       </button>
                     )}
                   </div>
@@ -1294,6 +1294,12 @@ export default function MapQuoteBuilder() {
                         {isDrawing && ptCount >= 3 && (
                           <button className="mapq-btn-primary" onClick={handleFinish} style={{ width: '100%', marginTop: 8 }}>
                             Add this zone ✓
+                          </button>
+                        )}
+                        {/* "+ Add zone" opens a fresh empty zone — give a way out right here */}
+                        {isDrawing && ptCount < 3 && (
+                          <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ width: '100%', marginTop: 8 }}>
+                            Done adding zones
                           </button>
                         )}
                       </div>
@@ -1916,6 +1922,13 @@ export default function MapQuoteBuilder() {
           </button>
           <button className="mapq-btn-ghost" onClick={handleFinishAndAdd} style={{ flex: 1 }}>
             + Add zone
+          </button>
+        </div>
+      )}
+      {isDrawing && ptCount < 3 && step === 'editing' && !addonDrawTarget && (
+        <div className="mapq-mobile-draw-bar">
+          <button className="mapq-btn-ghost" onClick={cancelTrace} style={{ flex: 1 }}>
+            Done adding zones
           </button>
         </div>
       )}
