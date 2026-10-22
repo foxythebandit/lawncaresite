@@ -18,8 +18,8 @@ export default function Home() {
       <Nav />
       <Hero />
       <TrustBar />
-      <GeneralInquiry />
       <MapQuoteBuilder />
+      <GeneralInquiry />
       <Founder />
       <Testimonials />
       <HowItWorks />
