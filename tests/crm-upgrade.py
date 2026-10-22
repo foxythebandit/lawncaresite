@@ -11,9 +11,11 @@ files=sorted((ROOT/'supabase/migrations').glob('*.sql'))
 crm_migration=ROOT/'supabase/migrations/20261022000000_crm_lead_workspace.sql'
 foundation=next((ROOT/'supabase/migrations').glob('*_crm_foundation.sql'))
 alerts_migration=next((ROOT/'supabase/migrations').glob('*_crm_alert_intents.sql'))
+lifecycle_migration=next((ROOT/'supabase/migrations').glob('*_crm_lifecycle_commands.sql'))
 files.remove(crm_migration)
 files.remove(foundation)
 files.remove(alerts_migration)
+files.remove(lifecycle_migration)
 create=ROOT/'supabase/migrations/002_create_bookings.sql';files.remove(create);files.insert(1,create)
 baseline='create schema auth; grant usage on schema auth, public to authenticated, anon, service_role;\n'
 for function in ['auth.jwt()', 'auth.role()']:
@@ -36,6 +38,7 @@ try:
  sql("select record_intake('historical','legacy-alert-1','legacy-hash','{\"phone\":\"5550000003\",\"address\":\"Prior address\"}'::jsonb);")
  sql('begin;\n'+foundation.read_text()+'\ncommit;')
  sql('begin;\n'+alerts_migration.read_text()+'\ncommit;')
+ sql('begin;\n'+lifecycle_migration.read_text()+'\ncommit;')
  assert sql("select count(*) from bookings b join leads l on b.lead_id=l.id where b.name='Legacy customer' and l.address='Legacy address' and b.notes='Private staff notes' and l.utm_source='meta';").stdout.strip()=='1'
  assert sql("select count(*) from leads where address='Original lead';").stdout.strip()=='1'
  assert sql("select has_column_privilege('authenticated','bookings','notes','select');").stdout.strip()=='f'
@@ -60,6 +63,7 @@ try:
  sql("select public.record_intake_v2('website-booking','v2-linked-booking','linked-hash','{}'::jsonb,'{\"name\":\"Linked\",\"phone\":\"5550000099\",\"address\":\"99 Local Lane\"}'::jsonb,(select id from public.leads where external_submission_id='v2-alert-key'),array['+15125550111','+15125550222']);")
  assert sql("select count(*) from public.staff_alerts a join public.intake_events e on e.id=a.event_id where e.submission_id='v2-linked-booking';").stdout.strip()=='0'
  runpy.run_path(str(ROOT/'tests/crm-foundation.py'))['check'](sql)
+ runpy.run_path(str(ROOT/'tests/crm-lifecycle.py'))['check'](sql)
  print('PASS: isolated existing-data upgrade, legacy backfill/preservation, unexpected-policy abort, customer column permissions, durable intake/replay')
 finally:
  sql('drop database if exists '+NAME+';','postgres')
