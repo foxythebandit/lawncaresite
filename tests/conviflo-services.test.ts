@@ -24,6 +24,8 @@ test('cleanup_service chooses leaves, gutters or both', () => {
   assert.deepEqual(lead('leaf_cleanup').lead.services, ['Leaf cleanup'])
   assert.deepEqual(lead('gutter_cleaning').lead.services, ['Gutter cleaning'])
   assert.deepEqual(lead('both_leaves_and_gutters').lead.services, ['Leaf cleanup', 'Gutter cleaning'])
+  assert.deepEqual(lead('Both leaves and gutters').lead.services, ['Leaf cleanup', 'Gutter cleaning'])
+  assert.deepEqual(lead('Gutter cleaning').lead.services, ['Gutter cleaning'])
   assert.equal(lead('leaf_cleanup').lead.address, '1 Main, Austin')
 })
 

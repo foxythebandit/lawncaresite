@@ -35,9 +35,11 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
   let services = form.services
   let serviceUnmapped = false
   if (form.service_key) {
+    // ConviFlo sends choices as label slugs ("Mowing + Edging" -> mowing_edging); match labels too.
     const chosen = fields[form.service_key]
-    const mapped = typeof chosen === 'string' && form.service_map && Object.hasOwn(form.service_map, chosen)
-      ? form.service_map[chosen] : undefined
+    const slug = typeof chosen === 'string' ? chosen.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') : ''
+    const mapped = slug && form.service_map && Object.hasOwn(form.service_map, slug)
+      ? form.service_map[slug] : undefined
     if (validServices(mapped)) services = mapped
     else serviceUnmapped = true
   }
