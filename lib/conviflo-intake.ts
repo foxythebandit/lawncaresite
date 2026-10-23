@@ -2,7 +2,15 @@ import { createHash } from 'node:crypto'
 import { canonicalIntake } from './canonical-intake'
 import { enrichMetaCreative } from './ad-registry'
 
-type FormConfig = { services: string[]; address_key: string; map_meta_utm_ids?: boolean }
+type FormConfig = {
+  services: string[]; address_key: string; map_meta_utm_ids?: boolean
+  // Optional: one answer chooses the services, e.g. cleanup_service -> leaves, gutters or both.
+  service_key?: string; service_map?: Record<string, string[]>
+}
+
+function validServices(value: unknown): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(s => typeof s === 'string' && s.trim() !== '')
+}
 
 /** Verified ConviFlo payload fields, mapped only for configured form IDs. */
 export function convifloIntake(payload: unknown, forms: Record<string, FormConfig>) {
@@ -16,15 +24,23 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
     throw new Error('Completed lead has no stable response ID')
   }
   const form = forms[formId]
-  if (!Array.isArray(form.services) || !form.services.length || form.services.some(s => typeof s !== 'string' || !s.trim())) {
-    throw new Error('Form services are not configured')
-  }
+  if (!validServices(form.services)) throw new Error('Form services are not configured')
   if (typeof form.address_key !== 'string' || !/^[a-zA-Z0-9_]{1,80}$/.test(form.address_key)) {
     throw new Error('Form address key is not configured')
   }
   const answers = data.answers
   if (!answers || typeof answers !== 'object' || Array.isArray(answers)) throw new Error('Missing answers')
   const fields = answers as Record<string, unknown>
+  // An unknown or missing choice keeps the form's default services and is flagged for staff.
+  let services = form.services
+  let serviceUnmapped = false
+  if (form.service_key) {
+    const chosen = fields[form.service_key]
+    const mapped = typeof chosen === 'string' && form.service_map && Object.hasOwn(form.service_map, chosen)
+      ? form.service_map[chosen] : undefined
+    if (validServices(mapped)) services = mapped
+    else serviceUnmapped = true
+  }
   const submittedAddress = fields[form.address_key]
   let address: string | null = null
   if (typeof submittedAddress === 'string') address = submittedAddress.trim()
@@ -55,8 +71,9 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
     form_version: 'conviflo-adapter:1',
     contact: { name: fields.name, phone: fields.phone, email: fields.email,
       address },
-    services: form.services,
-    answers: { ...fields, address_needs_review: true, address_missing: !address, conviflo_form_id: formId,
+    services,
+    answers: { ...fields, address_needs_review: true, address_missing: !address,
+      ...(serviceUnmapped ? { service_unmapped: true } : {}), conviflo_form_id: formId,
       conviflo_response_id: data.responseId, conviflo_form_slug: data.formSlug,
       conviflo_submitted_at: data.submittedAt, conviflo_lead_value_horizon: 'unknown' },
     attribution: enrichMetaCreative(attribution, process.env.META_AD_CREATIVES),

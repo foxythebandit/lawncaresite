@@ -2,7 +2,7 @@
 
 import { formatPhone } from '@/lib/format-phone'
 import Link from 'next/link'
-import { cleanAttribution, formatAttributionLabel, type Attribution } from '@/lib/attribution'
+import { cleanAttribution, creativeTypeLabel, formatAttributionLabel, type Attribution } from '@/lib/attribution'
 import { useRef, useState, useTransition } from 'react'
 import Icon from '../icons'
 import { useRouter } from 'next/navigation'
@@ -355,7 +355,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
               {usefulAnswers.length === 0 && <p className="crm-muted">No additional answers submitted.</p>}
               {[['First tracked visit', cleanSource.first_touch], ['Latest tracked visit', cleanSource.latest_touch]].map(([title, touch]) => <div key={String(title)}>
                 <h3>{String(title)}</h3>
-                {touch && typeof touch === 'object' ? <dl className="crm-readable-details">{Object.entries(touch).map(([key, value]) => <div key={key}><dt>{answerLabel(key)}</dt><dd>{answerText(value)}</dd></div>)}</dl> : <p className="crm-muted">Unknown</p>}
+                {touch && typeof touch === 'object' ? <dl className="crm-readable-details">{Object.entries(touch).map(([key, value]) => <div key={key}><dt>{answerLabel(key)}</dt><dd>{answerText(key === 'creative_type' ? creativeTypeLabel(value) : value)}</dd></div>)}</dl> : <p className="crm-muted">Unknown</p>}
               </div>)}
               {lead.estimated_value != null && <p>Estimated potential value: ${String(lead.estimated_value)} · time horizon unknown</p>}
               <p>Contact consent: {lead.consent == null ? 'Not recorded' : lead.consent ? 'Granted' : 'Not granted'}{lead.consented_at && ` · ${dateText(lead.consented_at)}`}</p>
