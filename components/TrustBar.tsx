@@ -61,27 +61,13 @@ export default function TrustBar() {
 
   return (
     <>
+      {/* Social proof first — neighbors' reviews carry more weight than our own claims */}
+      <ReviewRow />
       <div className={`trust-bar${open !== null ? ' has-open' : ''}`} ref={barRef}>
-        {/* Social proof first — neighbors' reviews carry more weight than our own claims */}
-        <div className="trust-cell reveal" data-delay={REVEAL_DELAYS[0]}>
-          <div className="trust-item">
-            <a className="trust-trigger trust-rating" href="#reviews" aria-label={`Rated ${GOOGLE_RATING} out of 5 on Google from ${GOOGLE_REVIEW_COUNT} reviews — read them`}>
-              <span className="trust-stars" aria-hidden="true">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <svg key={i} viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                    <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
-                  </svg>
-                ))}
-              </span>
-              {GOOGLE_RATING} on Google
-              <span className="trust-rating-count">({GOOGLE_REVIEW_COUNT} reviews)</span>
-            </a>
-          </div>
-        </div>
         {POINTS.map((p, i) => (
           // .reveal sits on the static wrapper: the scroll-reveal script adds a `revealed`
           // class that a re-render of a dynamic className would wipe out (hiding the item)
-          <div key={p.label} className="trust-cell reveal" data-delay={REVEAL_DELAYS[i + 1]}>
+          <div key={p.label} className="trust-cell reveal" data-delay={REVEAL_DELAYS[i]}>
             <div className="trust-divider" />
             <div className={`trust-item${open === i ? ' open' : ''}`}>
               <button
@@ -109,28 +95,40 @@ export default function TrustBar() {
           </div>
         ))}
       </div>
-      <ReviewTicker />
     </>
   )
 }
 
-// A slow, single-line ticker of short Google review quotes under the trust strip.
-// The list is rendered twice so the -50% loop is seamless; the copy is hidden
-// from screen readers. Pauses on hover/focus; static and swipeable when the
-// visitor prefers reduced motion.
-function ReviewTicker() {
+// The Google rating, with a slow single-line ticker of short review quotes
+// drifting beside it. The quotes are rendered twice so the -50% loop is
+// seamless; the copy is hidden from screen readers. Pauses on hover/focus;
+// static and swipeable when the visitor prefers reduced motion.
+function ReviewRow() {
   const chips = (copy: boolean) => REVIEWS.map(r => (
     <a key={`${copy}-${r.name}`} className="review-chip" href="#reviews" tabIndex={copy ? -1 : undefined}>
-      <span className="review-chip-stars" aria-label="5 stars">★★★★★</span>
+      <span className="review-chip-avatar" style={{ background: r.avatarBg }} aria-hidden="true">{r.initials}</span>
       <span className="review-chip-quote">“{r.short}”</span>
       <span className="review-chip-name">{r.name.split(' ')[0]}</span>
     </a>
   ))
   return (
-    <div className="review-ticker" aria-label="What customers say on Google">
-      <div className="review-ticker-track">
-        {chips(false)}
-        <div className="review-ticker-copy" aria-hidden="true">{chips(true)}</div>
+    <div className="review-row">
+      <a className="trust-trigger trust-rating" href="#reviews" aria-label={`Rated ${GOOGLE_RATING} out of 5 on Google from ${GOOGLE_REVIEW_COUNT} reviews — read them`}>
+        <span className="trust-stars" aria-hidden="true">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <svg key={i} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
+            </svg>
+          ))}
+        </span>
+        {GOOGLE_RATING} on Google
+        <span className="trust-rating-count">({GOOGLE_REVIEW_COUNT} reviews)</span>
+      </a>
+      <div className="review-ticker" aria-label="What customers say on Google">
+        <div className="review-ticker-track">
+          {chips(false)}
+          <div className="review-ticker-copy" aria-hidden="true">{chips(true)}</div>
+        </div>
       </div>
     </div>
   )

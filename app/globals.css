@@ -281,6 +281,12 @@ nav {
 .trust-rating-count { font-weight: 400; color: rgba(255,255,255,.55); }
 .trust-trigger:focus-visible { outline: 2px solid var(--green-bright); outline-offset: 2px; }
 .trust-item svg { width: 18px; height: 18px; color: var(--green-bright); flex-shrink: 0; }
+/* The promises sit under the review row, so keep them a step quieter than it */
+@media (min-width: 601px) {
+  .trust-bar .trust-trigger { font-size: 11.5px; gap: 8px; }
+  .trust-bar .trust-item svg { width: 15px; height: 15px; }
+}
+.trust-bar { padding-top: 14px; padding-bottom: 16px; }
 .trust-divider { width: 1px; height: 24px; background: rgba(255,255,255,.12); }
 
 /* Explainer card: hover/focus on desktop, tap anywhere */
@@ -326,10 +332,16 @@ nav {
 .trust-card-cta:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .trust-card { transition: none; } }
 
-/* Review ticker: one quiet line of review quotes drifting under the trust strip */
-.review-ticker {
+/* Review row: the Google rating, with one quiet line of review quotes drifting
+   beside it; the three promises sit in the trust bar below */
+.review-row {
   background: var(--green-deep);
-  padding: 0 0 18px;
+  display: flex; align-items: center; gap: 20px;
+  padding: 20px 8vw 0;
+}
+.review-row .trust-rating { flex: none; margin: 0; }
+.review-ticker {
+  flex: 1; min-width: 0;
   overflow: hidden;
   position: relative;
 }
@@ -354,7 +366,7 @@ nav {
 }
 .review-chip {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 14px;
+  padding: 4px 14px 4px 4px;
   border: 1px solid rgba(255,255,255,.1); border-radius: 100px;
   background: rgba(255,255,255,.03);
   font-size: 13px; color: rgba(255,255,255,.72); text-decoration: none;
@@ -363,25 +375,30 @@ nav {
 }
 .review-chip:hover { background: rgba(255,255,255,.08); color: #fff; }
 .review-chip:focus-visible { outline: 2px solid var(--green-bright); outline-offset: 2px; }
-.review-chip-stars { color: #ffd166; font-size: 10px; letter-spacing: 1px; }
+.review-chip-avatar {
+  flex: none; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 10px; font-weight: 600; color: #fff; letter-spacing: .02em;
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,.18);
+}
 .review-chip-name { color: rgba(255,255,255,.45); }
 .review-chip-name::before { content: '— '; }
 @media (prefers-reduced-motion: reduce) {
   .review-ticker { overflow-x: auto; scrollbar-width: none; }
-  .review-ticker-track { animation: none; padding: 0 8vw; }
+  .review-ticker-track { animation: none; padding: 0 24px; }
   .review-ticker-copy { display: none; }
 }
-/* Below ~1100px all four won't fit on one line: rating gets its own row and the
-   three promises sit in a row below (never a lone wrapped item) */
+/* No divider before the first promise */
+.trust-cell:first-child .trust-divider { display: none; }
+/* Below ~1100px the three promises won't fit with dividers: lay them out as an even row */
 @media (max-width: 1100px) {
-  /* ── Trust bar: rating on its own row, the three promises in a row below ── */
   .trust-bar {
     display: grid; grid-template-columns: repeat(3, max-content);
     justify-content: center; gap: 14px 36px;
     padding: 16px 6vw;
   }
-  .trust-bar > .trust-cell:first-child { grid-column: 1 / -1; justify-self: center; }
   .trust-divider { display: none; }
+  .review-row { padding: 16px 6vw 0; }
   /* Two rows: a card hanging under one item would cover the item below it, so
      cards open below the whole bar, and only on click/tap (hover just highlights) */
   .trust-item { position: static; }
@@ -485,25 +502,36 @@ section { padding: 100px 8vw; }
   border: 1px solid rgba(255,255,255,.12);
   border-radius: 14px; padding: 18px;
 }
-.manualq-inline-sub { font-size: 13px; color: rgba(255,255,255,.5); margin: 0 0 14px; }
-.manualq-inline-fields { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.manualq-inline-sub { font-size: 13.5px; line-height: 1.5; color: rgba(255,255,255,.75); margin: 0 0 14px; }
+.manualq-inline-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+/* no search icon in this form, so no room reserved for one */
+.mapq-input.manualq-input { padding-left: 16px; }
+.mapq-input.manualq-input::placeholder { color: rgba(255,255,255,.5); }
 .manualq-inline-size-label {
-  font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
-  color: rgba(255,255,255,.4); margin-bottom: 10px;
+  font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: rgba(255,255,255,.6); margin-bottom: 8px;
 }
-.manualq-optional { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: .8; }
-.manualq-inline-size-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.manualq-optional { font-weight: 400; text-transform: none; letter-spacing: 0; color: rgba(255,255,255,.45); }
+/* Lawn size: three compact pills in a row (icon beside the label, not stacked) */
+.manualq-inline-size-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
 .manualq-inline-size-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 12px 6px;
-  background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.12); border-radius: 10px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.14); border-radius: 100px;
   cursor: pointer; transition: border-color .15s, background .15s;
-  font-family: var(--font-body);
+  font-family: var(--font-body); text-align: left;
 }
-.manualq-inline-size-btn:hover { border-color: rgba(82,183,136,.4); }
-.manualq-inline-size-btn.selected { border-color: var(--green-bright); background: rgba(82,183,136,.12); }
-.manualq-inline-size-name { font-size: 12.5px; font-weight: 600; color: #fff; }
-.manualq-inline-size-hint { font-size: 10px; color: rgba(255,255,255,.4); text-align: center; }
+.manualq-inline-size-btn svg { flex: none; }
+.manualq-inline-size-btn:hover { border-color: rgba(82,183,136,.5); }
+.manualq-inline-size-btn.selected { border-color: var(--green-bright); background: rgba(82,183,136,.16); }
+.manualq-inline-size-btn:focus-visible { outline: 2px solid var(--green-bright); outline-offset: 2px; }
+.manualq-inline-size-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.manualq-inline-size-name { font-size: 13px; font-weight: 600; color: #fff; }
+.manualq-inline-size-hint { font-size: 10.5px; color: rgba(255,255,255,.55); white-space: nowrap; }
+.manualq-notes { display: block; resize: vertical; min-height: 64px; margin-bottom: 14px; font-size: 15px; line-height: 1.4; }
+label.manualq-inline-size-label { display: block; }
+.manualq-consent { margin: 0 0 14px; }
+.manualq-consent .mapq-consent-text { color: rgba(255,255,255,.55); }
 .manualq-inline-success {
   max-width: 460px; margin: 0 auto;
   display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -511,11 +539,18 @@ section { padding: 100px 8vw; }
   background: rgba(82,183,136,.1); border: 1px solid rgba(82,183,136,.25);
   border-radius: 100px; padding: 10px 18px;
 }
+.manualq-inline-success button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--green-bright); text-decoration: underline;
+}
 
-@media (max-width: 640px) {
-  .manualq-inline-size-row { grid-template-columns: 1fr; }
-  .manualq-inline-size-btn { flex-direction: row; justify-content: flex-start; gap: 10px; }
-  .manualq-inline-size-hint { text-align: left; }
+@media (max-width: 520px) {
+  .manualq-inline-fields { grid-template-columns: 1fr; }
+  /* Phones: keep the three sizes in one row, drop the icons to make room */
+  .manualq-inline-size-btn { justify-content: center; padding: 8px 6px; border-radius: 12px; }
+  .manualq-inline-size-btn svg { display: none; }
+  .manualq-inline-size-text { align-items: center; text-align: center; }
+  .manualq-inline-size-hint { white-space: normal; }
 }
 
 /* ── HOW IT WORKS ── */
@@ -2791,6 +2826,9 @@ footer {
   .mapq-facts { flex-direction: column; align-items: center; gap: 8px; }
   .mapq-section { padding-top: 36px; }
   .trust-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 12px; padding: 14px 5vw; }
+  /* Phones: rating centered on its own line, quotes drifting full-width below */
+  .review-row { flex-direction: column; gap: 10px; padding: 16px 0 0; }
+  .review-ticker { width: 100%; }
   .trust-trigger:not(.trust-rating) { flex-direction: column; text-align: center; }
   .trust-trigger { font-size: 11px; gap: 8px; line-height: 1.3; }
   .trust-item { position: static; }

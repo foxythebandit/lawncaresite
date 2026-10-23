@@ -9,7 +9,9 @@ import { QUOTE_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
 import styles from './GeneralInquiry.module.css'
 
-const SERVICES: ServiceInquiryKind[] = ['Landscaping', 'Yard cleanup', 'Gutter cleaning', 'Lawn mowing', 'Other']
+const SERVICES: ServiceInquiryKind[] = ['Landscaping', 'Yard cleanup', 'Hedge trimming', 'Tree pruning', 'Gutter cleaning', 'Lawn mowing', 'Other']
+// Every job is different — these are quoted in person rather than from a formula
+const QUOTED_ON_SITE: ServiceInquiryKind[] = ['Hedge trimming', 'Tree pruning']
 
 export default function GeneralInquiry() {
   const [name, setName] = useState('')
@@ -141,7 +143,9 @@ export default function GeneralInquiry() {
                 <label>What do you need help with? <select name="service" required value={service} onChange={e => setService(e.target.value as ServiceInquiryKind | '')}>
                   <option value="">Choose a service</option>
                   {SERVICES.map(item => <option key={item} value={item}>{item}</option>)}
-                </select></label>
+                </select>
+                {service && QUOTED_ON_SITE.includes(service) && <span className={styles.serviceNote}>Priced on site — we&apos;ll take a look and quote you before any work starts.</span>}
+                </label>
                 <label>Email <span className={styles.optional}>(optional)</span> <input name="email" type="email" autoComplete="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} /></label>
                 <label className={styles.wide}>Project details <span className={styles.optional}>(optional)</span> <textarea name="notes" rows={4} maxLength={2000} placeholder="What would you like done? Anything we should know about the property?" value={notes} onChange={e => setNotes(e.target.value)} /></label>
               </div>

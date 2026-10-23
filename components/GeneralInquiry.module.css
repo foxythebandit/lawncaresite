@@ -86,6 +86,7 @@
 }
 .wide { grid-column: 1 / -1; }
 .optional { color: var(--ink-soft); font-weight: 400; }
+.serviceNote { display: block; margin-top: 6px; color: var(--green-mid); font-size: 12px; font-weight: 500; }
 .grid input, .grid select, .grid textarea {
   display: block;
   width: 100%;
