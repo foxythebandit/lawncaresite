@@ -8,7 +8,8 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Resend } from 'resend'
 import Stripe from 'stripe'
-import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
+import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
+import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -295,6 +296,98 @@ export async function startJobAgreement(input: {
   return { success: true, data: data as Record<string, unknown> }
 }
 
+function revalidateCustomer(customerId: string) {
+  refreshJobs()
+  revalidatePath(`/admin/customers/${customerId}`)
+}
+
+/** New one-off job for an existing customer (upsells, extra work). Price is staff-entered and saved with the job. */
+export async function addCustomerJob(input: {
+  operationId: string; customerId: string; propertyId: string | null; newAddress: string | null
+  date: string; notes: string; items: JobLine[]
+}): Promise<ActionResult> {
+  await requireStaff(`/admin/customers/${input.customerId}`)
+  if (![input.operationId, input.customerId].every(v => UUID_RE.test(v)) || (input.propertyId && !UUID_RE.test(input.propertyId))) {
+    return { success: false, error: 'Refresh this customer and try again.' }
+  }
+  if (!input.propertyId && !input.newAddress?.trim()) return { success: false, error: 'Choose a property or enter an address.' }
+  if (input.date && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { success: false, error: 'Choose a valid visit date.' }
+  let items: JobLine[]
+  try { items = cleanJobLines(input.items.filter(item => item.description.trim() || Number(item.amount))) }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
+  const { data, error } = await getAdmin().rpc('crm_create_customer_job', {
+    p_operation_id: input.operationId, p_customer_id: input.customerId, p_property_id: input.propertyId,
+    p_property: input.propertyId ? null : { address: input.newAddress!.trim() },
+    p_job: { preferred_date: input.date || null, notes: input.notes.slice(0, 2000), one_time: true }, p_items: items,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  revalidateCustomer(input.customerId)
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+/** Start a mowing plan for an existing customer: creates the first visit, then the recurring plan from it. */
+export async function startCustomerPlan(input: {
+  jobOperationId: string; planOperationId: string; customerId: string; propertyId: string | null; newAddress: string | null
+  firstDate: string; intervalUnit: 'week' | 'month'; intervalCount: number; pricePerVisit: string
+}): Promise<ActionResult> {
+  await requireStaff(`/admin/customers/${input.customerId}`)
+  if (![input.jobOperationId, input.planOperationId, input.customerId].every(v => UUID_RE.test(v)) || (input.propertyId && !UUID_RE.test(input.propertyId))) {
+    return { success: false, error: 'Refresh this customer and try again.' }
+  }
+  if (!input.propertyId && !input.newAddress?.trim()) return { success: false, error: 'Choose a property or enter an address.' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.firstDate)) return { success: false, error: 'Choose the first visit date.' }
+  if (!['week', 'month'].includes(input.intervalUnit) || !Number.isInteger(input.intervalCount) || input.intervalCount < 1 || input.intervalCount > 52) {
+    return { success: false, error: 'Choose how often to visit.' }
+  }
+  let items: JobLine[]
+  try { items = cleanJobLines([{ kind: 'service', description: 'Lawn care', amount: input.pricePerVisit }]) }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
+  if (moneyCents(items[0].amount) <= 0) return { success: false, error: 'Enter the price per visit.' }
+  const label = input.intervalUnit === 'week'
+    ? (input.intervalCount === 1 ? 'Weekly' : input.intervalCount === 2 ? 'Bi-weekly' : `Every ${input.intervalCount} weeks`)
+    : (input.intervalCount === 1 ? 'Monthly' : `Every ${input.intervalCount} months`)
+  const db = getAdmin()
+  const created = await db.rpc('crm_create_customer_job', {
+    p_operation_id: input.jobOperationId, p_customer_id: input.customerId, p_property_id: input.propertyId,
+    p_property: input.propertyId ? null : { address: input.newAddress!.trim() },
+    p_job: { preferred_date: input.firstDate, notes: '', one_time: false, frequency: label }, p_items: items,
+  })
+  if (created.error) return { success: false, error: commandError(created.error) }
+  const bookingId = (created.data as { booking_id: string }).booking_id
+  const { data: job } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
+  const { data, error } = await db.rpc('crm_start_agreement', {
+    p_booking_id: bookingId, p_expected_updated_at: job?.updated_at, p_operation_id: input.planOperationId,
+    p_config: { anchor_on: input.firstDate, next_on: addInterval(input.firstDate, input.intervalUnit, input.intervalCount),
+      end_on: null, interval_unit: input.intervalUnit, interval_count: input.intervalCount, items_template: items },
+  })
+  if (error) return { success: false, error: commandError(error) }
+  revalidateCustomer(input.customerId)
+  return { success: true, data: { ...(data as Record<string, unknown>), booking_id: bookingId } }
+}
+
+/** Quote outcome: a lead's booked visit (its latest quote booking) canceled before it happens counts as a canceled quote. */
+async function cancelQuoteForFirstVisit(bookingId: string): Promise<{ success: true } | { success: false; error: string }> {
+  const db = getAdmin()
+  const { data: job, error: jobError } = await db.from('bookings').select('id,lead_id,agreement_id').eq('id', bookingId).single()
+  if (jobError) return { success: false, error: 'Visit canceled, but the quote outcome could not be checked. Retry this cancellation.' }
+  if (!job?.lead_id || job.agreement_id) return { success: true }
+  const { data: jobs, error: jobsError } = await db.from('bookings').select('id,created_at,accepted_quote_snapshot,creation_operation_id').eq('lead_id', job.lead_id)
+  if (jobsError) return { success: false, error: 'Visit canceled, but the quote outcome could not be checked. Retry this cancellation.' }
+  if (latestQuoteBooking(jobs ?? [])?.id !== job.id) return { success: true }
+  const { data: lead, error: leadError } = await db.from('leads').select('updated_at,quote_status').eq('id', job.lead_id).single()
+  if (leadError || !lead) return { success: false, error: 'Visit canceled, but the quote outcome could not be loaded. Retry this cancellation.' }
+  if (lead.quote_status !== 'accepted') return { success: true }
+  const user = await requireStaff()
+  const { error } = await db.rpc('update_lead_workflow', {
+    p_lead_id: job.lead_id, p_expected_updated_at: lead.updated_at, p_patch: { quote_status: 'canceled', stage: 'lost' },
+    p_activity: { kind: 'quote', outcome: 'canceled', body: 'Customer canceled the booked first visit.' }, p_actor_email: user.email,
+  })
+  if (error) return { success: false, error: `Visit canceled, but the quote outcome was not saved: ${commandError(error)}. Retry this cancellation.` }
+  revalidatePath(`/admin/leads/${job.lead_id}`)
+  revalidatePath('/admin/leads')
+  return { success: true }
+}
+
 export async function changeJob(input: {
   bookingId: string; expectedUpdatedAt: string; operationId: string
   action: 'confirm' | 'reschedule' | 'skip' | 'cancel' | 'mark_one_time'
@@ -311,6 +404,10 @@ export async function changeJob(input: {
       ? { date: input.date, time: input.time || null } : {},
   })
   if (error) return { success: false, error: commandError(error) }
+  if (input.action === 'cancel') {
+    const outcome = await cancelQuoteForFirstVisit(input.bookingId)
+    if (!outcome.success) { refreshJobs(); return outcome }
+  }
   refreshJobs()
   return { success: true, data: data as Record<string, unknown> }
 }

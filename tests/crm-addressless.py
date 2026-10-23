@@ -28,14 +28,13 @@ with sync_playwright() as p:
  page.get_by_label('Your street address').fill('807 E 47th St, Austin, TX');page.get_by_role('listbox').get_by_role('option').first.click();page.get_by_role('button',name='Find my property',exact=False).click()
  page.get_by_text('Click around your lawn to place points',exact=True).wait_for(timeout=20000)
  page.get_by_role('button',name="Can't see your lawn clearly?",exact=False).click();page.get_by_placeholder('e.g. 3500').fill('3500');page.get_by_role('button',name='Get quote →',exact=True).click()
- page.get_by_role('button',name='Maintenance',exact=False).click();page.get_by_label('Include maintenance interest with my booking request').check()
  page.get_by_label('Quote notes').fill('Private staff margin note')
- page.get_by_role('button',name='Confirm quote',exact=True).click();page.get_by_role('status').filter(has_text='Quote confirmed.').wait_for()
+ page.get_by_role('button',name='Save as quoted',exact=True).click();page.get_by_role('status').filter(has_text='Saved as quoted.').wait_for()
  saved=db('leads?id=eq.'+lid)[0];assert saved['address'] is None and saved['quote_draft']['address']
- page.get_by_role('button',name='Mark accepted').click();page.get_by_text('Saved.',exact=True).first.wait_for()
- page.get_by_role('button',name='Create booking request',exact=True).click();page.get_by_text('Booking stages (1)',exact=True).wait_for()
+ page.get_by_role('button',name='Book visit',exact=True).click();page.get_by_role('button',name='Confirm booking',exact=True).click();page.get_by_text('Booking stages (1)',exact=True).wait_for()
  row=db('bookings?lead_id=eq.'+lid)[0]
  assert row['address']==saved['quote_draft']['address'] and row['notes']=='Private staff margin note' and row['customer_notes'] is None
- assert row['addon_interest']['maintenance']['interested'] and row['last_mow']==saved['quote_draft']['lastMow'] and row['overgrowth_fee']==saved['quote_draft']['overgrowthFee']
+ assert row['last_mow']==saved['quote_draft']['lastMow'] and row['overgrowth_fee']==saved['quote_draft']['overgrowthFee']
+ assert row['customer_id'] and row['property_id']
  c.close();b.close()
-print('PASS: addressless external lead, staff-entered address, saved add-ons/last mow/overgrowth, private notes, explicit booking')
+print('PASS: addressless external lead, staff-entered address, saved last mow/overgrowth, private notes, explicit booking')

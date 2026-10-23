@@ -90,13 +90,13 @@ with sync_playwright() as p:
     page.wait_for_load_state('networkidle')
     assert page.get_by_role('heading',name='Test Lawn Owner').is_visible()
     assert page.locator('input').filter().count()>0
-    assert page.get_by_role('link',name='Call +15125550123').is_visible()
+    assert page.get_by_role('link', name='Call 512-555-0123').get_attribute('href') == 'tel:+15125550123'
     assert page.locator('script[src*="googletagmanager"], script#meta-pixel').count()==0
     page.get_by_label('Quote notes').fill('Gate on the left. Draft test.')
     captured=[]
     page.on('request', lambda r: captured.append({'headers':r.all_headers(), 'body':r.post_data}) if r.method=='POST' and r.headers.get('next-action') else None)
-    page.get_by_role('button',name='Save draft',exact=True).click()
-    page.get_by_role('status').filter(has_text='Draft saved.').wait_for()
+    page.get_by_role('button',name='Save',exact=True).click()
+    page.get_by_role('status').filter(has_text='Price saved.').wait_for()
     assert db('leads?id=eq.'+lead)[0]['quote_draft']['notes']=='Gate on the left. Draft test.'
     before=len(db('intake_events?lead_id=eq.'+lead))
     page.reload(); page.wait_for_load_state('networkidle')

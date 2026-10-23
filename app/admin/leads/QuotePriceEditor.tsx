@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { formatMoney } from '@/lib/crm-jobs'
 
 export interface ManualPriceLine {
   id: string
@@ -36,9 +37,19 @@ function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cent
   />
 }
 
+export interface LawnCareRow {
+  sqFt: number | null
+  freq: string
+  freqOptions: { value: string; label: string }[]
+  onFreqChange: (freq: string) => void
+  calculatedCents: number
+  overridePrice: number | null
+  onOverrideChange: (price: number | null) => void
+}
+
 export default function QuotePriceEditor({
   lines, onLinesChange, discountCents, onDiscountChange, includeMowing, onIncludeMowingChange,
-  mowingPriceCents,
+  mowingPriceCents, lawn,
 }: {
   lines: ManualPriceLine[]
   onLinesChange: (lines: ManualPriceLine[]) => void
@@ -47,16 +58,36 @@ export default function QuotePriceEditor({
   includeMowing: boolean
   onIncludeMowingChange: (included: boolean) => void
   mowingPriceCents: number
+  lawn: LawnCareRow
 }) {
   const subtotalCents = (includeMowing ? mowingPriceCents : 0) + lines.reduce((sum, line) => sum + line.amountCents, 0)
   const totalCents = Math.max(0, subtotalCents - discountCents)
   return <div className="crm-price-editor">
-    <h3>Services and price per visit</h3>
-    <label className="crm-price-mowing">
-      <input type="checkbox" checked={includeMowing} onChange={event => onIncludeMowingChange(event.target.checked)} />
-      <span>Include measured lawn care</span>
-      <strong>${dollarText(mowingPriceCents)}</strong>
-    </label>
+    <div className={`crm-lawn-row${includeMowing ? '' : ' is-off'}`}>
+      <label className="crm-price-mowing">
+        <input type="checkbox" aria-label="Include measured lawn care" checked={includeMowing} onChange={event => onIncludeMowingChange(event.target.checked)} />
+        <span>
+          <strong>Lawn care</strong>
+          <small>{lawn.sqFt ? `${lawn.sqFt.toLocaleString()} sq ft measured` : 'Trace the lawn on the map below to calculate'}</small>
+        </span>
+        <strong>{formatMoney((includeMowing ? mowingPriceCents : 0) / 100)}</strong>
+      </label>
+      <div className="crm-lawn-controls">
+        <label className="crm-field">How often
+          <select value={lawn.freq} disabled={!includeMowing} onChange={event => lawn.onFreqChange(event.target.value)}>
+            {lawn.freqOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="crm-field">Calculated
+          <input value={lawn.sqFt ? formatMoney(lawn.calculatedCents / 100) : '—'} readOnly disabled tabIndex={-1} />
+        </label>
+        <label className="crm-field">Custom price ($)
+          <input type="number" min="0" inputMode="decimal" disabled={!includeMowing} placeholder="Use calculated"
+            value={lawn.overridePrice ?? ''} onChange={event => lawn.onOverrideChange(event.target.value === '' ? null : Number(event.target.value))} />
+        </label>
+      </div>
+    </div>
+    <h3>Other services</h3>
     <div className="crm-price-list">
       {lines.map(line => <div className="crm-price-row" key={line.id}>
         <label className="crm-field">Service
@@ -72,7 +103,7 @@ export default function QuotePriceEditor({
     <label className="crm-field crm-discount-field">Discount ($)
       <MoneyInput cents={discountCents} label="Discount amount" onChange={onDiscountChange} />
     </label>
-    <div className="crm-price-total"><span>Total per visit</span><span>${dollarText(totalCents)}</span></div>
+    <div className="crm-price-total"><span>{includeMowing && lawn.freq !== 'onetime' ? 'Total per visit' : 'Total'}</span><span>{formatMoney(totalCents / 100)}</span></div>
     {discountCents > subtotalCents && <p className="crm-feedback" role="alert">Discount cannot exceed the service total.</p>}
   </div>
 }

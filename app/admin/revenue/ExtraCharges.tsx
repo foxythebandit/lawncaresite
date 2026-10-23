@@ -1,5 +1,6 @@
 'use client'
 
+import { formatMoney } from '@/lib/crm-jobs'
 import { useState, useTransition } from 'react'
 import { addExtraCharge, updateExtraCharge, type ExtraCharge } from '../actions'
 
@@ -148,7 +149,7 @@ function ChargeRow({ charge }: { charge: ExtraCharge }) {
       <td>{charge.payment_method ?? '—'}</td>
       <td>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-          <span style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${charge.amount.toFixed(2)}</span>
+          <span style={{ fontWeight: 600 }}>{formatMoney(charge.amount)}</span>
           <button className="admin-revenue-row-edit" onClick={() => setEditing(true)} disabled={pending} title="Edit">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
@@ -163,10 +164,10 @@ export default function ExtraCharges({ charges, clients }: { charges: ExtraCharg
   const total = charges.reduce((s, c) => s + c.amount, 0)
 
   return (
-    <div className="admin-revenue-card" style={{ marginTop: 12 }}>
+    <section className="admin-revenue-card">
       <div className="admin-extra-head">
-        <div className="admin-revenue-card-title" style={{ marginBottom: 0 }}>
-          Extra Services{charges.length > 0 && <> · ${total.toLocaleString()}</>}
+        <div className="admin-revenue-card-title">
+          Extra services{charges.length > 0 && <> · {formatMoney(total)}</>}
         </div>
         {!adding && (
           <button className="admin-revenue-row-save" onClick={() => setAdding(true)}>+ Add charge</button>
@@ -177,9 +178,9 @@ export default function ExtraCharges({ charges, clients }: { charges: ExtraCharg
       {adding && <AddChargeForm clients={clients} onDone={() => setAdding(false)} />}
 
       {charges.length === 0 ? (
-        !adding && <div className="admin-empty" style={{ padding: '24px 20px' }}>No extra charges yet.</div>
+        !adding && <div className="admin-empty">No extra charges yet.</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="admin-table-wrap">
           <table className="admin-revenue-table">
             <thead>
               <tr>
@@ -196,6 +197,6 @@ export default function ExtraCharges({ charges, clients }: { charges: ExtraCharg
           </table>
         </div>
       )}
-    </div>
+    </section>
   )
 }

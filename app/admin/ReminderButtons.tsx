@@ -43,7 +43,7 @@ export default function ReminderButtons({ bookingId, name, phone, email, confirm
     <div className="admin-reminder-row">
       <button
         type="button"
-        className="admin-route-call-btn"
+        className="crm-button crm-button-sm"
         disabled={pending || !email}
         title={email ? undefined : 'No email on file'}
         onClick={() => {
@@ -56,7 +56,7 @@ export default function ReminderButtons({ bookingId, name, phone, email, confirm
       >
         {pending ? 'Sending…' : 'Email reminder'}
       </button>
-      <a href={`sms:${phone}&body=${encodeURIComponent(smsBody)}`} className="admin-route-sms-btn">
+      <a href={`sms:${phone}&body=${encodeURIComponent(smsBody)}`} className="crm-button crm-button-sm">
         Text reminder
       </a>
       {result?.success && <span className="admin-reminder-status admin-reminder-ok">Sent ✓</span>}

@@ -17,6 +17,7 @@ frequency_guard_migration=next((ROOT/'supabase/migrations').glob('*_crm_lifecycl
 job_item_grant_migration=next((ROOT/'supabase/migrations').glob('*_crm_job_items_service_delete.sql'))
 first_occurrence_migration=next((ROOT/'supabase/migrations').glob('*_crm_explicit_first_occurrence.sql'))
 job_replay_migration=next((ROOT/'supabase/migrations').glob('*_crm_job_command_replay.sql'))
+customer_job_migration=next((ROOT/'supabase/migrations').glob('*_crm_customer_job.sql'))
 files.remove(crm_migration)
 files.remove(foundation)
 files.remove(alerts_migration)
@@ -26,6 +27,7 @@ files.remove(frequency_guard_migration)
 files.remove(job_item_grant_migration)
 files.remove(first_occurrence_migration)
 files.remove(job_replay_migration)
+files.remove(customer_job_migration)
 create=ROOT/'supabase/migrations/002_create_bookings.sql';files.remove(create);files.insert(1,create)
 baseline='create schema auth; grant usage on schema auth, public to authenticated, anon, service_role;\n'
 for function in ['auth.jwt()', 'auth.role()']:
@@ -54,6 +56,7 @@ try:
  sql('begin;\n'+job_item_grant_migration.read_text()+'\ncommit;')
  sql('begin;\n'+first_occurrence_migration.read_text()+'\ncommit;')
  sql('begin;\n'+job_replay_migration.read_text()+'\ncommit;')
+ sql('begin;\n'+customer_job_migration.read_text()+'\ncommit;')
  assert sql("select count(*) from bookings b join leads l on b.lead_id=l.id where b.name='Legacy customer' and l.address='Legacy address' and b.notes='Private staff notes' and l.utm_source='meta';").stdout.strip()=='1'
  assert sql("select count(*) from leads where address='Original lead';").stdout.strip()=='1'
  assert sql("select has_column_privilege('authenticated','bookings','notes','select');").stdout.strip()=='f'

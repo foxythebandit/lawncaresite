@@ -2,7 +2,7 @@ import { getAgreements, getBookings, getCustomers, getExtraCharges, getJobPaymen
 import CompletedJobRow from './CompletedJobRow'
 import RecurringClientRow from './RecurringClientRow'
 import ExtraCharges from './ExtraCharges'
-import { jobPrice, mowingForecast } from '@/lib/crm-jobs'
+import { formatMoney, formatMoneyWhole, jobPrice, mowingForecast } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,11 +35,7 @@ export default async function RevenuePage() {
   const totalPaid     = payments.reduce((s, p) => s + Number(p.amount), 0)
   const legacyRecorded = completed
     .reduce((s, b) => s + Number(b.amount_charged ?? 0), 0) + extrasTotal
-  const avgPerMonth   = monthly.length ? totalPaid / monthly.length : 0
   const maxVal        = Math.max(...monthly.map(([, v]) => v), 1)
-
-  const confirmedMRR = all.filter(b => b.status === 'confirmed')
-    .reduce((s, b) => s + jobPrice(b), 0)
 
   const recurringClients = mowingForecast(all, agreements, identities.customers)
 
@@ -56,97 +52,75 @@ export default async function RevenuePage() {
   }
   const clients = [...clientByProperty.values()].sort((a, b) => a.name.localeCompare(b.name))
 
-  // SVG chart dimensions
-  const chartW = 560
-  const chartH = 180
-  const barCount = monthly.length || 1
-  const colW = chartW / barCount
-  const barW = Math.min(36, colW - 12)
+  const latestMonth = monthly.length ? monthly[monthly.length - 1][0] : null
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  const paidThisMonth = payments.filter(p => p.paid_on.slice(0, 7) === today.slice(0, 7)).reduce((sum, p) => sum + Number(p.amount), 0)
+  const upcomingBooked = all.filter(b => b.status === 'confirmed' && (b.confirmed_date ?? '') >= today).reduce((sum, b) => sum + jobPrice(b), 0)
 
   return (
-    <>
-      <div className="admin-stats">
-        <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${totalPaid.toLocaleString()}</span>
-          <span className="admin-stat-label">Job payments recorded</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${Math.round(avgPerMonth).toLocaleString()}</span>
-          <span className="admin-stat-label">Avg payment month</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${confirmedMRR.toLocaleString()}</span>
-          <span className="admin-stat-label">Scheduled work value</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${legacyRecorded.toLocaleString()}</span>
-          <span className="admin-stat-label">Legacy amount records</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat">
-          <span className="admin-stat-val">{completed.length}</span>
-          <span className="admin-stat-label">Jobs completed</span>
-        </div>
+    <div className="crm-page">
+      <div className="crm-page-heading">
+        <div><h1>Revenue</h1><p className="crm-muted">Recorded payments, scheduled work, and the conservative mowing forecast.</p></div>
       </div>
 
-      <div style={{ padding: '16px' }}>
-        <div className="admin-revenue-card">
+      <div className="admin-stats">
+        <div className="admin-stat">
+          <span className="admin-stat-val admin-stat-money">{formatMoneyWhole(totalPaid)}</span>
+          <span className="admin-stat-label">Paid all time</span>
+        </div>
+        <div className="admin-stat">
+          <span className="admin-stat-val admin-stat-money">{formatMoneyWhole(paidThisMonth)}</span>
+          <span className="admin-stat-label">Paid this month</span>
+        </div>
+        <div className="admin-stat">
+          <span className="admin-stat-val admin-stat-money">{formatMoneyWhole(upcomingBooked)}</span>
+          <span className="admin-stat-label">Upcoming booked</span>
+        </div>
+        <div className="admin-stat">
+          <span className="admin-stat-val">{completed.length}</span>
+          <span className="admin-stat-label">Completed jobs</span>
+        </div>
+      </div>
+      {legacyRecorded > 0 && <p className="admin-revenue-sub">Plus {formatMoney(legacyRecorded)} recorded on older jobs and extra charges before dated payments existed. Those amounts aren’t in the totals or chart above.</p>}
+
+      <div className="admin-revenue-stack">
+        <section className="admin-revenue-card">
           <div className="admin-revenue-card-title">Monthly job payments recorded by paid date</div>
           {monthly.length === 0 ? (
-            <div className="admin-empty" style={{ padding: '40px 20px' }}>No revenue yet.</div>
+            <div className="admin-empty">No revenue yet.</div>
           ) : (
-            <svg
-              viewBox={`0 0 ${chartW} ${chartH + 36}`}
-              className="admin-revenue-svg"
-              aria-label="Monthly revenue bar chart"
-            >
-              {/* Gridlines */}
-              {[0.25, 0.5, 0.75, 1].map(pct => {
-                const y = chartH - pct * chartH
-                return (
-                  <g key={pct}>
-                    <line x1={0} y1={y} x2={chartW} y2={y} stroke="var(--rule)" strokeWidth={1} />
-                    <text x={2} y={y - 3} fontSize={9} fill="var(--ink-soft)">
-                      ${Math.round(maxVal * pct).toLocaleString()}
-                    </text>
-                  </g>
-                )
-              })}
-
-              {/* Bars */}
-              {monthly.map(([key, val], i) => {
-                const barH = Math.max((val / maxVal) * chartH, 2)
-                const cx = i * colW + colW / 2
-                const x = cx - barW / 2
-                const y = chartH - barH
-                return (
-                  <g key={key}>
-                    <rect x={x} y={y} width={barW} height={barH} rx={4} fill="var(--green-bright)" />
-                    <text x={cx} y={chartH + 14} textAnchor="middle" fontSize={10} fill="var(--ink-soft)">
-                      {monthLabel(key)}
-                    </text>
-                    <text x={cx} y={y - 5} textAnchor="middle" fontSize={10} fill="var(--green-mid)" fontWeight={600}>
-                      ${Math.round(val).toLocaleString()}
-                    </text>
-                  </g>
-                )
-              })}
-            </svg>
+            <figure aria-label="Monthly job payments bar chart">
+              <div className="admin-chart">
+                <div className="admin-chart-grid" aria-hidden="true">
+                  {[1, 0.5, 0].map(pct => <span key={pct}><em>{formatMoneyWhole(maxVal * pct)}</em></span>)}
+                </div>
+                {monthly.map(([key, val]) => (
+                  <div key={key} className="admin-chart-col" title={`${monthLabel(key)}: ${formatMoney(val)}`}>
+                    {(key === latestMonth || val === maxVal) && <span className="admin-chart-val">{formatMoneyWhole(val)}</span>}
+                    <div className="admin-chart-bar" style={{ height: `${Math.max((val / maxVal) * 100, 1.5)}%` }} />
+                  </div>
+                ))}
+              </div>
+              <div className="admin-chart-labels" aria-hidden="true">
+                {monthly.map(([key]) => <span key={key}>{monthLabel(key)}</span>)}
+              </div>
+              <table className="sr-only">
+                <caption>Monthly job payments</caption>
+                <tbody>{monthly.map(([key, val]) => <tr key={key}><th>{monthLabel(key)}</th><td>{formatMoney(val)}</td></tr>)}</tbody>
+              </table>
+            </figure>
           )}
-        </div>
+        </section>
 
-        <div className="admin-revenue-card" style={{ marginTop: 12 }}>
-          <div className="admin-revenue-card-title">Conservative Annual Mowing Forecast</div>
+        <section className="admin-revenue-card">
+          <div className="admin-revenue-card-title">Conservative annual mowing forecast</div>
           {recurringClients.length === 0 ? (
-            <div className="admin-empty" style={{ padding: '40px 20px' }}>No active recurring customers yet.</div>
+            <div className="admin-empty">No active recurring customers yet.</div>
           ) : (
             <>
               <div className="admin-expected-total">
-                ${expectedAnnualTotal.toLocaleString()}
-                <span> / year across {recurringClients.length} mowing relationship{recurringClients.length === 1 ? '' : 's'} · ~{MOWS_PER_YEAR} mows each. Excludes non-mowing agreements.</span>
+                {formatMoneyWhole(expectedAnnualTotal)}
+                <span>/ year across {recurringClients.length} mowing relationship{recurringClients.length === 1 ? '' : 's'} · ~{MOWS_PER_YEAR} mows each. Excludes non-mowing agreements.</span>
               </div>
               <div className="admin-expected-bars">
                 {recurringClients.map(c => (
@@ -163,32 +137,34 @@ export default async function RevenuePage() {
               </div>
             </>
           )}
-        </div>
+        </section>
 
         <ExtraCharges charges={extras} clients={clients} />
 
         {completed.length > 0 && (
-          <div className="admin-revenue-card" style={{ marginTop: 12 }}>
-            <div className="admin-revenue-card-title">Completed Jobs</div>
-            <table className="admin-revenue-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Client</th>
-                  <th>Address</th>
-                  <th>Method</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completed.map(b => (
-                  <CompletedJobRow key={b.id} job={b} payments={payments.filter(p => p.booking_id === b.id)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <section className="admin-revenue-card">
+            <div className="admin-revenue-card-title">Completed jobs <small className="crm-muted" style={{ fontWeight: 400 }}>{completed.length}</small></div>
+            <div className="admin-table-wrap">
+              <table className="admin-revenue-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Client</th>
+                    <th>Address</th>
+                    <th>Price</th>
+                    <th>Paid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completed.map(b => (
+                    <CompletedJobRow key={b.id} job={b} payments={payments.filter(p => p.booking_id === b.id)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
         )}
       </div>
-    </>
+    </div>
   )
 }

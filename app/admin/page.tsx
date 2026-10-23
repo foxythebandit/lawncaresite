@@ -3,7 +3,9 @@ import BookingCard from './BookingCard'
 import AdminSearch from './AdminSearch'
 import AdminMap from './AdminMap'
 import CalendarView from './CalendarView'
-import { jobPrice } from '@/lib/crm-jobs'
+import Icon from './icons'
+import { formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
+import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 
 export default async function AdminPage({
   searchParams,
@@ -47,71 +49,74 @@ export default async function AdminPage({
     return d >= now && d <= weekEnd
   }).length
 
-  const confirmedBookings = all.filter(b => b.status === 'confirmed')
-  const totalFirstVisit   = confirmedBookings.reduce((s, b) => s + jobPrice(b), 0)
-  const monthlyRecurring  = confirmedBookings.filter(b => b.agreement_id).reduce((s, b) => s + jobPrice(b), 0)
 
+  const chicagoParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+  const chicagoDate = `${chicagoParts.find(p => p.type === 'year')?.value}-${chicagoParts.find(p => p.type === 'month')?.value}-${chicagoParts.find(p => p.type === 'day')?.value}`
+  // Upcoming booked: scheduled visits from today on (past-due ones are not future money).
+  const upcomingBooked = all.filter(b => b.status === 'confirmed' && (b.confirmed_date ?? '') >= chicagoDate).reduce((sum, b) => sum + jobPrice(b), 0)
+
+  // Generated mowing visits keep the lead ID, but only a quote booking carries its outcome.
+  const quotedVisitByLead = new Map<string, string>()
+  for (const leadId of new Set(all.map(b => b.lead_id).filter((id): id is string => !!id))) {
+    const quoted = latestQuoteBooking(all.filter(b => b.lead_id === leadId))
+    if (quoted) quotedVisitByLead.set(leadId, quoted.id)
+  }
   const visitCounts = new Map<string, number>()
   for (const b of all) {
     const key = b.customer_id ?? b.id
     visitCounts.set(key, (visitCounts.get(key) ?? 0) + 1)
   }
-  const chicagoParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
-  const chicagoDate = `${chicagoParts.find(p => p.type === 'year')?.value}-${chicagoParts.find(p => p.type === 'month')?.value}-${chicagoParts.find(p => p.type === 'day')?.value}`
+
+  const searchSuffix = q ? `&search=${encodeURIComponent(q)}` : ''
 
   return (
-    <>
+    <div className="crm-page">
+      <div className="crm-page-heading">
+        <div><h1>Jobs</h1><p className="crm-muted">Every visit, from request to payment.</p></div>
+        <div className="crm-head-actions">
+          <div className="admin-view-toggle" role="navigation" aria-label="Job view">
+            <a href={`/admin?filter=${filter}${searchSuffix}`} className={`admin-view-btn${view !== 'calendar' ? ' active' : ''}`}><Icon name="list" size={15} />List</a>
+            <a href={`/admin?view=calendar`} className={`admin-view-btn${view === 'calendar' ? ' active' : ''}`}><Icon name="calendar" size={15} />Calendar</a>
+          </div>
+        </div>
+      </div>
+
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{pendingCount}</span>
-          <span className="admin-stat-label">Pending</span>
+          <span className="admin-stat-label">To schedule</span>
         </div>
-        <div className="admin-stat-divider" />
         <div className="admin-stat">
           <span className="admin-stat-val">{confirmedCount}</span>
-          <span className="admin-stat-label">Confirmed</span>
+          <span className="admin-stat-label">Scheduled</span>
         </div>
-        <div className="admin-stat-divider" />
         <a href="/admin/week" className="admin-stat admin-stat-link">
           <span className="admin-stat-val">{weekCount}</span>
-          <span className="admin-stat-label">This week ↗</span>
+          <span className="admin-stat-label">This week <Icon name="arrowRight" size={14} /></span>
         </a>
-        <div className="admin-stat-divider" />
         <a href="/admin/revenue" className="admin-stat admin-stat-link">
-          <span className="admin-stat-val admin-stat-money">${totalFirstVisit.toLocaleString()}</span>
-          <span className="admin-stat-label">Scheduled estimate ↗</span>
-        </a>
-        <div className="admin-stat-divider" />
-        <a href="/admin/revenue" className="admin-stat admin-stat-link">
-          <span className="admin-stat-val admin-stat-money">${monthlyRecurring.toLocaleString()}</span>
-          <span className="admin-stat-label">Scheduled visit rate ↗</span>
+          <span className="admin-stat-val">{formatMoneyWhole(upcomingBooked)}</span>
+          <span className="admin-stat-label">Upcoming booked <Icon name="arrowRight" size={14} /></span>
         </a>
       </div>
 
-      <div className="admin-toolbar">
-        {view !== 'calendar' && (
-          <div className="admin-filters">
-            {[
-              { key: 'all',       label: 'All'       },
-              { key: 'pending',   label: 'Pending'   },
-              { key: 'confirmed', label: 'Confirmed' },
-              { key: 'week',      label: 'This week' },
-            ].map(f => (
-              <a key={f.key} href={`/admin?filter=${f.key}${q ? `&search=${encodeURIComponent(q)}` : ''}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
-                {f.label}
-              </a>
-            ))}
-          </div>
-        )}
-        {view === 'calendar' && <div />}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {view !== 'calendar' && <AdminSearch defaultValue={search} filter={filter} />}
-          <div className="admin-view-toggle">
-            <a href={`/admin?filter=${filter}${q ? `&search=${encodeURIComponent(q)}` : ''}`} className={`admin-view-btn${view !== 'calendar' ? ' active' : ''}`}>List</a>
-            <a href={`/admin?view=calendar`} className={`admin-view-btn${view === 'calendar' ? ' active' : ''}`}>Calendar</a>
-          </div>
+      {view !== 'calendar' && <div className="admin-toolbar">
+        <div className="admin-filters" role="navigation" aria-label="Job filters">
+          {[
+            { key: 'all',       label: 'All'       },
+            { key: 'pending',   label: 'To schedule' },
+            { key: 'confirmed', label: 'Scheduled' },
+            { key: 'week',      label: 'This week' },
+          ].map(f => (
+            <a key={f.key} href={`/admin?filter=${f.key}${searchSuffix}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
+              {f.label}
+            </a>
+          ))}
         </div>
-      </div>
+        <div className="admin-toolbar-right">
+          <label className="admin-search"><Icon name="search" size={15} /><AdminSearch defaultValue={search} filter={filter} /></label>
+        </div>
+      </div>}
 
       {view === 'calendar' ? (
         <CalendarView bookings={all.map(b => ({
@@ -127,7 +132,7 @@ export default async function AdminPage({
           phone: b.phone,
         }))} />
       ) : (
-        <div className="admin-body" style={{ padding: '12px 16px 90px' }}>
+        <>
           <div className="admin-list">
             {filtered.length === 0 ? (
               <div className="admin-empty">
@@ -138,6 +143,7 @@ export default async function AdminPage({
                 <BookingCard key={b.id} booking={b as any}
                   emailConfigured={Boolean(process.env.RESEND_API_KEY)}
                   historyCount={visitCounts.get(b.customer_id ?? b.id) ?? 1}
+                  quotedVisit={!!b.lead_id && quotedVisitByLead.get(b.lead_id) === b.id}
                   customers={identities.customers} properties={identities.properties}
                   agreement={agreements.find(a => a.id === b.agreement_id) as any}
                   futureJobIds={all.filter(row => row.agreement_id === b.agreement_id
@@ -160,9 +166,11 @@ export default async function AdminPage({
             address: b.address,
             status: b.status,
             price_per_visit: jobPrice(b),
+            confirmed_date: b.confirmed_date ?? null,
+            confirmed_time: b.confirmed_time ?? null,
           }))} />
-        </div>
+        </>
       )}
-    </>
+    </div>
   )
 }

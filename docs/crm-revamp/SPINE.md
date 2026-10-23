@@ -228,3 +228,30 @@ Behavioral suites passed against disposable local data: `crm-upgrade.py` (runs f
 ### Release status — complete local build and review
 
 Independent GPT-6 Astra final review at `4650d79148a596c873f0494eac21b17a914b926f` reports no remaining P1/P2 findings. Parent independently reviewed portal authorization, preservation and presentation. All final tests above pass, including real mock-provider confirmation replay and the complete migration chain. No implementation blockers remain. The subsequent documentation-only commit carries this handoff; deliver only `codex/crm-revamp`, without merge, PR or deployment. Production readiness checks in PRODUCTION-HANDOFF.md remain deliberately external. No active coding workers or unattended monitor remain.
+
+### Staff UI revamp — 22 October 2026 (presentation only)
+
+User requested a full visual revamp of the staff CRM (iPhone + laptop), keeping behavior identical. Changes are presentation and layout only; server actions, data flow, button labels, accessible names and test hooks (`.admin-card`, `.admin-card-summary`, `.admin-stat*`, `details.crm-details`, section `aria-label`s) are preserved.
+
+- Shell: desktop left sidebar, phone top bar + bottom tab bar (Leads, Today, Jobs, Customers, Revenue). Week moved behind a Today / Next 7 days toggle (`app/admin/ScheduleTabs.tsx`); `/admin/week` route unchanged. Landing-page logo (`/quietgreen-logo-full.svg`) in header and sign-in.
+- Styles: all admin CSS now lives in `app/admin/crm.css` (tokenized, scoped to `.admin-wrap`). Admin rules were removed from `app/globals.css`; the public booking time-window picker rules stay there. `app/admin/customers/customers.css` and its layout were folded in and deleted.
+- Screens restructured: leads list rows, lead workspace (header actions, Request/Respond main column, Quote/Contact side column, save toast), job rows and expanded job card (facts grid + section cards), Today/Week route cards, calendar with day detail panel, customers list/detail, legacy phone history, revenue (HTML bar chart replacing SVG), sign-in.
+- Test change: `tests/crm-lifecycle-ui.py` revenue label assertion is now case-insensitive (old CSS uppercased labels).
+- Local disposable DB (56422) test fixtures were renamed to realistic Austin names/addresses for review screenshots; pre-rename data dump at `/tmp/before-realistic.dump` inside the `supabase_db_qg-crm-test` container. No production access.
+
+### Staff flow simplification — 22 October 2026 (after owner UX review)
+
+Owner found the lead/quote buttons confusing and upsells awkward. Independent read-only audit confirmed duplicate actions ("Save draft" = "Save draft estimate"), three meanings of "confirm", and no way to start work for an existing customer. Adopted mental model: **Lead** = inquiry until the first visit is booked; **Customer** = household, home for all later work; **Job** = one visit (To schedule → Scheduled → Done); **Plan** = recurring mowing schedule that creates jobs; **Quote** = price offered, outcome kept for pricing history.
+
+- Lead price box: lawn care row holds checkbox, How often, calculated price and always-visible custom price; customer-facing step 3 hidden in staff mode; buttons **Save** / **Save as quoted** (= reviewed, D01/D06).
+- Lead Quote panel: **Book visit** (records acceptance, creates job via `create_job_from_quote`, links new or staff-confirmed same-phone customer via `crm_link_job`, optionally starts a lawn-care-only plan via `crm_start_agreement`; all idempotent operation IDs), **Text price** (native Messages, staff sends), **Customer said no** (declined kept), **Reopen quote**. Booked leads hand off to the customer. Booking is hidden and rejected server-side when the contact address changed after quoting.
+- Customer page: **+ Add job** (new `crm_create_customer_job`, staff-entered price snapshot, copies first acquisition) and **Start mowing plan** (first job + agreement). Active plan summary card.
+- Job card: plain statuses, "Schedule visit", "Start mowing plan" with a single lawn-care template price, plan wording for pause/end/resume.
+- Staff map pin on the Travis County parcel matching the house number (client-side public GIS query); grey approximate pin otherwise.
+- Tests: label updates in mobile/workflow/addressless/lifecycle/integration suites; new `tests/crm-customer-actions.py`; `crm-upgrade.py` applies the new migration in order. All pass except the pre-existing stale `crm-integration.py` call-link assertion (expects unformatted phone).
+
+### Quote outcomes and money display — 23 October 2026
+
+- Quote outcome now has four honest states with price history: accepted, declined, **canceled** (said yes, backed out before the first visit), open. "Customer canceled" on a booked lead ends the plan started from that booking (canceling its upcoming visits), cancels the visit if not done, sets `quote_status='canceled'`, `stage='lost'`, keeps the accepted snapshot and adds an activity. Canceling that same latest quote job from the job card does the same (prompt warns); plan visits and Add-job extras never change the quote. "Book again" re-accepts and books. Test: `tests/crm-quote-cancel.py`.
+- Money: one formatter (`formatMoney` cents for items/payments, `formatMoneyWhole` for tiles). Jobs tile is **Upcoming booked** (scheduled from today on); Revenue tiles **Paid all time / Paid this month / Upcoming booked / Completed jobs**, legacy recorded amounts moved to a footnote; completed table shows Price / Paid with Paid in full / Partly paid / Unpaid / Older record. Quotes say "per visit" only when lawn care repeats, otherwise "total".
+- Jobs map "Today’s route" routes only today's scheduled visits in time order. No route optimization (owner deferred).

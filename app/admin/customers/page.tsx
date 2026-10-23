@@ -2,6 +2,7 @@ import { formatPhone } from '@/lib/format-phone'
 import Link from 'next/link'
 import { getBookings, getCustomers } from '../actions'
 import { requireStaff } from '@/lib/staff'
+import Icon from '../icons'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,16 +16,26 @@ export default async function CustomersPage() {
 
   return <main className="crm-page crm-customers-page">
     <div className="crm-page-heading">
-      <div><span className="crm-eyebrow">QuietGreen · Customer history</span><h1>Customers</h1>
+      <div><h1>Customers</h1>
         <p className="crm-muted">Linked customers, properties, and visit history.</p></div>
-      <Link className="crm-button" href="/admin">View jobs →</Link>
     </div>
     <p className="crm-customer-help">A customer appears here after a staff member reviews and links a visit. Matching phone numbers alone do not combine records.</p>
     {customers.length === 0 ? <div className="admin-empty">No linked customers yet. Open a job to review and link its customer and property.</div>
       : <div className="crm-list">{customers.map(customer => <Link key={customer.id} className="crm-customer-card" href={`/admin/customers/${customer.id}`}>
+        <span className="crm-avatar" aria-hidden="true">{initials(customer.name)}</span>
         <span className="crm-customer-card-name">{customer.name || 'Unnamed customer'}</span>
         <span className="crm-customer-card-contact">{formatPhone(customer.phone) || customer.email || 'No contact details'}</span>
-        <span className="crm-customer-card-counts">{propertyCount.get(customer.id) ?? 0} properties · {jobCount.get(customer.id) ?? 0} visits <span aria-hidden="true">→</span></span>
+        <span className="crm-customer-card-counts">{plural(propertyCount.get(customer.id) ?? 0, 'property', 'properties')} · {plural(jobCount.get(customer.id) ?? 0, 'visit', 'visits')}</span>
+        <Icon name="chevronRight" size={16} />
       </Link>)}</div>}
   </main>
+}
+
+function initials(name: string | null) {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
+  return parts.length ? (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() : '?'
+}
+
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`
 }

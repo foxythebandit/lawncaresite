@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useActionState } from 'react'
 import { login } from '../actions'
 
@@ -10,24 +11,27 @@ export default function AdminLogin({ next }: { next: string }) {
     <div className="admin-login-wrap">
       <div className="admin-login-card">
         <div className="admin-login-logo">
-          <span className="logo-dot" style={{ background: 'var(--green-bright)', width: 10, height: 10, borderRadius: '50%', display: 'inline-block' }} />
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'var(--green-deep)' }}>QuietGreen</span>
+          <Image src="/quietgreen-logo-full.svg" alt="QuietGreen" width={160} height={37} priority />
         </div>
-        <h1 className="admin-login-title">Admin</h1>
+        <h1 className="admin-login-title">Staff sign in</h1>
+        <p className="admin-login-sub">Leads, jobs, and customers in one place.</p>
         <form action={action} className="admin-login-form">
           <input type="hidden" name="next" value={next} />
-          <input type="email" name="email" placeholder="Staff email" autoComplete="username" className="admin-login-input" required />
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            className="admin-login-input"
-            autoComplete="current-password"
-            required
-          />
-          {state?.error && <p className="admin-login-error">{state.error}</p>}
+          <label>Email
+            <input type="email" name="email" placeholder="you@quietgreen.co" autoComplete="username" className="admin-login-input" required />
+          </label>
+          <label>Password
+            <input
+              type="password"
+              name="password"
+              className="admin-login-input"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          {state?.error && <p className="admin-login-error" role="alert">{state.error}</p>}
           <button type="submit" className="admin-login-btn" disabled={pending}>
-            {pending ? 'Signing in…' : 'Sign in →'}
+            {pending ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
       </div>

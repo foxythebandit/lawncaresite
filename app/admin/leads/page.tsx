@@ -31,20 +31,20 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
 
   return <div className="crm-page">
     <div className="crm-page-heading">
-      <div><span className="crm-eyebrow">QuietGreen · Response queue</span><h1>Leads</h1><span className="crm-muted">Call, quote, and follow up from one workspace.</span></div>
-      <Link className="crm-button" href="/admin/route">Today’s jobs →</Link>
+      <div><h1>Leads</h1><p className="crm-muted">Call, quote, and follow up from one workspace.</p></div>
     </div>
-    <div className="crm-filter-row" aria-label="Lead views">
-      <Link className="crm-filter" href="/admin/leads" aria-current={view === 'all' ? 'page' : undefined}>All <strong>{leads.length}</strong></Link>
-      <Link className="crm-filter" href="/admin/leads?view=needs" aria-current={view === 'needs' ? 'page' : undefined}>Needs action <strong>{needsCount}</strong></Link>
-      <Link className="crm-filter" href="/admin/leads?view=followup" aria-current={view === 'followup' ? 'page' : undefined}>Follow-ups <strong>{followupCount}</strong></Link>
-    </div>
-    <div className="admin-stats" style={{ borderRadius: 12, marginBottom: 18, border: '1px solid var(--rule)' }}>
+    <div className="admin-stats">
+      <div className="admin-stat"><span className="admin-stat-val">{needsCount}</span><span className="admin-stat-label">Needs action</span></div>
       <div className="admin-stat"><span className="admin-stat-val">{leads.length}</span><span className="admin-stat-label">Total leads</span></div>
-      <div className="admin-stat-divider" />
       <div className="admin-stat"><span className="admin-stat-val">{totalConverted}</span><span className="admin-stat-label">Confirmed booking conversion</span></div>
-      <div className="admin-stat-divider" />
       <div className="admin-stat"><span className="admin-stat-val">{leads.length ? Math.round((totalConverted / leads.length) * 100) : 0}%</span><span className="admin-stat-label">Conversion rate</span></div>
+    </div>
+    <div className="crm-toolbar">
+      <div className="crm-filter-row" role="navigation" aria-label="Lead views">
+        <Link className="crm-filter" href="/admin/leads" aria-current={view === 'all' ? 'page' : undefined}>All <strong>{leads.length}</strong></Link>
+        <Link className="crm-filter" href="/admin/leads?view=needs" aria-current={view === 'needs' ? 'page' : undefined}>Needs action <strong>{needsCount}</strong></Link>
+        <Link className="crm-filter" href="/admin/leads?view=followup" aria-current={view === 'followup' ? 'page' : undefined}>Follow-ups <strong>{followupCount}</strong></Link>
+      </div>
     </div>
     {visible.length === 0 ? <div className="admin-empty">{view === 'all' ? 'No leads yet.' : 'Nothing in this view.'}</div> : <div className="crm-list">
       {visible.map(lead => <LeadRow key={lead.id} lead={lead} source={formatAttributionLabel(lead)} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />)}

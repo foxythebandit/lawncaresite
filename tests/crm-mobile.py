@@ -79,8 +79,8 @@ with sync_playwright() as playwright:
     page.get_by_text('Saved.', exact=True).first.wait_for()
     assert db('leads?id=eq.' + lead_id)[0]['follow_up_at']
     page.get_by_label('Leaf cleanup price').fill('125.50')
-    page.get_by_role('button', name='Save draft', exact=True).click()
-    page.get_by_role('status').filter(has_text='Draft saved.').wait_for()
+    page.get_by_role('button', name='Save', exact=True).click()
+    page.get_by_role('status').filter(has_text='Price saved.').wait_for()
     saved = db('leads?id=eq.' + lead_id)[0]
     assert saved['quote_draft']['manualLines'][0]['amountCents'] == 12550
     assert saved['quote_draft']['totalCents'] == 12550
@@ -88,35 +88,29 @@ with sync_playwright() as playwright:
     page.reload()
     page.get_by_label('Leaf cleanup price').wait_for()
     assert page.get_by_label('Leaf cleanup price').input_value() == '125.50'
-    page.get_by_role('button', name='Confirm quote', exact=True).click()
-    page.get_by_role('status').filter(has_text='Quote confirmed.').wait_for()
-    page.get_by_role('button', name='Mark accepted').click()
-    page.get_by_text('Saved.', exact=True).first.wait_for()
-    accepted = db('leads?id=eq.' + lead_id)[0]
-    assert accepted['quote_status'] == 'accepted'
-    assert accepted['accepted_quote_snapshot']['totalCents'] == 12550
-    # A later contact-address change must not silently book the earlier accepted property.
+    page.get_by_role('button', name='Save as quoted', exact=True).click()
+    page.get_by_role('status').filter(has_text='Saved as quoted.').wait_for()
+    assert db('leads?id=eq.' + lead_id)[0]['quote_confirmed_at']
+    # A later contact-address change must not let the earlier quoted property be booked.
     page.get_by_text('Edit contact', exact=True).click()
     page.get_by_label('Property address', exact=True).fill('999 Temporary Test Property, Austin, TX')
     page.get_by_role('button', name='Save contact').click()
     page.get_by_text('Contact address changed.', exact=False).wait_for()
-    page.get_by_role('button', name='Create booking request').click()
-    page.get_by_text('The contact address changed after this quote.', exact=False).first.wait_for()
+    assert page.get_by_role('button', name='Book visit').count() == 0
     assert db('bookings?lead_id=eq.' + lead_id) == []
-    assert db('leads?id=eq.' + lead_id)[0]['accepted_quote_snapshot']['address'] == '807 E 47th St, Austin, TX'
-    assert page.get_by_role('button', name='Confirm quote', exact=True).count() == 0
-    page.get_by_role('button', name='Cancel acceptance').click()
     page.get_by_role('button', name='Start quote for updated address').click()
     assert page.get_by_label('Leaf cleanup price').input_value() in ('', '0', '0.00')
     page.get_by_label('Leaf cleanup price').fill('125.50')
-    page.get_by_role('button', name='Save draft', exact=True).click()
-    page.get_by_role('status').filter(has_text='Draft saved.').wait_for()
-    page.get_by_role('button', name='Confirm quote', exact=True).click()
-    page.get_by_role('status').filter(has_text='Quote confirmed.').wait_for()
-    page.get_by_role('button', name='Mark accepted').click()
-    page.get_by_text('Saved.', exact=True).first.wait_for()
-    page.get_by_role('button', name='Create booking request').click()
-    page.get_by_text('Booking request created.').first.wait_for()
+    page.get_by_role('button', name='Save', exact=True).click()
+    page.get_by_role('status').filter(has_text='Price saved.').wait_for()
+    page.get_by_role('button', name='Save as quoted', exact=True).click()
+    page.get_by_role('status').filter(has_text='Saved as quoted.').wait_for()
+    page.get_by_role('button', name='Book visit', exact=True).click()
+    page.get_by_role('button', name='Confirm booking', exact=True).click()
+    page.get_by_text('Visit booked.').first.wait_for()
+    accepted = db('leads?id=eq.' + lead_id)[0]
+    assert accepted['quote_status'] == 'accepted'
+    assert accepted['accepted_quote_snapshot']['totalCents'] == 12550
     bookings = db('bookings?lead_id=eq.' + lead_id)
     assert len(bookings) == 1 and bookings[0]['status'] == 'pending'
     assert bookings[0]['address'] == '999 Temporary Test Property, Austin, TX'

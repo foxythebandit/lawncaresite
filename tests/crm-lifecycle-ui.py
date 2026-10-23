@@ -67,11 +67,11 @@ with sync_playwright() as p:
     assert priced['payment_link'] is None
     assert float(priced['job_total']) == 55 and priced['accepted_quote_snapshot']['original_total'] == 60
     card = page.locator('.admin-card', has_text=name)
-    card.get_by_role('button', name='Make recurring').click()
+    card.get_by_role('button', name='Start mowing plan').click()
     card.get_by_label('Interval count').fill('1')
     card.locator('section[aria-label="Start recurring agreement"] input[type=date]').fill(next_on)
-    card.get_by_role('button', name='Start agreement').click()
-    page.get_by_text('Recurring agreement created.').wait_for(timeout=15000)
+    card.get_by_role('button', name='Start plan').click()
+    page.get_by_text('Mowing plan started.').wait_for(timeout=15000)
     agreement_id = db('bookings?id=eq.' + job['id'])[0]['agreement_id']
     assert agreement_id
     card = page.locator('.admin-card', has_text=name)
@@ -92,7 +92,7 @@ with sync_playwright() as p:
     page.goto(BASE + '/admin/revenue')
     page.get_by_text('Monthly job payments recorded by paid date').wait_for(timeout=15000)
     body = page.locator('body').inner_text()
-    assert 'JOB PAYMENTS RECORDED' in body, body[:1200]
+    assert 'PAID ALL TIME' in body.upper(), body[:1200]
     assert name in page.locator('body').inner_text()
     browser.close()
 print('PASS: browser staff link/customer-property, agreement, confirmation, atomic completion/next visit, partial payment, revenue')

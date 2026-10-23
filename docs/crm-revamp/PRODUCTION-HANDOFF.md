@@ -1,8 +1,8 @@
 # QuietGreen CRM — friend's machine handoff
 
-**Reviewed implementation handoff; production activation requires preflight.** Implementation, local tests and independent Astra review are complete. The code checkpoint below is followed only by the documentation commit containing this receipt. The friend runs deployment/migrations on his machine using his existing credentials; do not place secret values in this document.
+**Release preparation — 23 October 2026.** The owner authorized completing and pushing this branch for deployment from Paxton’s laptop. The historical receipt below covers the earlier checkpoint only; the current release receipt at the end of this document supersedes it for the redesigned CRM. Paxton’s deployment agent uses the existing Supabase/Vercel/Twilio setup. Do not place secret values in this document or copy local test configuration to production.
 
-## Release evidence
+## Historical release evidence
 
 - Implementation checkpoint: **`codex/crm-revamp` at `4650d79148a596c873f0494eac21b17a914b926f`; reviewed and tested**
 - Decisions/defaults: **recorded in SPINE.md; real signed synthetic ConviFlo receipt verified, production form mappings still require activation checks**
@@ -15,7 +15,8 @@
   - `20261022223600_crm_job_items_service_delete.sql`: service-role item replacement grant; customer portal total column grant under existing row isolation.
   - `20261022224000_crm_explicit_first_occurrence.sql`: explicit first return date followed by anchored cadence.
   - `20261022224500_crm_job_command_replay.sql`: identify scheduling replays so they cannot resend confirmation email.
-- Local upgrade/preservation tests: **full isolated seeded upgrade passes through the scheduling-replay migration; website/CRM regression suites and final optimized production rebuild pass**
+  - `20261023000000_crm_customer_job.sql`: additive `crm_create_customer_job` command (service role only) so staff can add one-off jobs and start mowing plans from a customer page. No table or data changes.
+- Local upgrade/preservation tests: **full isolated seeded upgrade passes through the customer-job migration; website/CRM regression suites and final optimized production rebuild pass**
 - Final Astra review: **no remaining P1/P2 findings at the code checkpoint; all six review findings closed and first-visit/presentation preservation reviewed**
 - Hosting target, actual deployed revision and migration history: **verify on friend's machine**
 - Rollback application revision: **verify current deployed revision on friend’s machine; recovery constraints below prohibit destructive down migrations**
@@ -81,3 +82,26 @@ Choose the last verified deployed application revision on the friend's machine; 
 New dated payment records and historical `amount_charged` records remain separately visible; no reconciliation relationship is invented and they are not combined into a claimed settled balance. Customer portal totals are loaded server-side only for bookings already authorized by customer row policies. New partial/full payments suppress the old full-price Pay link; full payments show paid-in-full. Changing an individual job price clears both its stored and displayed old payment link. Scheduling operation replays do not resend the confirmation email; a local boundary mock verified this without real email.
 
 First-visit prices (including introductory discounts and the already-discounted cleanup total) remain distinct from ongoing price. The authoritative current-job amount is `job_total`, then original `first_visit_price`, then legacy ongoing price. Forecasts use ongoing terms, not introductory discounts. Before starting an agreement, explicitly review future service/discount items; do not carry one-time cleanup or introductory discounts forward unintentionally.
+
+## Current deployment configuration
+
+Read this section instead of the historical SMS-only instructions in `docs/crm-setup.md`. Inspect existing Vercel **Production** values securely and preserve unrelated settings. Verify the target Supabase project before changing anything. Public variables require a rebuild; server settings must be present on the deployment that will receive leads.
+
+| Setting | Required production value or check |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` | Existing project credentials; no local Docker URL or test key. |
+| `STAFF_EMAILS` | Both intended staff emails, matching confirmed Auth users with server-controlled `app_metadata.role = "staff"`. Reuse existing accounts. |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Reuse and verify existing live credentials and a number capable of voice and SMS. Prior working calls do not establish SMS delivery. |
+| `TWILIO_STAFF_PHONES` | Exactly two distinct approved numbers in international format, comma-separated. This release has **no singular/owner-number fallback**. Verify recipients with the owners. |
+| `STAFF_VOICE_ENABLED`, `STAFF_SMS_ENABLED` | Both `true` for the approved live acceptance and ongoing operation. Missing flags disable that channel. |
+| `CRM_BASE_URL` | Canonical HTTPS origin, normally `https://quietgreen.co`; verify actual deployed domain. Never localhost. |
+| `ALERT_RECOVERY_SECRET` | Server-only random secret, at least 32 characters, shared securely with the trusted recovery scheduler. |
+| `CONVIFLO_WEBHOOK_SECRET` | Signing secret matching the production ConviFlo webhook; at least 32 characters. Not the local test secret. |
+| `CONVIFLO_FORMS` | JSON mapping of actual production form IDs to explicit `services` and `address_key`; enable `map_meta_utm_ids` only for forms using the verified numeric Meta macros. |
+| `META_AD_CREATIVES` | Actual Meta ad IDs mapped to `creative_id` and `creative_type` (`ai`/`real`); never use test IDs. |
+
+Optional website Meta settings (`NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_META_LEAD_EVENTS_ENABLED`, `NEXT_PUBLIC_META_UTM_ID_CAMPAIGNS`) require verified event ownership and campaign IDs before activation. Keep existing Google/Maps/payment/email settings unless the reviewed release requires a concrete change. No new Stripe billing or CAPI integration is introduced.
+
+ConviFlo webhook destination is `https://quietgreen.co/api/intake/conviflo` after confirming the canonical domain. Its HMAC header is `X-Conviflow-Signature`. Configure and verify **each real form**; the previous isolated test form is not a production mapping. The last inspected landing-page form had no webhook or Pixel configured.
+
+Recovery endpoint: `POST /api/staff-alerts/recover` with `Authorization: Bearer <ALERT_RECOVERY_SECRET>`. Choose a supported scheduler that can send this POST/header securely; a plain Vercel cron URL entry issues GET and does not match this endpoint. Test the chosen scheduler without indiscriminately replaying historical disabled alerts. Inspect pending/disabled/unknown backlog before first enabling recovery; uncertain provider sends require reconciliation, not blind retry.

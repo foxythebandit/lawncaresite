@@ -1,6 +1,8 @@
 import { getBookings } from '../actions'
 import DayJobs from '../DayJobs'
-import { jobPrice } from '@/lib/crm-jobs'
+import ScheduleTabs from '../ScheduleTabs'
+import Icon from '../icons'
+import { formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,31 +25,27 @@ export default async function RoutePage() {
     : null
 
   return (
-    <>
+    <div className="crm-page">
+      <div className="crm-page-heading">
+        <div><h1>Today</h1><p className="crm-muted">{todayLabel}</p></div>
+        <div className="crm-head-actions">
+          {mapsUrl && <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="crm-button crm-button-primary admin-route-all-btn"><Icon name="navigation" size={15} />Full route</a>}
+        </div>
+      </div>
+
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{jobs.length}</span>
           <span className="admin-stat-label">Jobs today</span>
         </div>
-        <div className="admin-stat-divider" />
         <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${todayRevenue.toLocaleString()}</span>
+          <span className="admin-stat-val">{formatMoneyWhole(todayRevenue)}</span>
           <span className="admin-stat-label">Scheduled job value</span>
-        </div>
-        <div className="admin-stat-divider" />
-        <div className="admin-stat" style={{ flex: 1, textAlign: 'left', paddingLeft: 20 }}>
-          <span className="admin-stat-val" style={{ fontSize: 16, fontFamily: 'var(--font-body)', fontWeight: 500 }}>{todayLabel}</span>
-          {mapsUrl && (
-            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="admin-route-all-btn">
-              Full route ↗
-            </a>
-          )}
         </div>
       </div>
 
-      <div style={{ padding: '12px 16px' }}>
-        <DayJobs jobs={jobs} emptyLabel="No jobs confirmed for today." />
-      </div>
-    </>
+      <div className="admin-schedule-head"><ScheduleTabs current="today" /></div>
+      <DayJobs jobs={jobs} emptyLabel="No jobs confirmed for today." />
+    </div>
   )
 }

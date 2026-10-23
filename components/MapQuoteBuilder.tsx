@@ -32,6 +32,31 @@ interface Section {
   coords: [number, number][] | null
 }
 
+/* Staff map: find the Travis County lot whose situs number matches the address
+   near the geocoded point, so the pin lands on the house rather than the street. */
+async function findTravisLot(houseNumber: string, near: { lat: number; lng: number }): Promise<{ center: [number, number]; ring: [number, number][] } | null> {
+  const qs = new URLSearchParams({
+    where: `SITUS = '${houseNumber}'`, geometry: `${near.lng},${near.lat}`, geometryType: 'esriGeometryPoint', inSR: '4326',
+    distance: '120', units: 'esriSRUnit_Meter', spatialRel: 'esriSpatialRelIntersects', outFields: 'SITUS', outSR: '4326', f: 'geojson',
+  })
+  try {
+    const res = await fetch(`https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/EXTERNAL_tcad_parcel/FeatureServer/0/query?${qs}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    let best: { center: [number, number]; ring: [number, number][] } | null = null
+    let bestDist = Infinity
+    for (const feature of data?.features ?? []) {
+      const geometry = feature?.geometry
+      const ring: [number, number][] | undefined = geometry?.type === 'MultiPolygon' ? geometry.coordinates?.[0]?.[0] : geometry?.coordinates?.[0]
+      if (!ring || ring.length < 3) continue
+      const center: [number, number] = [ring.reduce((sum, p) => sum + p[0], 0) / ring.length, ring.reduce((sum, p) => sum + p[1], 0) / ring.length]
+      const dist = (center[0] - near.lng) ** 2 + (center[1] - near.lat) ** 2
+      if (dist < bestDist) { bestDist = dist; best = { center, ring } }
+    }
+    return best
+  } catch { return null }
+}
+
 /* ── Constants ────────────────────────────────────────── */
 const FREQ: Record<Frequency, { label: string; sub: string; discount: number }> = {
   onetime:  { label: 'One-time', sub: 'Single visit', discount: 0  },
@@ -343,6 +368,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const pickedRef = useRef<GeoResult | null>(null)
   const [activeSug,   setActiveSug]   = useState(-1)
   const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
+  const sectionsCountRef = useRef(sections.length)
+  useEffect(() => { sectionsCountRef.current = sections.length }, [sections])
   const [lawnSqFt, setLawnSqFt] = useState<number | null>(null)
   const [animSqFt, setAnimSqFt] = useState(0)
   const [liveSqFt, setLiveSqFt] = useState(0)
@@ -506,6 +533,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     const src = map.getSource('sections-data') as any
     if (src) src.setData(sectionsGeoJSON(sections))
   }, [sections, mapReady])
+
 
   /* ─── Address autocomplete ──────────────────────────── */
   const fetchSuggestions = useCallback((query: string) => {
@@ -806,6 +834,33 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     })
   }, [])
 
+  /* ─── Staff only: pin the house the address search found ── */
+  useEffect(() => {
+    const map = mapRef.current
+    if (!staffQuote || !map || !mapReady || !jobLatLng) return
+    let alive = true
+    let marker: { remove(): void } | null = null
+    const houseNumber = (staffQuote.address ?? address).match(/^\s*(\d+)/)?.[1]
+    Promise.all([import('maplibre-gl'), houseNumber ? findTravisLot(houseNumber, jobLatLng) : null]).then(([{ default: ml }, lot]) => {
+      if (!alive) return
+      const el = document.createElement('div')
+      el.className = lot ? 'crm-house-pin' : 'crm-house-pin crm-house-pin-approx'
+      el.title = lot ? 'County parcel for this address' : 'Approximate location from address search'
+      el.innerHTML = '<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23.5 2 14a13 13 0 0 1 26 0c0 9.5-13 25-13 25z" fill="currentColor" stroke="#fff" stroke-width="2.5"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>'
+      // Taps still reach the map so the pin never blocks tracing.
+      el.style.pointerEvents = 'none'
+      marker = new ml.Marker({ element: el, anchor: 'bottom' }).setLngLat(lot ? lot.center : [jobLatLng.lng, jobLatLng.lat]).addTo(map)
+      if (lot) {
+        drawParcelBoundary(lot.ring)
+        map.setPaintProperty('parcel-outline', 'line-opacity', 0.9)
+        map.setPaintProperty('parcel-outline', 'line-width', 2)
+        const recenter = () => { if (alive) map.easeTo({ center: lot.center, duration: 600 }) }
+        if (map.isMoving()) map.once('moveend', recenter); else recenter()
+      }
+    })
+    return () => { alive = false; marker?.remove() }
+  }, [staffQuote, mapReady, jobLatLng, address, drawParcelBoundary])
+
   /* ─── Address search ─────────────────────────────────── */
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
@@ -856,7 +911,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       // Drive the "drawing" step off the animation actually finishing rather
       // than a hardcoded timer, so it can never fire early/late if the
       // duration below ever changes.
-      map.once('moveend', () => { startDraw(); setStep('drawing') })
+      // Staff quotes that already have a measured lawn open ready to price; "Start over" retraces.
+      map.once('moveend', () => { if (staffQuote && sectionsCountRef.current > 0) { setStep('done'); return } startDraw(); setStep('drawing') })
       map.flyTo({ center: [lon, lat], zoom: 18, duration: 4200 })
 
       // Fetch parcel boundary in parallel with the fly animation
@@ -999,7 +1055,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const staffTotalCents = (includeMowing ? mowingPriceCents : 0) + manualLines.reduce((sum, line) => sum + line.amountCents, 0) - discountCents
   const isDone         = step === 'done' || step === 'editing'
   // Once the price is unlocked the map shrinks to a preview and the quote takes over
-  const compact        = leadUnlocked && step === 'done' && !isDrawing
+  const compact        = !staffQuote && leadUnlocked && step === 'done' && !isDrawing
 
   // Lawn finished → phone box; price unlocked (or extra area added) → price
   useEffect(() => {
@@ -1095,7 +1151,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       if ('error' in result) setSaveMessage(result.error)
       else {
         staffQuote.onSaved?.(result.updatedAt, confirmed, next)
-        setSaveMessage(confirmed ? 'Quote confirmed. No booking or message was created.' : 'Draft saved.')
+        setSaveMessage(confirmed ? 'Saved as quoted. Nothing was sent to the customer.' : 'Price saved.')
       }
     } catch { setSaveMessage('Could not save. Please retry.') }
     finally { setSaving(false) }
@@ -1111,14 +1167,18 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
       <div className="mapq-inner">
         {staffQuote && <div className="staff-quote-controls">
-          <h2>Prepare this quote</h2>
-          <p>Price any requested service. Trace the lawn only if mowing is part of this quote. Saving does not contact the customer.</p>
-          {includeMowing && <label>Staff price override per visit ($, optional)<input type="number" min="0" value={overridePrice ?? ''} onChange={e => setOverridePrice(e.target.value === '' ? null : Number(e.target.value))} /></label>}
-          <QuotePriceEditor lines={manualLines} onLinesChange={setManualLines} discountCents={discountCents} onDiscountChange={setDiscountCents} includeMowing={includeMowing} onIncludeMowingChange={included => { setIncludeMowing(included); if (included) setShowStaffMap(true) }} mowingPriceCents={mowingPriceCents} />
-          <label>Quote notes<textarea value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} /></label>
-          <button disabled={saving || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(false)}>Save draft</button>
-          <button disabled={saving || isDrawing || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(true)}>Confirm quote</button>
-          {staffQuote.quote_status === 'accepted' && <p>This accepted quote is locked. Cancel acceptance before preparing a new draft.</p>}
+          <h2>Price</h2>
+          <p>Build the price for this lead. Saving never contacts the customer.</p>
+          <QuotePriceEditor lines={manualLines} onLinesChange={setManualLines} discountCents={discountCents} onDiscountChange={setDiscountCents} includeMowing={includeMowing} onIncludeMowingChange={included => { setIncludeMowing(included); if (included) setShowStaffMap(true) }} mowingPriceCents={mowingPriceCents}
+            lawn={{ sqFt: lawnSqFt, freq, freqOptions: (Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([value, f]) => ({ value, label: f.discount ? `${f.label} (−${f.discount}%)` : f.label })),
+              onFreqChange: value => setFreq(value as Frequency), calculatedCents: Math.round(ongoingPrice * 100), overridePrice, onOverrideChange: setOverridePrice }} />
+          <label>Notes for this quote<textarea aria-label="Quote notes" value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} placeholder="Anything the price depends on" /></label>
+          <div className="staff-quote-actions">
+            <button disabled={saving || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(false)}>Save</button>
+            <button disabled={saving || (isDrawing && includeMowing) || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(true)}>Save as quoted</button>
+          </div>
+          <p className="staff-quote-hint">{isDrawing && includeMowing ? 'Finish the lawn trace on the map (or uncheck lawn care) before saving as quoted.' : '“Save as quoted” means you’ve given (or are about to give) the customer this price.'}</p>
+          {staffQuote.quote_status === 'accepted' && <p>This price was accepted and is locked.</p>}
           <p role="status">{saveMessage}</p>
         </div>}
         {staffQuote && <div className="crm-map-heading"><span>Property map</span><button type="button" className="crm-map-toggle" onClick={() => setShowStaffMap(open => !open)}>{showStaffMap ? 'Hide map' : 'Open map'}</button></div>}
@@ -1340,13 +1400,14 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                 {!isDrawing && isDone && lawnSqFt && (
                   <p className="mapq-step-done-text">
                     {lawnSqFt.toLocaleString()} sq ft traced
+                    {staffQuote && <> · <button className="mapq-link" onClick={handleReset}>Start over</button></>}
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Step 3 — Quote */}
-            <div className="mapq-step mapq-step-last">
+            {/* Step 3 — Quote (customers only; staff price lives in the Price box) */}
+            {!staffQuote && <div className="mapq-step mapq-step-last">
               <div className={`mapq-step-indicator ${isDone ? 'active' : 'idle'}`}>
                 {isDone
                   ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -1774,7 +1835,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
           </div>
 

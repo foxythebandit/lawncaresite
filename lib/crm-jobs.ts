@@ -17,6 +17,38 @@ export function centsAmount(cents: number): string {
   return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
 }
 
+/** Next visit date for a plan that starts on `on` (calendar months clamp to month end). */
+export function addInterval(on: string, unit: 'week' | 'month', count: number) {
+  const date = new Date(`${on}T12:00:00Z`)
+  if (unit === 'week') date.setUTCDate(date.getUTCDate() + 7 * count)
+  else {
+    const day = date.getUTCDate()
+    date.setUTCDate(1)
+    date.setUTCMonth(date.getUTCMonth() + count)
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate()
+    date.setUTCDate(Math.min(day, lastDay))
+  }
+  return date.toISOString().slice(0, 10)
+}
+
+const usdCents = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+const usdWhole = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+
+/** Line items, prices and payments: always dollars and cents ($1,783.50). */
+export function formatMoney(value: number | string | null | undefined) {
+  return usdCents.format(Number(value ?? 0))
+}
+
+/** Headline totals in summary tiles: whole dollars ($1,784). */
+export function formatMoneyWhole(value: number | string | null | undefined) {
+  return usdWhole.format(Math.round(Number(value ?? 0)))
+}
+
+/** Plain-language job status shown to staff; stored values stay pending/confirmed/completed. */
+export function jobStatusLabel(status: string) {
+  return ({ pending: 'To schedule', confirmed: 'Scheduled', completed: 'Done', canceled: 'Canceled', skipped: 'Skipped' } as Record<string, string>)[status] ?? status
+}
+
 export type JobLine = { kind: 'service' | 'discount'; description: string; amount: string }
 export type ActionResult = { success: true; data?: Record<string, unknown> } | { success: false; error: string }
 

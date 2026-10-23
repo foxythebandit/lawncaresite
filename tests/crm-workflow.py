@@ -56,13 +56,13 @@ with sync_playwright() as p:
  box=canvas.bounding_box();assert box and box['width']>100
  # Trace three corners, save while still drawing, then restore and finish.
  for x,y in [(0.4,0.4),(0.6,0.4),(0.6,0.6)]:canvas.click(position={'x':box['width']*x,'y':box['height']*y})
- page.get_by_role('button',name='Save draft',exact=True).click();page.get_by_role('status').filter(has_text='Draft saved.').wait_for()
+ page.get_by_role('button',name='Save',exact=True).click();page.get_by_role('status').filter(has_text='Price saved.').wait_for()
  draft=db('leads?id=eq.'+lid)[0]['quote_draft'];assert len(draft['unfinishedPoints'])==3,draft
  page.reload();page.wait_for_load_state('networkidle');page.get_by_text('3 points placed',exact=True).wait_for(timeout=20000)
  page.get_by_role('button',name='Finish ✓',exact=True).click()
- page.get_by_label('Staff price override').fill('80')
- page.get_by_role('button',name='Confirm quote',exact=True).click()
- try: page.get_by_role('status').filter(has_text='Quote confirmed.').wait_for(timeout=10000)
+ page.get_by_label('Custom price ($)').fill('80')
+ page.get_by_role('button',name='Save as quoted',exact=True).click()
+ try: page.get_by_role('status').filter(has_text='Saved as quoted.').wait_for(timeout=10000)
  except Exception:
   print('QUOTE STATUS',page.get_by_role('status').all_inner_texts(),flush=True)
   raise
@@ -71,25 +71,25 @@ with sync_playwright() as p:
  assert saved['quote_draft']['contactAddressAtReview']==saved['address']
  assert saved['quote_draft']['calculatedPrice']>0 and saved['quote_draft']['overridePrice']==80
  assert len(db('intake_events?lead_id=eq.'+lid))==1
- page.get_by_role('button',name='Mark accepted').click();page.get_by_text('Saved.',exact=True).first.wait_for()
- assert db('leads?id=eq.'+lid)[0]['quote_status']=='accepted'
- page.get_by_role('button',name='Create booking request',exact=True).click()
+ page.get_by_role('button',name='Book visit',exact=True).click()
+ page.get_by_role('button',name='Confirm booking',exact=True).click()
  page.get_by_text('Booking stages (1)',exact=True).wait_for()
+ assert db('leads?id=eq.'+lid)[0]['quote_status']=='accepted'
  booking=db('bookings?lead_id=eq.'+lid)[0];assert booking['status']=='pending' and booking['price_per_visit']==80 and booking['utm_source']=='meta'
  assert booking['attribution']==saved['attribution']
- page.goto(BASE+'/admin');page.wait_for_load_state('networkidle')
+ page.goto(BASE+'/admin');page.wait_for_load_state('load')  # the jobs map keeps geocoding, so the network rarely idles
  page.get_by_role('button',name=name,exact=False).first.click()
- page.get_by_role('button',name='Link reviewed identity').click()
- page.get_by_role('status').filter(has_text='Customer and property linked.').wait_for()
- assert db('bookings?id=eq.'+booking['id'])[0]['customer_id']
+ # Book visit already created and linked the customer; the job card no longer asks.
+ assert booking['customer_id'] and booking['property_id']
+ assert page.get_by_role('button',name='Link reviewed identity').count()==0
  page.get_by_label('Visit date').fill('2026-10-25')
  page.get_by_role('button',name='Save visit date').click()
  page.get_by_role('status').filter(has_text='Visit confirmed.').wait_for()
  confirmed=db('bookings?id=eq.'+booking['id'])[0];assert confirmed['status']=='confirmed' and confirmed['confirmed_at']
- page.get_by_role('button',name='Make recurring',exact=False).click()
+ page.get_by_role('button',name='Start mowing plan',exact=False).click()
  page.locator('section[aria-label="Start recurring agreement"] input[type=date]').fill('2026-11-01')
- page.get_by_role('button',name='Start agreement',exact=True).click()
- page.get_by_role('status').filter(has_text='Recurring agreement created.').wait_for()
+ page.get_by_role('button',name='Start plan',exact=True).click()
+ page.get_by_role('status').filter(has_text='Mowing plan started.').wait_for()
  page.get_by_label('Date completed').fill('2026-10-25')
  page.get_by_role('button',name='Mark complete',exact=True).click()
  page.get_by_role('status').filter(has_text='Visit completed.').wait_for()
@@ -98,7 +98,6 @@ with sync_playwright() as p:
  page.get_by_label('Payment method').select_option(label='Cash')
  page.get_by_role('button',name='Record payment',exact=True).click()
  page.get_by_role('status').filter(has_text='Payment recorded.').wait_for()
- page.wait_for_load_state('networkidle')
  rows=db('bookings?lead_id=eq.'+lid)
  assert len(rows)==2,rows
  completed=next(r for r in rows if r['status']=='completed');recurring=next(r for r in rows if r['status']=='confirmed')
