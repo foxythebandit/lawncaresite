@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getLeads, getBookings } from '../actions'
 import { formatAttributionLabel } from '@/lib/attribution'
 import LeadRow from './LeadRow'
+import LeadWarmup from './LeadWarmup'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +29,12 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const visible = leads.filter(lead => view === 'needs' ? needsAction(lead) : view === 'followup' ? !!lead.follow_up_at && !['booked','lost'].includes(lead.stage ?? 'new') : true)
     .sort((a, b) => Number(needsAction(b)) - Number(needsAction(a)) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   const totalConverted = leads.filter(lead => bookedLeadIds.has(lead.id)).length
+  // The top of the queue is what staff open while the phone rings; get it ready first.
+  const priority = visible.slice(0, 2)
+  const warm = priority.map(lead => {
+    const answers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? lead.answers as { address_needs_review?: unknown } : {}
+    return { address: lead.address, jobLatLng: lead.quote_draft?.jobLatLng ?? null, needsReview: answers.address_needs_review === true }
+  })
 
   return <div className="crm-page">
     <div className="crm-page-heading">
@@ -47,7 +54,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       </div>
     </div>
     {visible.length === 0 ? <div className="admin-empty">{view === 'all' ? 'No leads yet.' : 'Nothing in this view.'}</div> : <div className="crm-list">
-      {visible.map(lead => <LeadRow key={lead.id} lead={lead} source={formatAttributionLabel(lead)} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />)}
+      {visible.map(lead => <LeadRow key={lead.id} lead={lead} priority={priority.includes(lead)} source={formatAttributionLabel(lead)} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />)}
     </div>}
+    <LeadWarmup leads={warm} />
   </div>
 }

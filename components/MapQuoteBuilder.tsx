@@ -15,7 +15,8 @@ import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAdd
 import { trackWebsiteLead } from '@/lib/meta-events'
 import { QUOTE_CONSENT_TEXT as LEAD_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
-import { OFFICE_LAT, OFFICE_LNG, photonSearch, type GeoResult } from '@/lib/address-search'
+import { OFFICE_LAT, OFFICE_LNG, photonSearch, geocodeAddress, cachedGeocode, type GeoResult } from '@/lib/address-search'
+import { ESRI_IMAGERY, MAPBOX_TOKEN } from '@/lib/map-imagery'
 import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
 import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
 import QuotePriceEditor, { type ManualPriceLine } from '@/app/admin/leads/QuotePriceEditor'
@@ -82,13 +83,8 @@ const LAST_MOW_WEEKS: Record<string, number> = {
 }
 
 /* ── Constants ────────────────────────────────────────── */
-// Mapbox Satellite (sharper, more current) when a token is configured; Esri World Imagery otherwise
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 // Addresses farther than this get an "outside our area" message instead of a quote
 const SERVICE_RADIUS_MILES = 30
-// Bias geocoding toward Austin (lon/lat box ~35 mi around the office) so vague
-// entries like "123 Main St" resolve locally instead of in another state
-const GEOCODE_BIAS = `countrycodes=us&viewbox=${OFFICE_LNG - 0.6},${OFFICE_LAT + 0.5},${OFFICE_LNG + 0.6},${OFFICE_LAT - 0.5}&bounded=0`
 
 
 
@@ -121,7 +117,6 @@ function calcPrice(sqFt: number): number {
 // doesn't it serves a grey "Map data not yet available" tile instead of a 404.
 // The `esri-hd://` protocol loads the real tile when there is one and, for the
 // placeholder, crops + enlarges the nearest real ancestor tile instead.
-const ESRI_IMAGERY = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile'
 const ESRI_ALWAYS_AVAILABLE_Z = 19
 // A tile Esri has no imagery for (mid-Pacific) — byte-identical to every placeholder
 const ESRI_PLACEHOLDER_URL = `${ESRI_IMAGERY}/21/1048575/131072`
@@ -152,27 +147,6 @@ async function loadEsriTile(z: number, y: number, x: number, signal: AbortSignal
     return (await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 })).arrayBuffer()
   }
   return buf
-}
-
-/* ── Address lookup ───────────────────────────────────── */
-// Suggestions come from Photon: Nominatim's usage policy forbids
-// search-as-you-type, and it starts refusing (429/403, no CORS header) once
-// a visitor's IP sends a burst of requests — which broke the address box.
-// The final search still prefers Nominatim (better at exact house numbers)
-// and falls back to Photon if it errors, times out or finds nothing.
-async function geocodeAddress(address: string): Promise<GeoResult | null> {
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&${GEOCODE_BIAS}`,
-      { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(5000) }
-    )
-    if (res.ok) {
-      const data = await res.json()
-      if (data.length) return { label: data[0].display_name, lat: +data[0].lat, lon: +data[0].lon }
-    }
-  } catch { /* blocked, rate-limited or timed out — fall through to Photon */ }
-  const [hit] = await photonSearch(address, 1)
-  return hit ?? null
 }
 
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -885,7 +859,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
     try {
       const picked = pickedRef.current
-      const hit = picked && picked.label === address ? picked : await geocodeAddress(address)
+      const hit = picked && picked.label === address ? picked : await (staffQuote ? cachedGeocode : geocodeAddress)(address)
       if (!hit) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
       const { lat, lon } = hit
 
@@ -903,6 +877,13 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       if (!staffQuote) trackQuoteAddressFound()
 
       const map = mapRef.current
+      // Staff are usually on the phone with this customer: open right on the house.
+      if (staffQuote) {
+        map.once('moveend', () => { if (sectionsCountRef.current > 0) { setStep('done'); return } startDraw(); setStep('drawing') })
+        map.jumpTo({ center: [lon, lat], zoom: 18 })
+        getParcel(address, lat, lon).then(parcel => { if (parcel) drawParcelBoundary(parcel.coordinates) })
+        return
+      }
       // Snap out to a wide, zoomed-out view over the address first (instant,
       // no animation) so the flyTo below always starts from a wide shot and
       // swoops in to the house — regardless of whatever zoom level the map
