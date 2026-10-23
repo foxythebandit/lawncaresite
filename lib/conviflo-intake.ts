@@ -36,7 +36,7 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
         .filter(Boolean).map(s => String(s).trim()).join(', ')
     }
   }
-  if (!address) throw new Error('Completed lead has no usable address')
+  // The address is optional on live forms; staff collect it on the callback.
   const meta = data.meta && typeof data.meta === 'object' && !Array.isArray(data.meta)
     ? data.meta as Record<string, unknown> : {}
   const utm = meta.utm && typeof meta.utm === 'object' && !Array.isArray(meta.utm)
@@ -56,10 +56,10 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
     contact: { name: fields.name, phone: fields.phone, email: fields.email,
       address },
     services: form.services,
-    answers: { ...fields, address_needs_review: true, conviflo_form_id: formId,
+    answers: { ...fields, address_needs_review: true, address_missing: !address, conviflo_form_id: formId,
       conviflo_response_id: data.responseId, conviflo_form_slug: data.formSlug,
       conviflo_submitted_at: data.submittedAt, conviflo_lead_value_horizon: 'unknown' },
     attribution: enrichMetaCreative(attribution, process.env.META_AD_CREATIVES),
     estimated_value: value,
-  })
+  }, { requireAddress: false })
 }

@@ -41,7 +41,11 @@ assert send(completed,False)[0] == 401
 assert send(partial) == (200,{'ignored':True})
 missing = json.loads(json.dumps(completed))
 missing['answers'].pop('address')
-assert send(missing)[0] == 422
+missing['responseId'] = str(uuid.uuid4())
+status,result = send(missing)
+assert status == 201,(status,result)
+addressless = rows('leads','id=eq.'+result['lead_id'])[0]
+assert addressless['address'] is None and addressless['answers']['address_missing'] is True
 unknown = {**completed,'formId':str(uuid.uuid4())}
 assert send(unknown)[0] == 422
 status,result = send(completed)
