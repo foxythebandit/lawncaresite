@@ -325,6 +325,52 @@ nav {
 }
 .trust-card-cta:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .trust-card { transition: none; } }
+
+/* Review ticker: one quiet line of review quotes drifting under the trust strip */
+.review-ticker {
+  background: var(--green-deep);
+  padding: 0 0 18px;
+  overflow: hidden;
+  position: relative;
+}
+/* fade the chips into the strip's green at both edges instead of a hard cut */
+.review-ticker::before,
+.review-ticker::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 8%; z-index: 1;
+  pointer-events: none;
+}
+.review-ticker::before { left: 0;  background: linear-gradient(to right, var(--green-deep), transparent); }
+.review-ticker::after  { right: 0; background: linear-gradient(to left,  var(--green-deep), transparent); }
+.review-ticker-track {
+  display: flex; gap: 10px; width: max-content;
+  animation: reviewTicker 70s linear infinite;
+}
+.review-ticker-copy { display: contents; }
+.review-ticker:hover .review-ticker-track,
+.review-ticker:focus-within .review-ticker-track { animation-play-state: paused; }
+@keyframes reviewTicker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(-50% - 5px)); } /* half the track + half a gap */
+}
+.review-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255,255,255,.1); border-radius: 100px;
+  background: rgba(255,255,255,.03);
+  font-size: 13px; color: rgba(255,255,255,.72); text-decoration: none;
+  white-space: nowrap;
+  transition: background .2s, color .2s;
+}
+.review-chip:hover { background: rgba(255,255,255,.08); color: #fff; }
+.review-chip:focus-visible { outline: 2px solid var(--green-bright); outline-offset: 2px; }
+.review-chip-stars { color: #ffd166; font-size: 10px; letter-spacing: 1px; }
+.review-chip-name { color: rgba(255,255,255,.45); }
+.review-chip-name::before { content: '— '; }
+@media (prefers-reduced-motion: reduce) {
+  .review-ticker { overflow-x: auto; scrollbar-width: none; }
+  .review-ticker-track { animation: none; padding: 0 8vw; }
+  .review-ticker-copy { display: none; }
+}
 /* Below ~1100px all four won't fit on one line: rating gets its own row and the
    three promises sit in a row below (never a lone wrapped item) */
 @media (max-width: 1100px) {
