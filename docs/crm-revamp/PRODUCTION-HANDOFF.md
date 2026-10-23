@@ -142,3 +142,14 @@ Do not copy `.env.local`, local test users, synthetic form/ad IDs, or temporary 
 2. Mark the synthetic "TEST Release Check (ignore)" lead lost in the CRM.
 3. Configure a POST-capable recovery scheduler only after reviewing the pending/undelivered alert backlog.
 4. Connect the real ConviFlo forms and the Meta dataset before the ad launch. The "New Leads Ad" draft is in the Quiet Green ad account (2240549216693180), not the personal account.
+
+### Update — 23 October 2026, ConviFlo connected and texts off
+- `STAFF_SMS_ENABLED=false` (owners no longer want texts); voice is still on for both staff numbers. New SMS intents are recorded as `disabled` with 0 attempts.
+- ConviFlo "landing page" form (`05212679-7c8d-4034-9a43-53b48a336548`, `conviflo.com/f/landing-page`) is connected. The webhook goes to `https://quietgreen.co/api/intake/conviflo`, and the signing secret matches Vercel's `CONVIFLO_WEBHOOK_SECRET` (a local copy is in the main checkout's gitignored `.env.local`). `CONVIFLO_FORMS` maps it to service "Lawn mowing", `address_key` "address", with Meta UTM-ID mapping on. The other three live forms are not connected.
+- Commit `4ee0e22`: ConviFlo leads without an address are accepted with `answers.address_missing = true`, and the CRM shows "Address not yet provided". The canonical Bearer endpoint still requires an address.
+- Verified on production:
+  - A signed synthetic delivery returned 201, and the identical retry returned 200 with `duplicate: true` (one intake event, four intents).
+  - A signed addressless delivery was saved.
+  - A real submission through the live public form reached the CRM 1.3 s after submit, with answers, ZIP and the test UTMs kept. Both calls completed (3–4 s) and there were no duplicate events after ConviFlo's retry window.
+- The question slides use generic field keys (`choice`, `choice_2`, …). Renaming them in ConviFlo would make CRM answers easier to read. It only affects leads captured after the change.
+- Meta: dataset 27435240816118469 is connected only to ad account 2240549216693180, not to 2096962487924428.
