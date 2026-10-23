@@ -21,7 +21,7 @@
 - Hosting target, actual deployed revision and migration history: **verify on friend's machine**
 - Rollback application revision: **verify current deployed revision on friend’s machine; recovery constraints below prohibit destructive down migrations**
 
-## Prompt to use after the branch is complete
+## Deployment-agent instructions
 
 You are deploying the reviewed QuietGreen CRM revamp from my machine. Read `AGENTS.md`, `docs/crm-revamp/SPINE.md`, this release evidence, the actual changed migrations and relevant installed framework/skill guidance before acting. Use my existing Supabase project, hosting and Twilio setup; my keys are available locally. Do not print or commit secrets. Do not provision replacement services or rewrite the marketing site.
 
@@ -37,7 +37,7 @@ Inspect configuration names from the completed implementation, without exposing 
 
 The non-negotiable lead behavior is: every new website or ConviFlo lead generates a Twilio attention call and an SMS to **each of Caelan and Paxton**. Calls need not be answered and must not bridge to the customer. Voice and SMS start independently, not one after another. SMS contains customer name, customer phone, address, services, useful answers and a protected direct link into the prefilled quote workspace. Full source/ad/creative details remain in the CRM. The confirmed requirement is 24/7 alerts; do not invent quiet hours.
 
-Prepare the concrete deployment/migration sequence and acceptance test before seeking any needed final release approval. Confirm the intended target and authorization for real test calls/texts, with designated safe test contact data and both staff recipients. Do not notify real leads or emit live acquisition events as an accidental side effect of testing. Run production changes only within that authorization.
+The owner has authorized deploying this release from Paxton’s laptop and real test calls/texts to Caelan and Paxton. Prepare and execute the concrete deployment/migration sequence within that scope; do not request the same blanket permission again. Verify the intended existing project/domain, both staff recipients and designated synthetic test contact data before running acceptance. Do not notify real customers or emit live acquisition events as an accidental side effect of testing. Pause for a specific unexplained schema mismatch, missing account access or actual destructive operation, rather than inventing a new approval gate.
 
 After migration/deployment, verify existing website forms still save correctly, login returns to the precise lead, the selected address opens the correct property, and staff quote save/approval does not automatically send or book. Exercise one controlled intake from each source with stable submission IDs; verify both phones actually ring and receive complete SMS links, then retry the same submissions and verify there are no duplicate alerts. Provider acceptance alone does not prove ringing or delivery. Capture provider identifiers/statuses privately and measure timing; do not promise a five-second reviewed quote.
 

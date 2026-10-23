@@ -147,9 +147,18 @@ with sync_playwright() as p:
     # Storage failures must give a recoverable error rather than a stuck button.
     broken = browser.new_context()
     broken.route('**/*', lambda r: r.continue_() if urllib.parse.urlsplit(r.request.url).netloc in (urllib.parse.urlsplit(BASE).netloc, urllib.parse.urlsplit(CFG['API_URL']).netloc) else r.abort())
-    broken.add_init_script("Storage.prototype.getItem = function () { throw new Error('Test: unavailable storage') }")
     blocked = broken.new_page()
     blocked.goto(BASE + '/#service-inquiry')
+    blocked.wait_for_load_state('networkidle')
+    # Fail the browser-storage boundary after hydration so this exercises the
+    # form's recovery rather than preventing the development runtime from booting.
+    blocked.evaluate("""() => {
+        const getItem = Storage.prototype.getItem;
+        Storage.prototype.getItem = function (key) {
+            if (key.startsWith('qg_')) throw new Error('Test: unavailable storage');
+            return getItem.call(this, key);
+        };
+    }""")
     failed_form = blocked.locator('#service-inquiry')
     failed_form.locator('input[name=name]').fill('Storage test')
     failed_form.locator('input[name=phone]').fill('+15125550123')

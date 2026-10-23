@@ -62,7 +62,8 @@ with sync_playwright() as playwright:
     # Lead path: customer backs out before the first visit.
     page.get_by_role('button', name='Customer canceled', exact=True).click()
     review = page.get_by_role('group', name='Review cancellation')
-    review.get_by_text(job['id'], exact=False).wait_for()
+    assert review.locator('li').count() == 1
+    assert review.get_by_text('Visit 1', exact=False).is_visible()
     review.get_by_role('button', name='Confirm cancellation').click()
     page.get_by_text('Canceled after booking', exact=True).wait_for()
     canceled = db('leads?id=eq.' + lead_id)[0]
@@ -94,6 +95,8 @@ with sync_playwright() as playwright:
     row = page.locator('.crm-lead', has_text=name)
     assert row.get_by_text('Canceled', exact=True).is_visible()
     page.goto(BASE + '/admin/leads/' + lead_id)
+    old_snapshots = {row['id']: row['accepted_quote_snapshot'] for row in db('bookings?lead_id=eq.' + lead_id)}
+    page.get_by_label('Custom price ($)').fill('87.25')
     page.get_by_role('button', name='Save as quoted', exact=True).click()
     page.get_by_role('status').filter(has_text='Saved as quoted.').wait_for()
     assert page.get_by_role('button', name='Book visit', exact=True).is_visible()
@@ -101,7 +104,12 @@ with sync_playwright() as playwright:
     page.get_by_label('Start weekly mowing plan', exact=False).uncheck()
     page.get_by_role('button', name='Confirm booking', exact=True).click()
     page.get_by_text('Visit booked.').first.wait_for()
-    assert len(db('bookings?lead_id=eq.' + lead_id)) == 3
+    revised_jobs = db('bookings?lead_id=eq.' + lead_id)
+    assert len(revised_jobs) == 3
+    revised = next(row for row in revised_jobs if row['id'] not in old_snapshots)
+    assert float(revised['job_total']) == 87.25
+    assert revised['accepted_quote_snapshot']['quote_draft']['overridePrice'] == 87.25
+    assert all(row['accepted_quote_snapshot'] == old_snapshots[row['id']] for row in revised_jobs if row['id'] in old_snapshots)
 
     # A completed quoted visit creates a newer plan visit with the same lead ID.
     # Canceling that generated visit must leave the accepted quote alone.

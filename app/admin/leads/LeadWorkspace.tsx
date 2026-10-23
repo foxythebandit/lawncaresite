@@ -314,9 +314,9 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
                 {firstVisitOpen && <button type="button" className="crm-button crm-button-ghost crm-button-danger" disabled={pending} onClick={customerCanceled}>Customer canceled</button>}
               </div>
               {cancellationPreview && <div className="crm-booking-request" role="group" aria-label="Review cancellation">
-                <p>Cancel quoted visit {cancellationPreview.bookingId} and mark its quote canceled? History is kept.</p>
+                <p>Cancel this quoted visit and mark its quote canceled? History is kept.</p>
                 {cancellationPreview.agreementId && <p>End the mowing plan and cancel these {cancellationPreview.futureJobs.length} upcoming unfinished visit{cancellationPreview.futureJobs.length === 1 ? '' : 's'}:</p>}
-                {cancellationPreview.futureJobs.length > 0 && <ul>{cancellationPreview.futureJobs.map(job => <li key={job.id}>{job.date ?? 'Date not set'} · {job.id}</li>)}</ul>}
+                {cancellationPreview.futureJobs.length > 0 && <ul>{cancellationPreview.futureJobs.map((job, index) => <li key={job.id}>Visit {index + 1} · {job.date ? new Date(`${job.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date not set'}</li>)}</ul>}
                 <div className="crm-action-row">
                   <button type="button" className="crm-button crm-button-danger" disabled={pending} onClick={confirmCancellation}>Confirm cancellation</button>
                   <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => { setCancellationPreview(null); cancelOps.current = null }}>Keep visit</button>
