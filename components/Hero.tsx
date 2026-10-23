@@ -34,9 +34,9 @@ export default function Hero() {
     document.querySelectorAll<HTMLVideoElement>('.hero-vid-card video').forEach(v => v.pause())
   }, [])
 
-  // Desktop: the full-height hero pushes the trust strip ("5.0 on Google",
-  // guarantee) just below the fold. Shortly after landing, glide down so the
-  // strip's bottom meets the bottom of the screen — unless the visitor has
+  // Desktop: the full-height hero pushes the trust strip ("5.0 on Google" +
+  // review ticker, guarantee) just below the fold. Shortly after landing, glide
+  // down so the strip's bottom meets the bottom of the screen — unless the visitor has
   // already scrolled, arrived on a #link, or is on a phone/tablet.
   useEffect(() => {
     if (window.location.hash || window.scrollY > 0) return
@@ -48,7 +48,10 @@ export default function Hero() {
       if (window.scrollY > 0) return
       const strip = document.querySelector('.trust-bar')
       if (!strip) return
-      const by = strip.getBoundingClientRect().bottom - window.innerHeight
+      // Never scroll the headline up under the nav on short screens
+      const h1 = document.querySelector('.hero-h1')
+      const headlineRoom = h1 ? h1.getBoundingClientRect().top - 68 - 16 : Infinity
+      const by = Math.min(strip.getBoundingClientRect().bottom - window.innerHeight, headlineRoom)
       if (by <= 0) return
       const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
       window.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' })

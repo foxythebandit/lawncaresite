@@ -5,7 +5,7 @@ import { recordIntake } from '@/lib/intake'
 import { QUOTE_CONSENT_TEXT, QUOTE_CONSENT_VERSION } from '@/lib/quote-consent'
 import { websiteLead } from '@/lib/website-intake'
 
-const SERVICES = ['Landscaping', 'Yard cleanup', 'Gutter cleaning', 'Lawn mowing', 'Other'] as const
+const SERVICES = ['Landscaping', 'Yard cleanup', 'Hedge trimming', 'Tree pruning', 'Gutter cleaning', 'Lawn mowing', 'Other'] as const
 export type ServiceInquiryKind = typeof SERVICES[number]
 
 export interface ServiceInquiryData extends Attribution {

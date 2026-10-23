@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { REVIEWS } from '@/lib/reviews'
 
 type TrustPoint = {
   label: string
@@ -59,53 +60,76 @@ export default function TrustBar() {
   }, [open])
 
   return (
-    <div className={`trust-bar${open !== null ? ' has-open' : ''}`} ref={barRef}>
+    <>
       {/* Social proof first — neighbors' reviews carry more weight than our own claims */}
-      <div className="trust-cell reveal" data-delay={REVEAL_DELAYS[0]}>
-        <div className="trust-item">
-          <a className="trust-trigger trust-rating" href="#reviews" aria-label={`Rated ${GOOGLE_RATING} out of 5 on Google from ${GOOGLE_REVIEW_COUNT} reviews — read them`}>
-            <span className="trust-stars" aria-hidden="true">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <svg key={i} viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
+      <ReviewRow />
+      <div className={`trust-bar${open !== null ? ' has-open' : ''}`} ref={barRef}>
+        {POINTS.map((p, i) => (
+          // .reveal sits on the static wrapper: the scroll-reveal script adds a `revealed`
+          // class that a re-render of a dynamic className would wipe out (hiding the item)
+          <div key={p.label} className="trust-cell reveal" data-delay={REVEAL_DELAYS[i]}>
+            <div className="trust-divider" />
+            <div className={`trust-item${open === i ? ' open' : ''}`}>
+              <button
+                type="button"
+                className="trust-trigger"
+                aria-expanded={open === i}
+                aria-controls={`trust-card-${i}`}
+                onClick={() => setOpen(open === i ? null : i)}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {p.icon}
                 </svg>
-              ))}
-            </span>
-            {GOOGLE_RATING} on Google
-            <span className="trust-rating-count">({GOOGLE_REVIEW_COUNT} reviews)</span>
-          </a>
-        </div>
-      </div>
-      {POINTS.map((p, i) => (
-        // .reveal sits on the static wrapper: the scroll-reveal script adds a `revealed`
-        // class that a re-render of a dynamic className would wipe out (hiding the item)
-        <div key={p.label} className="trust-cell reveal" data-delay={REVEAL_DELAYS[i + 1]}>
-          <div className="trust-divider" />
-          <div className={`trust-item${open === i ? ' open' : ''}`}>
-            <button
-              type="button"
-              className="trust-trigger"
-              aria-expanded={open === i}
-              aria-controls={`trust-card-${i}`}
-              onClick={() => setOpen(open === i ? null : i)}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                {p.icon}
-              </svg>
-              {p.label}
-            </button>
-            <div className="trust-card" id={`trust-card-${i}`} role="region" aria-label={p.label}>
-              <p className="trust-card-title">{p.title}</p>
-              <p className="trust-card-body">{p.body}</p>
-              {p.cta && (
-                <a className="trust-card-cta" href={p.cta.href} onClick={() => setOpen(null)}>
-                  {p.cta.label} →
-                </a>
-              )}
+                {p.label}
+              </button>
+              <div className="trust-card" id={`trust-card-${i}`} role="region" aria-label={p.label}>
+                <p className="trust-card-title">{p.title}</p>
+                <p className="trust-card-body">{p.body}</p>
+                {p.cta && (
+                  <a className="trust-card-cta" href={p.cta.href} onClick={() => setOpen(null)}>
+                    {p.cta.label} →
+                  </a>
+                )}
+              </div>
             </div>
           </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// The Google rating, with a slow single-line ticker of short review quotes
+// drifting beside it. The quotes are rendered twice so the -50% loop is
+// seamless; the copy is hidden from screen readers. Pauses on hover/focus;
+// static and swipeable when the visitor prefers reduced motion.
+function ReviewRow() {
+  const chips = (copy: boolean) => REVIEWS.map(r => (
+    <a key={`${copy}-${r.name}`} className="review-chip" href="#reviews" tabIndex={copy ? -1 : undefined}>
+      <span className="review-chip-avatar" style={{ background: r.avatarBg }} aria-hidden="true">{r.initials}</span>
+      <span className="review-chip-quote">“{r.short}”</span>
+      <span className="review-chip-name">{r.name.split(' ')[0]}</span>
+    </a>
+  ))
+  return (
+    <div className="review-row">
+      <a className="trust-trigger trust-rating" href="#reviews" aria-label={`Rated ${GOOGLE_RATING} out of 5 on Google from ${GOOGLE_REVIEW_COUNT} reviews — read them`}>
+        <span className="trust-stars" aria-hidden="true">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <svg key={i} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
+            </svg>
+          ))}
+        </span>
+        {GOOGLE_RATING} on Google
+        <span className="trust-rating-count">({GOOGLE_REVIEW_COUNT} reviews)</span>
+      </a>
+      <div className="review-ticker" aria-label="What customers say on Google">
+        <div className="review-ticker-track">
+          {chips(false)}
+          <div className="review-ticker-copy" aria-hidden="true">{chips(true)}</div>
         </div>
-      ))}
+      </div>
     </div>
   )
 }

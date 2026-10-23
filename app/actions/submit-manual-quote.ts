@@ -10,12 +10,13 @@ export interface ManualQuoteData extends Attribution {
   phone: string
   address: string
   lawn_size_bucket?: string
+  notes?: string
 }
 export async function submitManualQuote(data: ManualQuoteData) {
   try {
     if (!data.name?.trim() || !data.address?.trim()) return { success: false, error: 'Name and address are required.' }
     const result = await recordIntake('website-manual', data.submission_id, {
-      ...websiteLead(data, 'manual'), answers: { lawn_size_bucket: data.lawn_size_bucket?.slice(0, 30) }, consent: data.consent === true,
+      ...websiteLead(data, 'manual'), answers: { lawn_size_bucket: data.lawn_size_bucket?.slice(0, 30), notes: typeof data.notes === 'string' ? data.notes.trim().slice(0, 2000) || null : null }, consent: data.consent === true,
       consent_text: data.consent === true ? QUOTE_CONSENT_TEXT : null, consent_version: data.consent === true ? QUOTE_CONSENT_VERSION : null,
       consented_at: data.consent === true ? new Date().toISOString() : null,
     })
