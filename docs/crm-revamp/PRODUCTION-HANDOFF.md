@@ -1,6 +1,6 @@
 # QuietGreen CRM — friend's machine handoff
 
-**Release preparation — 23 October 2026.** The owner authorized completing and pushing this branch for deployment from Paxton’s laptop. The historical receipt below covers the earlier checkpoint only; the current release receipt at the end of this document supersedes it for the redesigned CRM. Paxton’s deployment agent uses the existing Supabase/Vercel/Twilio setup. Do not place secret values in this document or copy local test configuration to production.
+**Prepared release — 23 October 2026; deploy from Paxton’s laptop.** The owner authorized completing and pushing this branch for deployment from Paxton’s laptop. The historical receipt below covers the earlier checkpoint only; the current release receipt at the end of this document supersedes it for the redesigned CRM. Paxton’s deployment agent uses the existing Supabase/Vercel/Twilio setup. Do not place secret values in this document or copy local test configuration to production.
 
 ## Historical release evidence
 
@@ -105,3 +105,23 @@ Optional website Meta settings (`NEXT_PUBLIC_META_PIXEL_ID`, `NEXT_PUBLIC_META_L
 ConviFlo webhook destination is `https://quietgreen.co/api/intake/conviflo` after confirming the canonical domain. Its HMAC header is `X-Conviflow-Signature`. Configure and verify **each real form**; the previous isolated test form is not a production mapping. The last inspected landing-page form had no webhook or Pixel configured.
 
 Recovery endpoint: `POST /api/staff-alerts/recover` with `Authorization: Bearer <ALERT_RECOVERY_SECRET>`. Choose a supported scheduler that can send this POST/header securely; a plain Vercel cron URL entry issues GET and does not match this endpoint. Test the chosen scheduler without indiscriminately replaying historical disabled alerts. Inspect pending/disabled/unknown backlog before first enabling recovery; uncertain provider sends require reconciliation, not blind retry.
+
+## Current release receipt — 23 October 2026
+
+- Application checkpoint: **`988ca9f95475235832a14bbfd4b0b7d77a96c407`**, branch **`codex/crm-revamp`**. Subsequent receipt/test-selector changes do not change application behavior. Includes public-site main `72f3c68aeb7490afa20ef06b22cee11d6be8caf4`; preserve newer main changes too if any arrive before deployment.
+- Preserved redesigned staff screens, customer/job/plan model and money presentation. Corrected quote-origin selection, final lead version after booking, partial cancellation error reporting, explicit cancellation preview, changed-address recovery, and revised-price rebooking without overwriting prior accepted job snapshots.
+- Optimized production build and TypeScript passed for this application checkpoint. Scoped lint of the changed quote actions/workspace/helper, customer actions and public inquiry files passed. Full repository lint is not claimed clean; existing admin page `any`/unused compatibility arguments remain outside this fix.
+- Real isolated database upgrade passed: existing-row preservation, role isolation, exact amounts, identity, recurrence and idempotency, including the customer-job migration. No production database was queried or changed.
+- Local connector/browser checks passed during this release: `crm-alerts.py`, `crm-conviflo.py`, `service-inquiry.py`, `crm-map-booking.py`, `crm-customer-actions.py`, `crm-lifecycle-ui.py`, `crm-portal-payments.py`, `crm-integration.py`, `crm-quote-cancel.py`, `crm-mobile.py`, `crm-workflow.py`; forecast and creative-registry tests passed. Final integration/cancellation/mobile/full-workflow checks ran against `next start` using the optimized build, avoiding the development overlay. The cancellation test includes changing the new price to $87.25, preserving old snapshots, immediate note saving after booking and later recurring cancellation keeping the original quote accepted.
+- Independent GPT-6 Astra standards/security review found no additional P1/P2 issues. Spec review’s canceled-quote rebooking finding was corrected and closed on re-review.
+- Tests used a separate local application copy on port 3104, local Supabase 56421/56422 and mocked provider boundaries. The previously captured real signed synthetic ConviFlo receipt remains the vendor-contract evidence. No real calls/texts, live Meta events, publication of production forms or production deployment is claimed.
+
+### On Paxton’s laptop
+
+1. Fetch `origin/codex/crm-revamp` in the `foxythebandit/lawncaresite` repository. Preserve any local work; use a clean checkout. Read this document, AGENTS.md and SPINE.md. Verify the release includes the checkpoint above and current main.
+2. Inspect the existing Vercel/Supabase targets and migration history; take a current recoverable backup. Apply only verified unapplied migrations, preserving existing rows and accounts. Do not blindly replay the historical backup/alignment migrations.
+3. Verify the current configuration table above, deploy the matching application, and check staff login and existing customer/job records before introducing ad traffic.
+4. Verify controlled website and ConviFlo submissions, exact available source/ad IDs, both real calls and SMS, working protected quote links and duplicate protection. Inspect the notification backlog before enabling scheduled recovery.
+5. Connect each actual ConviFlo form and verify the selected Meta/Google conversion goals and destination receipt. **CRM deployment and ad launch are separate gates**: CRM source capture is locally verified; live ad-platform reporting and production form configuration still require this acceptance.
+
+Do not copy `.env.local`, local test users, synthetic form/ad IDs, or temporary tunnel addresses to production. Finish by recording the deployed commit, migration results, preservation counts and actual call/SMS/event receipts.

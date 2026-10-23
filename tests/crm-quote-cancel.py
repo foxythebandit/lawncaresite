@@ -62,6 +62,7 @@ with sync_playwright() as playwright:
     # Lead path: customer backs out before the first visit.
     page.get_by_role('button', name='Customer canceled', exact=True).click()
     review = page.get_by_role('group', name='Review cancellation')
+    review.wait_for()
     assert review.locator('li').count() == 1
     assert review.get_by_text('Visit 1', exact=False).is_visible()
     review.get_by_role('button', name='Confirm cancellation').click()
@@ -138,7 +139,7 @@ with sync_playwright() as playwright:
     generated = [row for row in db('bookings?lead_id=eq.' + repeat['id']) if row['id'] != original['id']]
     assert len(generated) == 1 and generated[0]['status'] == 'confirmed'
     page.goto(BASE + '/admin/leads/' + repeat['id'])
-    assert page.get_by_text('Booked', exact=True).first.is_visible()
+    page.locator('.crm-sec-quote .crm-chip').filter(has_text='Booked').wait_for()
     assert page.get_by_role('button', name='Customer canceled', exact=True).count() == 0
     page.goto(BASE + '/admin?search=' + urllib.parse.quote(repeat_name))
     next_card = page.locator('.admin-card', has_text=repeat_name).filter(has=page.locator('.admin-badge-confirmed')).first
