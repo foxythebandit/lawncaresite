@@ -125,3 +125,20 @@ Recovery endpoint: `POST /api/staff-alerts/recover` with `Authorization: Bearer 
 5. Connect each actual ConviFlo form and verify the selected Meta/Google conversion goals and destination receipt. **CRM deployment and ad launch are separate gates**: CRM source capture is locally verified; live ad-platform reporting and production form configuration still require this acceptance.
 
 Do not copy `.env.local`, local test users, synthetic form/ad IDs, or temporary tunnel addresses to production. Finish by recording the deployed commit, migration results, preservation counts and actual call/SMS/event receipts.
+
+## Production deployment receipt — 23 October 2026 (Paxton's laptop)
+
+- Deployed commit **`f7a3552`** (`codex/crm-revamp`, fast-forwarded onto `main` from `72f3c68`). Vercel production deployment `lawncaresite-3omm6s89r` is Ready and aliased to `quietgreen.co` and `www.quietgreen.co`.
+- Before migrating: prod history matched the repository through `20261022000000`, and none of the CRM tables existed. A JSON export of every public table was taken locally (26 bookings, 28 leads, 0 quotes, 3 extra charges, 4 intake events, 7 staff alerts). Both Auth users (Caelan and Paxton) are confirmed with `app_metadata.role = staff`.
+- Rehearsal: all nine migrations ran against real prod data inside a transaction that was forced to roll back. Counts and ID hashes were unchanged, and nothing persisted.
+- Applied with `supabase db push`: the nine migrations listed above, `20261022215624` through `20261023000000`. Afterwards the bookings/leads counts and ID hashes matched the backup exactly. anon/authenticated have no select on the new CRM tables and no execute on `record_intake_v2`/`crm_job_command`. Every public table has RLS enabled.
+- Vercel production env added: `STAFF_SMS_ENABLED=true`, `STAFF_VOICE_ENABLED=true` and `ALERT_RECOVERY_SECRET`, which is also saved in the main checkout's gitignored `.env.local`. ConviFlo (`CONVIFLO_WEBHOOK_SECRET`/`CONVIFLO_FORMS`) and `META_AD_CREATIVES` are deliberately unset, so the ConviFlo endpoint returns 503.
+- Smoke checks: `/` 200, `/admin` 307 to login, `/portal/login` 200, ConviFlo 503, recovery endpoint 401 without the bearer token.
+- Live acceptance: one synthetic `website-service` inquiry ("TEST Release Check (ignore)", fictional 555 number) created one v2 intake event and four alert intents, to two distinct recipients ending 8260 and 6158. Twilio accepted all four about 1.6 s after intake. **Both voice calls rang (confirmed by Caelan and Paxton). Both SMS were undelivered with Twilio error 30034**: the account has no A2P 10DLC brand/campaign and no Messaging Service, so carriers block texts from +1 512-643-5722.
+- Not done live: duplicate-retry replay (covered by local tests and the unique `(source, submission)` constraint), protected SMS-link login (blocked by SMS delivery), ConviFlo intake, recovery scheduler, Meta/Google conversion receipt.
+
+### Open items
+1. Register A2P 10DLC in the Twilio console (Sole Proprietor or Low-Volume Standard brand, plus a campaign for staff lead notifications), attach the number through a Messaging Service, then resubmit a synthetic lead and confirm both texts arrive with working quote links. A toll-free number with toll-free verification is the alternative.
+2. Mark the synthetic "TEST Release Check (ignore)" lead lost in the CRM.
+3. Configure a POST-capable recovery scheduler only after reviewing the pending/undelivered alert backlog.
+4. Connect the real ConviFlo forms and the Meta dataset before the ad launch. The "New Leads Ad" draft is in the Quiet Green ad account (2240549216693180), not the personal account.
