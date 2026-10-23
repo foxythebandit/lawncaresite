@@ -18,7 +18,7 @@ export default function NavProgress() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const onClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
       const link = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
       if (!link || (link.target && link.target !== '_self') || link.hasAttribute('download')) return
       const url = new URL(link.href, location.href)
@@ -31,8 +31,9 @@ export default function NavProgress() {
       clearTimeout(timer)
       timer = setTimeout(() => { clearPending(); setState('idle') }, 10000)
     }
-    document.addEventListener('click', onClick)
-    return () => { document.removeEventListener('click', onClick); clearTimeout(timer) }
+    // Capture phase: next/link calls preventDefault on its own click before a bubbling listener would see it.
+    document.addEventListener('click', onClick, true)
+    return () => { document.removeEventListener('click', onClick, true); clearTimeout(timer) }
   }, [])
 
   useEffect(() => {

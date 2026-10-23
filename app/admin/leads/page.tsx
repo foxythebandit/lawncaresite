@@ -33,7 +33,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const priority = visible.slice(0, 2)
   const warm = priority.map(lead => {
     const answers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? lead.answers as { address_needs_review?: unknown } : {}
-    return { address: lead.address, jobLatLng: lead.quote_draft?.jobLatLng ?? null, needsReview: answers.address_needs_review === true }
+    return { href: `/admin/leads/${lead.id}`, address: lead.address, jobLatLng: lead.quote_draft?.jobLatLng ?? null, needsReview: answers.address_needs_review === true }
   })
 
   return <div className="crm-page">
