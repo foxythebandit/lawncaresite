@@ -312,7 +312,8 @@ export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: 
   if (!lead?.quote_draft) return { error: 'Save the price before emailing it.' }
   if (lead.updated_at !== expectedUpdatedAt) return { error: 'This lead changed since you opened it. Refresh before sending.', conflict: true }
   const draft = lead.quote_draft as QuoteDraft
-  const total = `$${centsToAmount(quoteTotalCents(draft))}`
+  const totalCents = quoteTotalCents(draft)
+  const total = totalCents % 100 === 0 ? `$${totalCents / 100}` : `$${centsToAmount(totalCents)}`
   const repeats = draft.includeMowing !== false && draft.freq !== 'onetime'
   const sqFt = draft.sections.reduce((sum, s) => sum + (Number(s.sqFt) || 0), 0)
   const offer = quoteOffer(draft)
@@ -340,7 +341,7 @@ export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: 
       ${extras ? `<p style="margin:6px 0 0;font-size:13px;color:#4a5e54">${esc(extras)}</p>` : ''}
       ${sqFt ? `<p style="margin:6px 0 0;font-size:13px;color:#4a5e54">Measured lawn: ${sqFt.toLocaleString('en-US')} sq ft</p>` : ''}</div>
       ${bookUrl ? `<a href="${esc(bookUrl)}" style="display:block;text-align:center;background:#1a3a2a;color:#fff;text-decoration:none;font-weight:600;padding:14px;border-radius:10px;font-size:16px;margin-top:18px">Review &amp; book &rarr;</a>
-      <p style="font-size:13px;color:#4a5e54;margin:14px 0 0">Pick how often and when to start, and see how we measured your lawn. We’ll confirm your first date by phone before anything is scheduled.</p>` : ''}
+      <p style="font-size:13px;color:#4a5e54;margin:14px 0 0">Pick how often and your start date, and see how we measured your lawn. It takes about 30 seconds.</p>` : ''}
       <p style="font-size:13px;color:#4a5e54;margin:14px 0 0">Reply to this email or call us with any questions.</p></div></div>`,
   })
   if (error) return { error: 'The email could not be sent. Check the address and try again.' }

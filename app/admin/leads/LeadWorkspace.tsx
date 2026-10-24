@@ -122,7 +122,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
     const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
     const firstName = lead.name?.trim().split(/\s+/)[0]
     const offer = quoteOffer(draft)
-    setEmailBody(`Hi${firstName ? ` ${firstName}` : ''},\n\nGreat talking with you today! We measured your lawn${sqFt ? ` at ${sqFt.toLocaleString('en-US')} sq ft` : ''}, and your price is below${offer.recurring ? ', with your first visit 30% off' : ''}.\n\n${quoteUrl ? 'Tap “Review & book” to lock in your spot and pick your start date. It takes about 30 seconds, and we’ll confirm your first visit by phone.' : 'Reply to this email and we’ll get you on the schedule.'}\n\nTalk soon,\nQuietGreen`)
+    setEmailBody(`Hi${firstName ? ` ${firstName}` : ''},\n\nGreat talking with you today! We measured your lawn${sqFt ? ` at ${sqFt.toLocaleString('en-US')} sq ft` : ''}, and your price is below${offer.recurring ? ', with your first visit 30% off' : ''}.\n\n${quoteUrl ? 'Tap “Review & book” to lock in your spot and pick your start date. It takes about 30 seconds, and you’ll get a confirmation right away.' : 'Reply to this email and we’ll get you on the schedule.'}\n\nTalk soon,\nQuietGreen`)
     setEmailOpen(true)
   }
   function useQuoteSummary() {

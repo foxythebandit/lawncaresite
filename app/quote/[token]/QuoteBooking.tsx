@@ -60,8 +60,8 @@ function MeasurementView({ sections }: { sections: Section[] }) {
   </div>
 }
 
-export default function QuoteBooking({ token, firstName, address, services, offer, sections }: {
-  token: string; firstName: string | null; address: string; services: string[]; offer: QuoteOffer; sections: Section[]
+export default function QuoteBooking({ token, firstName, address, services, offer, sections, email: savedEmail }: {
+  token: string; firstName: string | null; address: string; services: string[]; offer: QuoteOffer; sections: Section[]; email: string
 }) {
   const [freq, setFreq] = useState<OfferFrequency>(offer.quoted)
   const [start, setStart] = useState<Start>('asap')
@@ -70,6 +70,8 @@ export default function QuoteBooking({ token, firstName, address, services, offe
   const [notes, setNotes] = useState('')
   const [showMeasure, setShowMeasure] = useState(true)
   const [error, setError] = useState('')
+  const [email, setEmail] = useState(savedEmail)
+  const [confirmedTo, setConfirmedTo] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pending, startTransition] = useTransition()
   const [submissionId] = useState(() => `qb-${crypto.randomUUID()}`)
@@ -81,16 +83,18 @@ export default function QuoteBooking({ token, firstName, address, services, offe
     setError('')
     if (start === 'date' && !date) { setError('Pick a start date, or choose another option.'); return }
     startTransition(async () => {
-      const result = await bookQuote({ token, submissionId, freq, start, date, timeOfDay, notes }).catch(() => ({ error: 'Something went wrong. Please try again or call us.' }))
+      const result = await bookQuote({ token, submissionId, freq, start, date, timeOfDay, notes, email }).catch(() => ({ error: 'Something went wrong. Please try again or call us.' }))
       if ('error' in result) setError(result.error)
-      else setDone(true)
+      else { setConfirmedTo(result.confirmationTo); setDone(true) }
     })
   }
 
   if (done) return <main className="qb-page"><div className="qb-wrap qb-done">
     <div className="qb-check" aria-hidden="true">✓</div>
-    <h1>You’re booked in!</h1>
-    <p className="qb-sub">{jobName[0].toUpperCase() + jobName.slice(1)}{start === 'date' && date ? `, starting ${new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}` : start === 'asap' ? ', as soon as we can' : ''}. We’ll call you to confirm your first visit.</p>
+    <h1>You’re booked!</h1>
+    <p className="qb-sub">{jobName[0].toUpperCase() + jobName.slice(1)}{start === 'date' && date ? `, first visit ${new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}${timeOfDay !== 'Any time' ? ` (${timeOfDay.toLowerCase()})` : ''}` : start === 'asap' ? ', starting as soon as possible' : ''}.</p>
+    <p className="qb-sub">{option.firstVisit !== option.price ? `First visit ${money(option.firstVisit)}, then ${money(option.price)} ${EVERY[freq] ?? ''}.` : `${money(option.price)}${EVERY[freq] ? ` ${EVERY[freq]}` : ''}.`}</p>
+    <p className="qb-fine">{confirmedTo ? `A confirmation is on its way to ${confirmedTo}.` : 'Save this page for your records.'} Need to change anything? Just reply to that email.</p>
   </div></main>
 
   return <main className="qb-page"><div className="qb-wrap">
@@ -122,11 +126,12 @@ export default function QuoteBooking({ token, firstName, address, services, offe
     <section className="qb-card">
       <h2>When should we start?</h2>
       <div className="qb-chips">
-        {([['asap', 'As soon as possible'], ['date', 'Pick a date'], ['unsure', 'Not sure yet, call me']] as [Start, string][]).map(([value, label]) =>
+        {([['asap', 'As soon as possible'], ['date', 'Pick a date'], ['unsure', 'Not sure yet']] as [Start, string][]).map(([value, label]) =>
           <button key={value} type="button" className="qb-chip" aria-pressed={start === value} onClick={() => setStart(value)}>{label}</button>)}
       </div>
       {start === 'date' && <label className="qb-field">Preferred first visit<input type="date" min={today} value={date} onChange={e => setDate(e.target.value)} /></label>}
       <label className="qb-field">Time of day<select value={timeOfDay} onChange={e => setTimeOfDay(e.target.value)}><option>Any time</option><option>Morning</option><option>Afternoon</option></select></label>
+      <label className="qb-field">Email for your confirmation<input type="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label>
       <label className="qb-field">Anything we should know? (gate code, pets, areas to skip)<textarea rows={2} maxLength={1500} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" /></label>
     </section>
 
@@ -136,6 +141,6 @@ export default function QuoteBooking({ token, firstName, address, services, offe
       : <div className="qb-total"><span>Total</span><b>{money(option.price)}</b></div>}
     {error && <p className="qb-error" role="alert">{error}</p>}
     <button type="button" className="qb-btn" disabled={pending} onClick={submit}>{pending ? 'Booking…' : `Book ${jobName}`}</button>
-    <p className="qb-fine qb-center">You’re not charged now. We’ll call to confirm your first date. Change or cancel anytime.</p>
+    <p className="qb-fine qb-center">No payment now. Need to change something later? Just reply to your confirmation email.</p>
   </div></main>
 }

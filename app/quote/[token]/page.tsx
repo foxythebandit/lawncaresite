@@ -13,7 +13,7 @@ export default async function CustomerQuotePage({ params }: { params: Promise<{ 
   const { token } = await params
   const id = verifiedLead(decodeURIComponent(token))
   const { data: lead } = id
-    ? await adminDb().from('leads').select('name,address,services,quote_draft').eq('id', id).single()
+    ? await adminDb().from('leads').select('name,email,address,services,quote_draft').eq('id', id).single()
     : { data: null }
   const draft = lead?.quote_draft as QuoteDraft | null | undefined
   if (!lead || !draft || !lead.address) {
@@ -28,5 +28,5 @@ export default async function CustomerQuotePage({ params }: { params: Promise<{ 
   const sections = draft.sections.map(s => ({ name: s.name, sqFt: Math.round(Number(s.sqFt) || 0), coords: s.coords }))
   return <QuoteBooking token={decodeURIComponent(token)} firstName={firstName} address={lead.address}
     services={Array.isArray(lead.services) && lead.services.length ? lead.services as string[] : ['Lawn mowing']}
-    offer={quoteOffer(draft)} sections={sections} />
+    offer={quoteOffer(draft)} sections={sections} email={lead.email ?? ''} />
 }
