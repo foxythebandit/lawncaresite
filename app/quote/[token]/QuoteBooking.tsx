@@ -1,6 +1,8 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { ESRI_IMAGERY, MAPBOX_TOKEN } from '@/lib/map-imagery'
 import type { OfferFrequency, QuoteOffer } from '@/lib/quote-offer'
 import { bookQuote } from './actions'
 
@@ -10,39 +12,50 @@ type Start = 'asap' | 'date' | 'unsure'
 const EVERY: Partial<Record<OfferFrequency, string>> = { weekly: 'every week', biweekly: 'every 2 weeks', monthly: 'every month' }
 const money = (value: number) => `$${Number.isInteger(value) ? value : value.toFixed(2)}`
 
-/* Satellite photo with the traced areas outlined, using the same Esri imagery as the quote map. */
+/* Live satellite map of the property with the traced lawn outlined, using the same imagery as the staff quote map. */
 function MeasurementView({ sections }: { sections: Section[] }) {
-  const traced = sections.filter(s => s.coords && s.coords.length >= 3)
-  const view = useMemo(() => {
-    if (!traced.length) return null
-    const R = 6378137
-    const project = ([lng, lat]: [number, number]) => [R * lng * Math.PI / 180, R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))]
-    const points = traced.map(s => s.coords!.map(project))
-    const xs = points.flat().map(p => p[0]), ys = points.flat().map(p => p[1])
-    const width = 800, height = 560
-    let [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-    const padX = Math.max((maxX - minX) * 0.35, 12), padY = Math.max((maxY - minY) * 0.35, 12)
-    minX -= padX; maxX += padX; minY -= padY; maxY += padY
-    // Match the image's aspect ratio so the outline lines up with the photo.
-    const scale = Math.max((maxX - minX) / width, (maxY - minY) / height)
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-    minX = cx - scale * width / 2; maxX = cx + scale * width / 2; minY = cy - scale * height / 2; maxY = cy + scale * height / 2
-    const image = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${minX},${minY},${maxX},${maxY}&bboxSR=3857&imageSR=3857&size=${width},${height}&format=jpg&f=image`
-    const shapes = points.map(poly => poly.map(([x, y]) => `${((x - minX) / scale).toFixed(1)},${((maxY - y) / scale).toFixed(1)}`).join(' '))
-    return { image, shapes, width, height }
-  }, [traced])
+  const mapDiv = useRef<HTMLDivElement>(null)
+  const hasTraced = sections.some(s => s.coords && s.coords.length >= 3)
+  useEffect(() => {
+    const traced = sections.filter(s => s.coords && s.coords.length >= 3)
+    if (!mapDiv.current || !traced.length) return
+    let map: import('maplibre-gl').Map | undefined
+    let alive = true
+    import('maplibre-gl').then(({ default: ml }) => {
+      if (!alive || !mapDiv.current) return
+      const points = traced.flatMap(s => s.coords!)
+      const lngs = points.map(p => p[0]), lats = points.map(p => p[1])
+      map = new ml.Map({
+        container: mapDiv.current,
+        style: { version: 8, sources: {
+          satellite: MAPBOX_TOKEN
+            ? { type: 'raster', tiles: [`https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${MAPBOX_TOKEN}`], tileSize: 512, maxzoom: 22 }
+            : { type: 'raster', tiles: [`${ESRI_IMAGERY}/{z}/{y}/{x}`], tileSize: 256, maxzoom: 19 },
+          lawn: { type: 'geojson', data: { type: 'FeatureCollection', features: traced.map(s => ({
+            type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [s.coords!] } })) } },
+        }, layers: [
+          { id: 'satellite', type: 'raster', source: 'satellite' },
+          { id: 'lawn-fill', type: 'fill', source: 'lawn', paint: { 'fill-color': '#52b788', 'fill-opacity': 0.3 } },
+          { id: 'lawn-line', type: 'line', source: 'lawn', paint: { 'line-color': '#52f0a0', 'line-width': 2.5 } },
+        ] },
+        bounds: [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        fitBoundsOptions: { padding: 48, maxZoom: 20 },
+        maxZoom: 21, attributionControl: false, cooperativeGestures: true,
+      })
+      map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
+      map.addControl(new ml.FullscreenControl(), 'top-right')
+    })
+    return () => { alive = false; map?.remove() }
+  }, [sections])
   return <div className="qb-measure">
-    {view && <div className="qb-photo">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={view.image} alt="Satellite photo of your property with the measured lawn outlined" width={view.width} height={view.height} />
-      <svg viewBox={`0 0 ${view.width} ${view.height}`} aria-hidden="true">
-        {view.shapes.map((points, i) => <polygon key={i} points={points} />)}
-      </svg>
-    </div>}
+    {hasTraced && <>
+      <div ref={mapDiv} className="qb-map" aria-label="Satellite map of your property with the measured lawn outlined" />
+      <p className="qb-fine">Satellite imagery © {MAPBOX_TOKEN ? 'Mapbox, Maxar' : 'Esri'}. Use + / − or ⤢ for full screen to look closer.</p>
+    </>}
     <ul className="qb-areas">
       {sections.map((s, i) => <li key={i}><span>{s.name || `Area ${i + 1}`}</span><b>{s.sqFt.toLocaleString('en-US')} sq ft</b></li>)}
     </ul>
-    <p className="qb-fine">We trace the grass we mow from satellite imagery. Beds, driveways and the house are left out. If something looks off, reply to our email or call and we’ll re-check it.</p>
+    <p className="qb-fine">We trace only the grass we mow. Beds, driveways and the house are left out. If something looks off, reply to our email or call and we’ll re-check it.</p>
   </div>
 }
 
@@ -54,7 +67,7 @@ export default function QuoteBooking({ token, firstName, address, services, offe
   const [date, setDate] = useState('')
   const [timeOfDay, setTimeOfDay] = useState('Any time')
   const [notes, setNotes] = useState('')
-  const [showMeasure, setShowMeasure] = useState(false)
+  const [showMeasure, setShowMeasure] = useState(true)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -90,7 +103,7 @@ export default function QuoteBooking({ token, firstName, address, services, offe
       {offer.sqFt > 0 && <div className="qb-row"><span>Lawn measured</span><b>{offer.sqFt.toLocaleString('en-US')} sq ft</b></div>}
       <div className="qb-row"><span>Service</span><b>{services.join(', ')}</b></div>
       {sections.length > 0 && <button type="button" className="qb-link" aria-expanded={showMeasure} onClick={() => setShowMeasure(v => !v)}>
-        {showMeasure ? 'Hide measurement' : 'See how we measured your lawn ›'}</button>}
+        {showMeasure ? 'Hide map' : 'See how we measured your lawn ›'}</button>}
       {showMeasure && <MeasurementView sections={sections} />}
     </section>
 
