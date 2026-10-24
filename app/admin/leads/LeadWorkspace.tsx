@@ -108,9 +108,10 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
     const firstName = lead.name?.trim().split(/\s+/)[0]
     const offer = quoteOffer(quote)
     const quoted = offer.options.find(o => o.freq === offer.quoted) ?? offer.options[0]
-    const price = formatMoney(quoted.price)
+    const dollars = (value: number) => Number.isInteger(value) ? `$${value}` : formatMoney(value)
+    const price = dollars(quoted.price)
     const deal = offer.recurring && quoted.freq !== 'onetime'
-      ? `${frequencyLabel(quoted.freq).toLowerCase()} mowing is ${price} a visit${quoted.firstVisit !== quoted.price ? `, and your first visit is just ${formatMoney(quoted.firstVisit)}` : ''}`
+      ? `${frequencyLabel(quoted.freq).toLowerCase()} mowing is ${price} a visit${quoted.firstVisit !== quoted.price ? `, and your first visit is just ${dollars(quoted.firstVisit)}` : ''}`
       : `your ${lead.services?.join(' + ').toLowerCase() || 'job'} comes to ${price}`
     const measured = offer.sqFt ? `Your lawn measured ${offer.sqFt.toLocaleString('en-US')} sq ft, so ` : 'So '
     const close = quoteUrl ? `Lock in your spot and pick your start date here (takes 30 seconds): ${quoteUrl}` : 'Just reply YES and we’ll get you on the schedule.'
