@@ -355,6 +355,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
               {usefulAnswers.length === 0 && <p className="crm-muted">No additional answers submitted.</p>}
               {[['First tracked visit', cleanSource.first_touch], ['Latest tracked visit', cleanSource.latest_touch]].map(([title, touch]) => <div key={String(title)}>
                 <h3>{String(title)}</h3>
+                {touch && typeof touch === 'object' && <p>{formatAttributionLabel(touch)}</p>}
                 {touch && typeof touch === 'object' ? <dl className="crm-readable-details">{Object.entries(touch).map(([key, value]) => <div key={key}><dt>{answerLabel(key)}</dt><dd>{answerText(key === 'creative_type' ? creativeTypeLabel(value) : value)}</dd></div>)}</dl> : <p className="crm-muted">Unknown</p>}
               </div>)}
               {lead.estimated_value != null && <p>Estimated potential value: ${String(lead.estimated_value)} · time horizon unknown</p>}

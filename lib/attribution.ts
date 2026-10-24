@@ -64,8 +64,31 @@ export function getAttribution(): Attribution {
 export function creativeTypeLabel(value: unknown): unknown {
   return value === 'ai' ? 'AI creative' : value === 'real' ? 'Real creative' : value
 }
+// Verified launch inventory, 24 Oct 2026. Public ad IDs, not customer data.
+// Resolve on display so existing website and ConviFlo leads need no backfill.
+// New/duplicated ads need their own entry; never guess a format from an unknown ID.
+const launchAds: Record<string, { group: string; format: string; name: string }> = {
+  '120253769117370725': { group: 'AI', format: 'Video', name: 'Everybody Loves Dave' },
+  '120253769229100725': { group: 'AI', format: 'Video', name: 'I Married That Guy' },
+  '120253769229110725': { group: 'AI', format: 'Video', name: 'Youre Welcome' },
+  '120253769229120725': { group: 'AI', format: 'Still image', name: 'Electric Mowing' },
+  '120253769229130725': { group: 'AI', format: 'Still image', name: 'Split Yard' },
+  '120253769229140725': { group: 'AI', format: 'Still image', name: 'Weekend Back' },
+  '120253769297420725': { group: 'Real People', format: 'Video', name: 'Night Mowing' },
+  '120253769297460725': { group: 'Real People', format: 'Video', name: 'Testimonial' },
+  '120253769297470725': { group: 'Real People', format: 'Video', name: 'Leaf Cleanup' },
+  '120253769297440725': { group: 'Real People', format: 'Still image', name: 'Alarm Clock' },
+  '120253769297430725': { group: 'Real People', format: 'Still image', name: 'Cleaner Cut' },
+  '120253769297480725': { group: 'Real People', format: 'Still image', name: 'Before and After' },
+}
 export function formatAttributionLabel(attr: Partial<Record<typeof ATTRIBUTION_KEYS[number], string | null>> | null | undefined): string | null {
   if (!attr) return null
+  // Legacy website records have the ID only in UTM content. Interpret that field
+  // only for this verified Meta campaign, never for Google or generic UTM tags.
+  const adId = attr.meta_ad_id || (attr.utm_source?.toLowerCase() === 'meta'
+    && attr.utm_campaign === '120253769117350725' ? attr.utm_content : null)
+  const ad = adId && Object.hasOwn(launchAds, adId) ? launchAds[adId] : null
+  if (ad) return ['Meta', ad.group, ad.format, ad.name].join(' · ')
   const source = attr.utm_source || ((attr.gclid || attr.gbraid || attr.wbraid) ? 'Google Ads' : attr.fbclid ? 'Meta (ad unknown)' : '')
   if (!source) return null
   return [source, attr.utm_campaign, attr.utm_term, attr.utm_content, attr.creative_id, creativeTypeLabel(attr.creative_type),

@@ -1,5 +1,11 @@
 # QuietGreen CRM revamp — project spine
 
+### Readable launched-ad attribution — 24 October 2026
+
+- Owner requested specific ad names and video versus still-image labels after a real website-service lead displayed only Meta IDs. Shared display formatting now resolves the 12 verified ads in campaign `120253769117350725`, including older website UTM-only attribution. Example: `Meta · Real People · Video · Testimonial`.
+- Lead list reads the canonical first-touch attribution as well as legacy columns. Lead header and both first/latest acquisition sections use the same formatter. Raw IDs and customer records are preserved; no backfill, migration, intake changes, live submissions or calls. Unknown ads keep their original attribution rather than acquiring guessed names. Add new ad IDs to the display inventory when creatives are duplicated or new ads launch.
+- Verified: seven attribution/registry tests, TypeScript and scoped ESLint. Deployment remains separate from these local checks.
+
 This is the authoritative planning and handoff document for this revamp. Update decisions and the execution ledger here as work proceeds; do not replace them with a fresh interpretation after a context handoff. **Confirmed requirements and delegated defaults below govern the implementation. The staff redesign and release corrections are integrated at `988ca9f`, including main `72f3c68`. See the newest release receipt below and PRODUCTION-HANDOFF.md; older build/review receipts apply only to their stated checkpoints. Production remains untouched from this machine; the owner authorized deployment from Paxton’s laptop.**
 
 ## Scope and fixed requirements

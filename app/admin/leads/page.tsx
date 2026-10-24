@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getLeads, getBookings } from '../actions'
-import { formatAttributionLabel } from '@/lib/attribution'
+import { cleanAttribution, formatAttributionLabel, type Attribution } from '@/lib/attribution'
 import LeadRow from './LeadRow'
 import LeadWarmup from './LeadWarmup'
 
@@ -54,7 +54,12 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       </div>
     </div>
     {visible.length === 0 ? <div className="admin-empty">{view === 'all' ? 'No leads yet.' : 'Nothing in this view.'}</div> : <div className="crm-list">
-      {visible.map(lead => <LeadRow key={lead.id} lead={lead} priority={priority.includes(lead)} source={formatAttributionLabel(lead)} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />)}
+      {visible.map(lead => {
+        const attribution = lead.attribution && typeof lead.attribution === 'object' && !Array.isArray(lead.attribution)
+          ? lead.attribution as Attribution : {}
+        const source = formatAttributionLabel(cleanAttribution(attribution).first_touch) || formatAttributionLabel(lead)
+        return <LeadRow key={lead.id} lead={lead} priority={priority.includes(lead)} source={source} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />
+      })}
     </div>}
     <LeadWarmup leads={warm} />
   </div>
