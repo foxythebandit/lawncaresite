@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
 import { formatMoney } from '@/lib/crm-jobs'
-import { addLeadNote, bookLeadVisit, cancelLeadBooking, previewLeadBookingCancellation, processLeadAlert, recordLeadCall, setLeadFollowUp, setLeadQuoteDecision, setLeadStage, updateLeadContact } from './quote-actions'
+import { addLeadNote, bookLeadVisit, cancelLeadBooking, emailLeadQuote, previewLeadBookingCancellation, processLeadAlert, recordLeadCall, setLeadFollowUp, setLeadQuoteDecision, setLeadStage, updateLeadContact } from './quote-actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import type { ContactOutcome, LeadStage, QuoteStatus } from '@/lib/crm-contracts'
 
@@ -78,6 +78,9 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
   const [note, setNote] = useState('')
   const [followUp, setFollowUp] = useState('')
   const [messageDraft, setMessageDraft] = useState(() => initialMessage(lead))
+  const [emailOpen, setEmailOpen] = useState(false)
+  const [emailTo, setEmailTo] = useState(lead.email ?? '')
+  const [emailBody, setEmailBody] = useState('')
   const bookingOps = useRef<{ bookingOperationId: string; linkOperationId: string; planOperationId: string } | null>(null)
   const [bookingOpen, setBookingOpen] = useState(false)
   const [bookingDate, setBookingDate] = useState('')
@@ -104,6 +107,13 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
     const total = formatMoney(quoteTotalCents(quote) / 100)
     const repeats = quote.includeMowing !== false && quote.freq !== 'onetime'
     return `Hi${firstName ? ` ${firstName}` : ''}, this is QuietGreen. We reviewed ${lead.address || 'your property'} and the ${lead.services?.join(', ') || 'requested'} service quote is ${total}${repeats ? ' per visit' : ''}. Please reply if you would like to discuss it.`
+  }
+  function openEmail() {
+    if (!draft) return
+    const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
+    const firstName = lead.name?.trim().split(/\s+/)[0]
+    setEmailBody(`Hi${firstName ? ` ${firstName}` : ''},\n\nThanks for talking with us. We re-measured ${lead.address || 'your lawn'}${sqFt ? ` at ${sqFt.toLocaleString('en-US')} sq ft` : ''}. Your quote is below.\n\nReply here or call us with any questions.\n\nQuietGreen`)
+    setEmailOpen(true)
   }
   function useQuoteSummary() {
     if (!draft || !reviewed) return
@@ -276,10 +286,30 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
             {draft ? <p className="crm-quote-total">{formatMoney(quoteTotalCents(draft) / 100)}<small>{draft.includeMowing !== false && draft.freq !== 'onetime' ? 'per visit' : 'total'}</small></p>
               : <p className="crm-muted">Build the price in the Price box below.</p>}
             {quoteState === 'draft' && <p className="crm-hint">Click “Save as quoted” in the Price box once you’ve given them this price.</p>}
+            {draft && quoteState === 'draft' && !emailOpen && <div className="crm-action-row">
+              <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />Text price</a>
+              <button type="button" className="crm-button" onClick={openEmail}><Icon name="mail" size={15} />Email quote</button>
+            </div>}
+            {draft && emailOpen && <div className="crm-booking-request">
+              <h3>Email this quote</h3>
+              <label className="crm-field">Send to<input type="email" value={emailTo} maxLength={254} onChange={event => setEmailTo(event.target.value)} placeholder="customer@example.com" /></label>
+              <label className="crm-field">Message (the price and lawn size are added below it)<textarea value={emailBody} maxLength={4000} rows={6} onChange={event => setEmailBody(event.target.value)} /></label>
+              <div className="crm-action-row">
+                <button type="button" className="crm-button crm-button-primary" disabled={pending || !emailTo.trim()} onClick={() => { setFeedback(''); startTransition(async () => {
+                  try {
+                    const result = await emailLeadQuote(lead.id, version, emailTo, emailBody)
+                    if ('error' in result) setFeedback(result.error)
+                    else { setVersion(result.updatedAt); setEmailOpen(false); setFeedback(`Quote emailed to ${emailTo.trim()}.`); router.refresh() }
+                  } catch { setFeedback('The email could not be sent. Please try again.') }
+                }) }}><Icon name="mail" size={15} />Send quote</button>
+                <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => setEmailOpen(false)}>Cancel</button>
+              </div>
+            </div>}
 
             {(quoteState === 'quoted' || quoteState === 'accepted' || quoteState === 'canceled') && !bookingOpen && !propertyChanged && <div className="crm-action-row">
               <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={() => setBookingOpen(true)}>{quoteState === 'canceled' ? 'Book again' : 'Book visit'}</button>
               {draft && quoteState !== 'canceled' && <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />Text price</a>}
+              {draft && quoteState !== 'canceled' && !emailOpen && <button type="button" className="crm-button" onClick={openEmail}><Icon name="mail" size={15} />Email quote</button>}
               {quoteState === 'quoted' && <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => run(() => setLeadQuoteDecision(lead.id, version, 'declined'), () => setQuoteStatus('declined'))}>Customer said no</button>}
               {quoteState === 'accepted' && <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => run(() => setLeadQuoteDecision(lead.id, version, 'canceled'), () => setQuoteStatus('canceled'))}>Cancel acceptance</button>}
             </div>}

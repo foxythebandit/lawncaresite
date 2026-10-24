@@ -295,3 +295,41 @@ export async function cancelLeadBooking(id: string, input: {
   }
   return { success: true, updatedAt: lead.updated_at }
 }
+
+const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+
+/** Emails the saved quote; the price comes from the stored draft, never the browser. */
+export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: string, message: string): Promise<CommandResult> {
+  await requireStaff(`/admin/leads/${id}`)
+  const email = to.trim()
+  if (!uuidPattern.test(id)) return { error: 'Invalid lead.' }
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Enter a valid email address.' }
+  if (!message.trim() || message.length > 4000) return { error: 'Write a short message to go with the quote.' }
+  if (!process.env.RESEND_API_KEY) return { error: 'Email is not configured.' }
+  const { data: lead } = await adminDb().from('leads').select('name,email,address,quote_draft,updated_at').eq('id', id).single()
+  if (!lead?.quote_draft) return { error: 'Save the price before emailing it.' }
+  if (lead.updated_at !== expectedUpdatedAt) return { error: 'This lead changed since you opened it. Refresh before sending.', conflict: true }
+  const draft = lead.quote_draft as QuoteDraft
+  const total = `$${centsToAmount(quoteTotalCents(draft))}`
+  const repeats = draft.includeMowing !== false && draft.freq !== 'onetime'
+  const sqFt = draft.sections.reduce((sum, s) => sum + (Number(s.sqFt) || 0), 0)
+  const { Resend } = await import('resend')
+  const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
+    from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
+    subject: `Your QuietGreen quote${lead.address ? ` for ${lead.address}` : ''}`,
+    text: `${message.trim()}\n\nQuote: ${total}${repeats ? ' per visit' : ''}${sqFt ? `\nMeasured lawn: ${sqFt.toLocaleString('en-US')} sq ft` : ''}\n\nQuietGreen · quietgreen.co`,
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
+      <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0"><p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Your quote</p>
+      <h1 style="color:#fff;font-size:22px;margin:0">${esc(lead.address || 'QuietGreen lawn care')}</h1></div>
+      <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
+      <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px;white-space:pre-line">${esc(message.trim())}</p>
+      <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px">
+      <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Quote</p>
+      <p style="margin:6px 0 0;font-size:22px;font-weight:600;color:#1a3a2a">${total}${repeats ? ' <span style="font-size:14px;font-weight:400">per visit</span>' : ''}</p>
+      ${sqFt ? `<p style="margin:6px 0 0;font-size:13px;color:#4a5e54">Measured lawn: ${sqFt.toLocaleString('en-US')} sq ft</p>` : ''}</div>
+      <p style="font-size:13px;color:#4a5e54;margin:20px 0 0">Reply to this email or call us with any questions.</p></div></div>`,
+  })
+  if (error) return { error: 'The email could not be sent. Check the address and try again.' }
+  return updateWorkflow(id, expectedUpdatedAt, email !== lead.email ? { email } : {},
+    { kind: 'quote', outcome: 'emailed', body: `Emailed quote ${total}${repeats ? ' per visit' : ''} to ${email}.` })
+}
