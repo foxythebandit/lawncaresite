@@ -39,7 +39,8 @@ function MeasurementView({ sections }: { sections: Section[] }) {
           { id: 'lawn-line', type: 'line', source: 'lawn', paint: { 'line-color': '#52f0a0', 'line-width': 2.5 } },
         ] },
         bounds: [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-        fitBoundsOptions: { padding: 48, maxZoom: 20 },
+        // Stop at the imagery's sharpest level so the house and yard stay in view.
+        fitBoundsOptions: { padding: 56, maxZoom: MAPBOX_TOKEN ? 20 : 19 },
         maxZoom: 21, attributionControl: false, cooperativeGestures: true,
       })
       map.addControl(new ml.NavigationControl({ showCompass: false }), 'top-right')
@@ -50,7 +51,7 @@ function MeasurementView({ sections }: { sections: Section[] }) {
   return <div className="qb-measure">
     {hasTraced && <>
       <div ref={mapDiv} className="qb-map" aria-label="Satellite map of your property with the measured lawn outlined" />
-      <p className="qb-fine">Satellite imagery © {MAPBOX_TOKEN ? 'Mapbox, Maxar' : 'Esri'}. Use + / − or ⤢ for full screen to look closer.</p>
+      <p className="qb-fine">Satellite imagery © {MAPBOX_TOKEN ? 'Mapbox, Maxar' : 'Esri'}. Use + and − to zoom, or the full-screen button to look closer.</p>
     </>}
     <ul className="qb-areas">
       {sections.map((s, i) => <li key={i}><span>{s.name || `Area ${i + 1}`}</span><b>{s.sqFt.toLocaleString('en-US')} sq ft</b></li>)}
