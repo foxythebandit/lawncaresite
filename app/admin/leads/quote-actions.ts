@@ -8,6 +8,8 @@ import { revalidatePath } from 'next/cache'
 import { addInterval } from '@/lib/crm-jobs'
 import { changeAgreement, changeJob } from '../actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
+import { leadToken } from '@/lib/intake'
+import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
 
 const uuidPattern = /^[0-9a-f-]{36}$/i
 type CommandResult = { success: true; updatedAt: string } | { error: string; conflict?: boolean }
@@ -313,21 +315,31 @@ export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: 
   const total = `$${centsToAmount(quoteTotalCents(draft))}`
   const repeats = draft.includeMowing !== false && draft.freq !== 'onetime'
   const sqFt = draft.sections.reduce((sum, s) => sum + (Number(s.sqFt) || 0), 0)
+  const offer = quoteOffer(draft)
+  const quoted = offer.options.find(o => o.freq === offer.quoted)!
+  const planLine = offer.recurring ? `${frequencyLabel(offer.quoted)} mowing` : 'Quote'
+  const extras = offer.recurring ? [quoted.firstVisit !== quoted.price ? `First visit: $${quoted.firstVisit} (30% off)` : '',
+    ...offer.options.filter(o => o.freq !== offer.quoted && o.freq !== 'onetime').map(o => `${o.label} $${o.price}`)].filter(Boolean).join(' · ') : ''
+  // The booking page needs an address to show the measured property.
+  const bookUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
   const { Resend } = await import('resend')
   const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
     from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
     subject: `Your QuietGreen quote${lead.address ? ` for ${lead.address}` : ''}`,
-    text: `${message.trim()}\n\nQuote: ${total}${repeats ? ' per visit' : ''}${sqFt ? `\nMeasured lawn: ${sqFt.toLocaleString('en-US')} sq ft` : ''}\n\nQuietGreen · quietgreen.co`,
+    text: `${message.trim()}\n\n${planLine}: ${total}${repeats ? ' per visit' : ''}${extras ? `\n${extras}` : ''}${sqFt ? `\nMeasured lawn: ${sqFt.toLocaleString('en-US')} sq ft` : ''}${bookUrl ? `\n\nReview & book: ${bookUrl}` : ''}\n\nQuietGreen · quietgreen.co`,
     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
       <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0"><p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Your quote</p>
       <h1 style="color:#fff;font-size:22px;margin:0">${esc(lead.address || 'QuietGreen lawn care')}</h1></div>
       <div style="background:#f7f6f2;padding:24px 28px;border-radius:0 0 12px 12px;border:1px solid #e0ede6;border-top:none">
       <p style="font-size:15px;line-height:1.6;color:#4a5e54;margin:0 0 20px;white-space:pre-line">${esc(message.trim())}</p>
       <div style="background:#fff;border:1px solid #b7e4c7;border-radius:10px;padding:14px 18px">
-      <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">Quote</p>
+      <p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4a5e54">${esc(planLine)}</p>
       <p style="margin:6px 0 0;font-size:22px;font-weight:600;color:#1a3a2a">${total}${repeats ? ' <span style="font-size:14px;font-weight:400">per visit</span>' : ''}</p>
+      ${extras ? `<p style="margin:6px 0 0;font-size:13px;color:#4a5e54">${esc(extras)}</p>` : ''}
       ${sqFt ? `<p style="margin:6px 0 0;font-size:13px;color:#4a5e54">Measured lawn: ${sqFt.toLocaleString('en-US')} sq ft</p>` : ''}</div>
-      <p style="font-size:13px;color:#4a5e54;margin:20px 0 0">Reply to this email or call us with any questions.</p></div></div>`,
+      ${bookUrl ? `<a href="${esc(bookUrl)}" style="display:block;text-align:center;background:#1a3a2a;color:#fff;text-decoration:none;font-weight:600;padding:14px;border-radius:10px;font-size:16px;margin-top:18px">Review &amp; book &rarr;</a>
+      <p style="font-size:13px;color:#4a5e54;margin:14px 0 0">Pick how often and when to start, and see how we measured your lawn. We’ll confirm your first date by phone before anything is scheduled.</p>` : ''}
+      <p style="font-size:13px;color:#4a5e54;margin:14px 0 0">Reply to this email or call us with any questions.</p></div></div>`,
   })
   if (error) return { error: 'The email could not be sent. Check the address and try again.' }
   return updateWorkflow(id, expectedUpdatedAt, email !== lead.email ? { email } : {},
