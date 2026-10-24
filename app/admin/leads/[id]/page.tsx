@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import LeadWorkspace from '../LeadWorkspace'
+import { leadToken } from '@/lib/intake'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,5 +22,7 @@ export default async function LeadQuotePage({ params }: { params: Promise<{ id: 
   ])
   // Same-phone customers are suggestions only; staff confirms before linking.
   const customerMatches = phoneDigits.length === 10 ? (customers ?? []).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits) : []
-  return <LeadWorkspace lead={lead} activities={activities ?? []} events={events ?? []} bookings={bookings ?? []} customerMatches={customerMatches} />
+  // The customer's review-and-book page needs an address to show the measured property.
+  const quoteUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
+  return <LeadWorkspace lead={lead} activities={activities ?? []} events={events ?? []} bookings={bookings ?? []} customerMatches={customerMatches} quoteUrl={quoteUrl} />
 }

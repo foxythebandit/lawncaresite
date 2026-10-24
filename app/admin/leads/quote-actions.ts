@@ -325,7 +325,9 @@ export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: 
   const { Resend } = await import('resend')
   const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
     from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
-    subject: `Your QuietGreen quote${lead.address ? ` for ${lead.address}` : ''}`,
+    subject: offer.recurring && quoted.freq !== 'onetime'
+      ? `Your ${frequencyLabel(quoted.freq).toLowerCase()} mowing quote: ${total}/visit${quoted.firstVisit !== quoted.price ? `, first visit $${quoted.firstVisit}` : ''}`
+      : `Your QuietGreen quote: ${total}`,
     text: `${message.trim()}\n\n${planLine}: ${total}${repeats ? ' per visit' : ''}${extras ? `\n${extras}` : ''}${sqFt ? `\nMeasured lawn: ${sqFt.toLocaleString('en-US')} sq ft` : ''}${bookUrl ? `\n\nReview & book: ${bookUrl}` : ''}\n\nQuietGreen · quietgreen.co`,
     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;color:#111c17">
       <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0"><p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Your quote</p>

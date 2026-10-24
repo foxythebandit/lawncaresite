@@ -8,6 +8,7 @@ import Icon from '../icons'
 import { useRouter } from 'next/navigation'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
+import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
 import { formatMoney } from '@/lib/crm-jobs'
 import { addLeadNote, bookLeadVisit, cancelLeadBooking, emailLeadQuote, previewLeadBookingCancellation, processLeadAlert, recordLeadCall, setLeadFollowUp, setLeadQuoteDecision, setLeadStage, updateLeadContact } from './quote-actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
@@ -52,7 +53,7 @@ function answerText(value: unknown): string {
   return String(value)
 }
 
-export default function LeadWorkspace({ lead, activities, events, bookings, customerMatches = [] }: { lead: Lead; activities: Activity[]; events: Event[]; bookings: Booking[]; customerMatches?: CustomerMatch[] }) {
+export default function LeadWorkspace({ lead, activities, events, bookings, customerMatches = [], quoteUrl = null }: { lead: Lead; activities: Activity[]; events: Event[]; bookings: Booking[]; customerMatches?: CustomerMatch[]; quoteUrl?: string | null }) {
   const router = useRouter()
   const attribution = lead.attribution && typeof lead.attribution === 'object' && !Array.isArray(lead.attribution) ? lead.attribution as Attribution : {}
   const cleanSource = cleanAttribution(attribution)
@@ -102,17 +103,25 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
     })
   }
 
+  // Follow-up after the phone call: recap the agreed price and ask for the booking.
   function quoteSummary(quote: QuoteDraft) {
     const firstName = lead.name?.trim().split(/\s+/)[0]
-    const total = formatMoney(quoteTotalCents(quote) / 100)
-    const repeats = quote.includeMowing !== false && quote.freq !== 'onetime'
-    return `Hi${firstName ? ` ${firstName}` : ''}, this is QuietGreen. We reviewed ${lead.address || 'your property'} and the ${lead.services?.join(', ') || 'requested'} service quote is ${total}${repeats ? ' per visit' : ''}. Please reply if you would like to discuss it.`
+    const offer = quoteOffer(quote)
+    const quoted = offer.options.find(o => o.freq === offer.quoted) ?? offer.options[0]
+    const price = formatMoney(quoted.price)
+    const deal = offer.recurring && quoted.freq !== 'onetime'
+      ? `${frequencyLabel(quoted.freq).toLowerCase()} mowing is ${price} a visit${quoted.firstVisit !== quoted.price ? `, and your first visit is just ${formatMoney(quoted.firstVisit)}` : ''}`
+      : `your ${lead.services?.join(' + ').toLowerCase() || 'job'} comes to ${price}`
+    const measured = offer.sqFt ? `Your lawn measured ${offer.sqFt.toLocaleString('en-US')} sq ft, so ` : 'So '
+    const close = quoteUrl ? `Lock in your spot and pick your start date here (takes 30 seconds): ${quoteUrl}` : 'Just reply YES and we’ll get you on the schedule.'
+    return `Hi${firstName ? ` ${firstName}` : ''}, QuietGreen here, great talking with you! ${measured}${deal}. ${close}`
   }
   function openEmail() {
     if (!draft) return
     const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
     const firstName = lead.name?.trim().split(/\s+/)[0]
-    setEmailBody(`Hi${firstName ? ` ${firstName}` : ''},\n\nThanks for talking with us. We re-measured ${lead.address || 'your lawn'}${sqFt ? ` at ${sqFt.toLocaleString('en-US')} sq ft` : ''}. Your quote is below.\n\nReply here or call us with any questions.\n\nQuietGreen`)
+    const offer = quoteOffer(draft)
+    setEmailBody(`Hi${firstName ? ` ${firstName}` : ''},\n\nGreat talking with you today! We measured your lawn${sqFt ? ` at ${sqFt.toLocaleString('en-US')} sq ft` : ''}, and your price is below${offer.recurring ? ', with your first visit 30% off' : ''}.\n\n${quoteUrl ? 'Tap “Review & book” to lock in your spot and pick your start date. It takes about 30 seconds, and we’ll confirm your first visit by phone.' : 'Reply to this email and we’ll get you on the schedule.'}\n\nTalk soon,\nQuietGreen`)
     setEmailOpen(true)
   }
   function useQuoteSummary() {
