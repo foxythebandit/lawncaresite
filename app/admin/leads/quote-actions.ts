@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { dispatchAlert, refreshAlert } from '@/lib/staff-alerts'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
+import { isPropertyConfirmed, isPropertyPoint } from '@/lib/property-location'
 import { centsToAmount, type LeadActivityInput, type LeadWorkflowPatch, type LeadWorkflowResult, type ContactOutcome, type LeadStage, type QuoteStatus, type JobItemInput, type CreateJobResult } from '@/lib/crm-contracts'
 import { revalidatePath } from 'next/cache'
 import { addInterval } from '@/lib/crm-jobs'
@@ -38,10 +39,18 @@ export async function saveLeadQuote(id: string, expectedUpdatedAt: string, draft
   const totalCents = quoteTotalCents(draft)
   if (!Number.isSafeInteger(totalCents) || totalCents < 0 || totalCents > 100000000 || draft.totalCents !== totalCents) return { error: 'Discount exceeds the service total or quote total changed.' }
   if (reviewed && totalCents <= 0) return { error: 'Enter a price before marking this quote reviewed.' }
+  if (draft.jobLatLng != null && !isPropertyPoint(draft.jobLatLng)) return { error: 'Invalid property location.' }
   await requireStaff(`/admin/leads/${id}`)
-  const { data: currentLead, error: addressError } = await adminDb().from('leads').select('address').eq('id', id).single()
+  const { data: currentLead, error: addressError } = await adminDb().from('leads').select('address,answers').eq('id', id).single()
   if (addressError || !currentLead) return { error: 'Could not load the current contact address.' }
   if (draft.contactAddressAtReview !== currentLead.address) return { error: 'The contact address changed. Start a quote for the updated address before saving.' }
+  const propertyConfirmed = isPropertyConfirmed(draft.propertyConfirmation, draft.address, currentLead.address, draft.jobLatLng)
+  if (draft.propertyConfirmation != null && !propertyConfirmed) return { error: 'The property location changed. Confirm the current property before saving.' }
+  const needsAddressReview = currentLead.answers && typeof currentLead.answers === 'object'
+    && !Array.isArray(currentLead.answers) && currentLead.answers.address_needs_review === true
+  if (reviewed && needsAddressReview && (draft.sections.length > 0 || draft.jobLatLng != null) && !propertyConfirmed) {
+    return { error: 'Confirm the matching property on the map before marking this quote reviewed.' }
+  }
   const reviewedDraft = draft
   return updateWorkflow(id, expectedUpdatedAt, { quote_draft: reviewedDraft, quote_status: 'draft', review_quote: reviewed, ...(reviewed ? { stage: 'quoted' as const } : {}) },
     { kind: 'quote', outcome: reviewed ? 'reviewed' : 'draft_saved', body: reviewed ? 'Staff reviewed quote.' : 'Saved quote draft.' })

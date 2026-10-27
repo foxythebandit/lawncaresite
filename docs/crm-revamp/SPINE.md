@@ -1,5 +1,13 @@
 # QuietGreen CRM revamp — project spine
 
+### Address reliability repair — 27 October 2026
+
+- User authorized a focused, thorough repair after a real ConviFlo Hutto address produced no autocomplete and CRM required a selection. Work is isolated on codex/address-reliability, based on origin/main145bb15.
+- Verified missing-city map data: full text with Hutto returns no result; one structured street/ZIP request returns the house. Website/CRM share this resolver; ConviFlo collects street/unit/city plus ZIP, preserved at intake. No third provider, migration, production mutation or published form/ad changes.
+- Added bounded/canceled lookup, property validation and explicit persisted/server-checked staff confirmation with manual recovery. Removed house-number-only parcel recentering; relocation clears old measurements. Historical ZIP enrichment is bound to original submitted address so staff corrections win.
+- 26 focused tests and real local auth/DB UI suite pass; real browser found the property in906ms (HTTP200). No live intake or Twilio calls/texts. See docs/address-reliability/README.md for checks, limits and deployment receipt. Public-service availability and global rate limits are not guaranteed by per-page queuing.
+
+
 ### Readable launched-ad attribution — 24 October 2026
 
 - Owner requested specific ad names and video versus still-image labels after a real website-service lead displayed only Meta IDs. Shared display formatting now resolves the 12 verified ads in campaign `120253769117350725`, including older website UTM-only attribution. Example: `Meta · Real People · Video · Testimonial`.

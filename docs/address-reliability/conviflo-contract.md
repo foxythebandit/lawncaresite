@@ -1,0 +1,9 @@
+# ConviFlo address contract
+
+The configured `address_key` selects the original answer. Verified structured answers contain `street`, `unit`, and `city`; the current live form also captures ZIP separately as `answers.postcode`. The canonical address now combines nonempty street, optional unit, city, and a valid available US postcode (five digits or ZIP+4). Whitespace is trimmed for display; original answers and ConviFlo form/response/submission provenance remain unchanged.
+
+Legacy string addresses remain supported. A separate postcode is appended only when the address has no valid trailing five-digit ZIP or ZIP+4. Invalid or non-string postcode values are ignored. Missing or malformed address components do not become an address merely because a postcode exists.
+
+Read-only live ConviFlo preview confirms Street address, unit, and city fields plus a separate ZIP question; there is no third-party provider control. No structured state field or coordinates have been verified. State already supplied inside a string address is preserved; no state or coordinates are inferred from ZIP or city. `address_needs_review` remains true, and missing addresses remain flagged. Service mapping, scoring/value, attribution, consent, and submission identity are unchanged. There is no database migration or historical-record backfill. The shared `addressForLookup` helper enriches historical lookup text only when the current contact address exactly matches the original submitted address (or its already enriched form). Staff address changes take precedence over historical postcode answers.
+
+Verification: `npx tsx --test tests/conviflo-services.test.ts` passes nine tests through the actual adapter and canonical intake boundary. Tests make no database or provider calls. Production data and form settings were not modified by this patch.

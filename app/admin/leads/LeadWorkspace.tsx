@@ -6,6 +6,8 @@ import { cleanAttribution, creativeTypeLabel, formatAttributionLabel, type Attri
 import { useRef, useState, useTransition } from 'react'
 import Icon from '../icons'
 import { useRouter } from 'next/navigation'
+import { addressForLookup } from '@/lib/address-text'
+import { isPropertyConfirmed } from '@/lib/property-location'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
 import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
@@ -59,6 +61,8 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
   const cleanSource = cleanAttribution(attribution)
   const sourceLabel = formatAttributionLabel(cleanSource.first_touch)
   const answers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? Object.entries(lead.answers) : []
+  const addressAnswers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? lead.answers as { postcode?: unknown; property_address?: unknown } : {}
+  const propertyAddress = addressForLookup(lead.address ?? '', addressAnswers.property_address, addressAnswers.postcode)
   const usefulAnswers = answers.filter(([key]) => !key.startsWith('conviflo_') && !['address_needs_review', 'name', 'phone', 'email', 'address', 'contact'].includes(key))
   const addressNeedsReview = !!lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers)
     && (lead.answers as { address_needs_review?: unknown }).address_needs_review === true
@@ -218,7 +222,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
           <a className="crm-button" href="#map-quote"><Icon name="ruler" size={16} />Build quote</a>
         </div>
       </div>
-      {(addressNeedsReview || propertyChanged) && <p className="crm-review-flag" role="alert">{propertyChanged ? 'Contact address changed. The saved quote still belongs to the previous address; review the property before quoting or booking.' : 'Submitted address needs review. Select the matching property in the map before using its measurement.'}</p>}
+      {((addressNeedsReview && !isPropertyConfirmed(draft?.propertyConfirmation, draft?.address ?? '', lead.address, draft?.jobLatLng)) || propertyChanged) && <p className="crm-review-flag" role="alert">{propertyChanged ? 'Contact address changed. The saved quote still belongs to the previous address; review the property before quoting or booking.' : 'Property not confirmed yet. Find the address below and confirm the house on the map before using its measurement.'}</p>}
       <div className="crm-workspace-grid">
         <div className="crm-workspace-main">
           <section className="crm-panel crm-sec-request">
@@ -428,7 +432,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
           <button className="crm-button crm-button-primary" disabled={pending || quoteStatus === 'accepted'} onClick={() => { setResetPropertyAddress(lead.address); setReviewed(false) }}>Start quote for updated address</button>
         </div>
         {quoteStatus === 'accepted' && <p className="crm-hint">Cancel acceptance above before starting the new quote.</p>}
-      </div> : <MapQuoteBuilder key={propertyReset ? `reset-${resetPropertyAddress}` : 'saved-property'} staffQuote={{ id: lead.id, address: lead.address, sq_ft: propertyReset ? null : lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,
+      </div> : <MapQuoteBuilder key={propertyReset ? `reset-${resetPropertyAddress}` : 'saved-property'} staffQuote={{ id: lead.id, address: lead.address, lookupAddress: propertyAddress, sq_ft: propertyReset ? null : lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,
         draft: propertyReset ? null : draft, updated_at: version, quote_status: quoteStatus, addressNeedsReview: addressNeedsReview || propertyChanged,
         onSaved: (updatedAt, wasReviewed, savedDraft) => { setVersion(updatedAt); setDraft(savedDraft); setReviewed(wasReviewed); setQuoteStatus('draft'); if (wasReviewed) setStage('quoted'); router.refresh() } }} />}
     </div>

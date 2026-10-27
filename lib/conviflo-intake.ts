@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { canonicalIntake } from './canonical-intake'
 import { enrichMetaCreative } from './ad-registry'
+import { fullAddressWithPostcode } from './address-text'
 
 type FormConfig = {
   services: string[]; address_key: string; map_meta_utm_ids?: boolean
@@ -45,15 +46,17 @@ export function convifloIntake(payload: unknown, forms: Record<string, FormConfi
   }
   const submittedAddress = fields[form.address_key]
   let address: string | null = null
-  if (typeof submittedAddress === 'string') address = submittedAddress.trim()
+  if (typeof submittedAddress === 'string') address = submittedAddress.trim() || null
   else if (submittedAddress && typeof submittedAddress === 'object' && !Array.isArray(submittedAddress)) {
     const parts = submittedAddress as Record<string, unknown>
     if (typeof parts.street === 'string' && parts.street.trim()
       && typeof parts.city === 'string' && parts.city.trim()) {
-      address = [parts.street, typeof parts.unit === 'string' ? parts.unit : null, parts.city]
-        .filter(Boolean).map(s => String(s).trim()).join(', ')
+      address = [parts.street, typeof parts.unit === 'string' ? parts.unit : '', parts.city]
+        .map(s => s.trim()).filter(Boolean).join(', ')
     }
   }
+  // The live postcode question is separate from the structured address answer.
+  if (address) address = fullAddressWithPostcode(address, fields.postcode)
   // The address is optional on live forms; staff collect it on the callback.
   const meta = data.meta && typeof data.meta === 'object' && !Array.isArray(data.meta)
     ? data.meta as Record<string, unknown> : {}
