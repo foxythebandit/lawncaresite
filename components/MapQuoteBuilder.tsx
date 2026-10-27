@@ -2,6 +2,7 @@
 
 import 'maplibre-gl/dist/maplibre-gl.css'
 import './map-waitlist.css'
+import './property-location.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/style.css'
@@ -16,6 +17,7 @@ import { trackWebsiteLead } from '@/lib/meta-events'
 import { QUOTE_CONSENT_TEXT as LEAD_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
 import { OFFICE_LAT, OFFICE_LNG, photonSearch, geocodeAddress, cachedGeocode, type GeoResult } from '@/lib/address-search'
+import { isPropertyConfirmed, parseManualPropertyLocation, type PropertyConfirmation } from '@/lib/property-location'
 import { ESRI_IMAGERY, MAPBOX_TOKEN } from '@/lib/map-imagery'
 import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
 import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
@@ -23,7 +25,7 @@ import QuotePriceEditor, { type ManualPriceLine } from '@/app/admin/leads/QuoteP
 import ManualQuoteForm from './ManualQuoteForm'
 
 /* ── Types ────────────────────────────────────────────── */
-type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
+type AppStep = 'idle' | 'searching' | 'confirming' | 'drawing' | 'done' | 'editing'
 type Frequency = 'onetime' | 'monthly' | 'biweekly' | 'weekly'
 
 interface Section {
@@ -31,31 +33,6 @@ interface Section {
   name: string
   sqFt: number
   coords: [number, number][] | null
-}
-
-/* Staff map: find the Travis County lot whose situs number matches the address
-   near the geocoded point, so the pin lands on the house rather than the street. */
-async function findTravisLot(houseNumber: string, near: { lat: number; lng: number }): Promise<{ center: [number, number]; ring: [number, number][] } | null> {
-  const qs = new URLSearchParams({
-    where: `SITUS = '${houseNumber}'`, geometry: `${near.lng},${near.lat}`, geometryType: 'esriGeometryPoint', inSR: '4326',
-    distance: '120', units: 'esriSRUnit_Meter', spatialRel: 'esriSpatialRelIntersects', outFields: 'SITUS', outSR: '4326', f: 'geojson',
-  })
-  try {
-    const res = await fetch(`https://services.arcgis.com/0L95CJ0VTaxqcmED/arcgis/rest/services/EXTERNAL_tcad_parcel/FeatureServer/0/query?${qs}`)
-    if (!res.ok) return null
-    const data = await res.json()
-    let best: { center: [number, number]; ring: [number, number][] } | null = null
-    let bestDist = Infinity
-    for (const feature of data?.features ?? []) {
-      const geometry = feature?.geometry
-      const ring: [number, number][] | undefined = geometry?.type === 'MultiPolygon' ? geometry.coordinates?.[0]?.[0] : geometry?.coordinates?.[0]
-      if (!ring || ring.length < 3) continue
-      const center: [number, number] = [ring.reduce((sum, p) => sum + p[0], 0) / ring.length, ring.reduce((sum, p) => sum + p[1], 0) / ring.length]
-      const dist = (center[0] - near.lng) ** 2 + (center[1] - near.lat) ** 2
-      if (dist < bestDist) { bestDist = dist; best = { center, ring } }
-    }
-    return best
-  } catch { return null }
 }
 
 /* ── Constants ────────────────────────────────────────── */
@@ -319,6 +296,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     mapMoveFn: (() => void) | null
   }>({ points: [], clickFn: null, moveFn: null, mapMoveFn: null })
 
+  const suggestionVersion = useRef(0)
+  const searchVersion = useRef(0)
+  const searchAbortRef = useRef<AbortController | null>(null)
+  const addressInputRef = useRef<HTMLInputElement>(null)
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestAbortRef = useRef<AbortController | null>(null)
   const addressWrapRef  = useRef<HTMLDivElement>(null)
@@ -329,7 +310,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const addonsRef       = useRef<HTMLDivElement>(null)
 
   const [step,        setStep]        = useState<AppStep>(() => draft?.sections.length ? 'done' : 'idle')
-  const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.address ?? '')
+  const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.lookupAddress ?? staffQuote?.address ?? '')
   const [error,       setError]       = useState('')
   const [outsideArea, setOutsideArea] = useState(false)
   const [waitlistName, setWaitlistName] = useState('')
@@ -386,6 +367,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [leadError,    setLeadError]    = useState('')
 
   const [jobLatLng,     setJobLatLng]     = useState<{ lat: number; lng: number } | null>(() => draft?.jobLatLng ?? null)
+  const [propertyConfirmation, setPropertyConfirmation] = useState<PropertyConfirmation | null>(draft?.propertyConfirmation ?? null)
+  const [manualLocation, setManualLocation] = useState('')
+  const [candidateLabel, setCandidateLabel] = useState('')
   const [showBooking,   setShowBooking]   = useState(false)
   const [bookingName,   setBookingName]   = useState('')
   const [bookingPhone,  setBookingPhone]  = useState('')
@@ -510,31 +494,55 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
 
   /* ─── Address autocomplete ──────────────────────────── */
-  const fetchSuggestions = useCallback((query: string) => {
+  const closeSuggestions = useCallback(() => {
+    suggestionVersion.current++
     if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
-    if (query.length < 3) { setSuggestions([]); return }
-    suggestTimerRef.current = setTimeout(async () => {
-      suggestAbortRef.current?.abort()
-      suggestAbortRef.current = new AbortController()
-      try {
-        setSuggestions(await photonSearch(query, 5, suggestAbortRef.current.signal))
-      } catch { /* aborted or network error — ignore */ }
-    }, 350)
+    suggestAbortRef.current?.abort()
+    setSuggestions([]); setActiveSug(-1)
   }, [])
 
+  const fetchSuggestions = useCallback((query: string) => {
+    closeSuggestions()
+    if (query.trim().length < 3) return
+    const version = suggestionVersion.current
+    suggestTimerRef.current = setTimeout(async () => {
+      const request = new AbortController()
+      suggestAbortRef.current = request
+      try {
+        const hits = await photonSearch(query, 5, request.signal)
+        if (version === suggestionVersion.current && document.activeElement === addressInputRef.current) setSuggestions(hits)
+      } catch { /* Typed final search remains available when suggestions fail. */ }
+    }, 350)
+  }, [closeSuggestions])
+
+  const invalidateSearch = useCallback(() => {
+    searchVersion.current++
+    searchAbortRef.current?.abort()
+    mapRef.current?.stop()
+  }, [])
+
+
   const pickSuggestion = (s: GeoResult) => {
+    closeSuggestions(); invalidateSearch()
     pickedRef.current = s
-    setAddress(s.label); setSuggestions([]); setActiveSug(-1)
+    setAddress(s.label); setPropertyConfirmation(null); setJobLatLng(null); setStep('idle'); setError('')
   }
+
+  useEffect(() => () => {
+    suggestionVersion.current++
+    searchVersion.current++
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
+    suggestAbortRef.current?.abort(); searchAbortRef.current?.abort()
+  }, [])
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (addressWrapRef.current && !addressWrapRef.current.contains(e.target as Node))
-        setSuggestions([])
+        closeSuggestions()
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [])
+  }, [closeSuggestions])
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -808,103 +816,115 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     })
   }, [])
 
-  /* ─── Staff only: pin the house the address search found ── */
+  // The pin must describe the same point that is saved. A nearby parcel with
+  // the same house number is not enough evidence to move it to another house.
   useEffect(() => {
-    const map = mapRef.current
-    if (!staffQuote || !map || !mapReady || !jobLatLng) return
+    if (!mapReady || !jobLatLng || !mapRef.current) return
     let alive = true
     let marker: { remove(): void } | null = null
-    const houseNumber = (staffQuote.address ?? address).match(/^\s*(\d+)/)?.[1]
-    Promise.all([import('maplibre-gl'), houseNumber ? findTravisLot(houseNumber, jobLatLng) : null]).then(([{ default: ml }, lot]) => {
-      if (!alive) return
+    import('maplibre-gl').then(({ default: ml }) => {
+      if (!alive || !mapRef.current) return
       const el = document.createElement('div')
-      el.className = lot ? 'crm-house-pin' : 'crm-house-pin crm-house-pin-approx'
-      el.title = lot ? 'County parcel for this address' : 'Approximate location from address search'
+      el.className = 'crm-house-pin'
+      el.title = 'Property location — check the house before tracing'
       el.innerHTML = '<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23.5 2 14a13 13 0 0 1 26 0c0 9.5-13 25-13 25z" fill="currentColor" stroke="#fff" stroke-width="2.5"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>'
-      // Taps still reach the map so the pin never blocks tracing.
       el.style.pointerEvents = 'none'
-      marker = new ml.Marker({ element: el, anchor: 'bottom' }).setLngLat(lot ? lot.center : [jobLatLng.lng, jobLatLng.lat]).addTo(map)
-      if (lot) {
-        drawParcelBoundary(lot.ring)
-        map.setPaintProperty('parcel-outline', 'line-opacity', 0.9)
-        map.setPaintProperty('parcel-outline', 'line-width', 2)
-        const recenter = () => { if (alive) map.easeTo({ center: lot.center, duration: 600 }) }
-        if (map.isMoving()) map.once('moveend', recenter); else recenter()
-      }
+      marker = new ml.Marker({ element: el, anchor: 'bottom' }).setLngLat([jobLatLng.lng, jobLatLng.lat]).addTo(mapRef.current)
     })
     return () => { alive = false; marker?.remove() }
-  }, [staffQuote, mapReady, jobLatLng, address, drawParcelBoundary])
+  }, [mapReady, jobLatLng])
+
+  const clearPropertyMeasurements = useCallback(() => {
+    setSections([]); setLawnSqFt(null); sectionsCountRef.current = 0
+    drawRef.current.points = []; setPtCount(0)
+    setFertAreaChoice(null); setFertCustomSqFt(null); setFertIncluded(false)
+    setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchIncluded(false)
+    setYardAreaChoice(null); setYardCustomSqFt(null); setYardIncluded(false); setYardHazards([])
+    setAddonDrawTarget(null); removeAddonPolygon()
+    const map = mapRef.current
+    if (map?.getLayer('parcel-outline')) map.removeLayer('parcel-outline')
+    if (map?.getSource('parcel-boundary')) map.removeSource('parcel-boundary')
+  }, [removeAddonPolygon])
+
+  const editAddress = (value: string) => {
+    invalidateSearch(); stopDraw()
+    pickedRef.current = null
+    setAddress(value); setPropertyConfirmation(null); setJobLatLng(null); setCandidateLabel('')
+    clearPropertyMeasurements(); setStep('idle'); setError(''); setOutsideArea(false); setWaitlistState('idle')
+    sessionStorage.removeItem('qg_submission_waitlist')
+    fetchSuggestions(value)
+  }
 
   /* ─── Address search ─────────────────────────────────── */
+  const showPropertyCandidate = useCallback((hit: GeoResult, version: number) => {
+    const map = mapRef.current
+    if (!map || searchVersion.current !== version) return
+    stopDraw()
+    if (jobLatLng && (jobLatLng.lat !== hit.lat || jobLatLng.lng !== hit.lon)) clearPropertyMeasurements()
+    setJobLatLng({ lat: hit.lat, lng: hit.lon }); setCandidateLabel(hit.label)
+    setPropertyConfirmation(null)
+    const needsConfirmation = !!staffQuote || hit.precision !== 'address'
+    const ready = () => {
+      if (version !== searchVersion.current) return
+      if (needsConfirmation) setStep('confirming')
+      else if (sectionsCountRef.current > 0) setStep('done')
+      else { startDraw(); setStep('drawing') }
+    }
+    // Fast lookup should not be hidden behind a multi-second flight animation.
+    map.jumpTo({ center: [hit.lon, hit.lat], zoom: 18 })
+    ready()
+    getParcel(address, hit.lat, hit.lon).then(parcel => {
+      if (version === searchVersion.current && parcel) drawParcelBoundary(parcel.coordinates)
+    }).catch(() => { /* Parcel outlines are supplemental, not property identity. */ })
+  }, [staffQuote, address, jobLatLng, clearPropertyMeasurements, stopDraw, startDraw, drawParcelBoundary])
+
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
     if (!address.trim()) { setError('Enter your address to find your property.'); return }
-    if (staffQuote?.addressNeedsReview && !draft?.jobLatLng && pickedRef.current?.label !== address) {
-      setError('Select the matching property from address suggestions before opening the map. The submitted address needs review.')
-      return
-    }
-    if (!mapRef.current) return
-    // Cancel any in-flight autocomplete so it can't reopen the dropdown over the result
-    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
-    suggestAbortRef.current?.abort()
-    setSuggestions([])
-    setError('')
-    setOutsideArea(false)
+    if (!mapRef.current || !mapReady) { setError('The map is loading. Try again in a moment.'); return }
+    invalidateSearch(); closeSuggestions(); stopDraw()
+    const version = searchVersion.current
+    const request = new AbortController()
+    searchAbortRef.current = request
+    setPropertyConfirmation(null); setError(''); setOutsideArea(false); setStep('searching')
     const previousWaitlistProperty = sessionStorage.getItem('qg_waitlist_property')
     if (previousWaitlistProperty && address !== previousWaitlistProperty) { sessionStorage.removeItem('qg_submission_waitlist'); setWaitlistState('idle') }
-    setStep('searching')
-    // Deferred a frame — calling this synchronously in the same tick as the
-    // setStep above gets silently dropped (the state-driven re-render right
-    // after appears to cancel a scrollIntoView queued in the same handler).
-    requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    requestAnimationFrame(() => { if (version === searchVersion.current) mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
     try {
       const picked = pickedRef.current
-      const hit = picked && picked.label === address ? picked : await (staffQuote ? cachedGeocode : geocodeAddress)(address)
-      if (!hit) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
-      const { lat, lon } = hit
-
-      // Outside the service area: stop here rather than quote a huge travel fee
-      const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, lat, lon)
+      const hit = picked?.label === address && picked.precision === 'address' ? picked
+        : await (staffQuote ? cachedGeocode : geocodeAddress)(address, request.signal)
+      if (version !== searchVersion.current || request.signal.aborted) return
+      if (!hit) { setError('We could not find an exact property. Check the street number, city and ZIP, or use the location option below.'); setStep('idle'); return }
+      const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, hit.lat, hit.lon)
       if (!staffQuote && miles > SERVICE_RADIUS_MILES) {
         setError(`That address is about ${Math.round(miles).toLocaleString()} miles from us. We serve Austin and up to ${SERVICE_RADIUS_MILES} miles out. Join our waitlist below and we'll contact you if coverage changes.`)
-        setOutsideArea(true)
-        sessionStorage.setItem('qg_waitlist_property', address)
-        setStep('idle')
-        scrollToNext(addressWrapRef, 'center')
+        setOutsideArea(true); sessionStorage.setItem('qg_waitlist_property', address); setStep('idle')
         return
       }
-      setJobLatLng({ lat, lng: lon })
       if (!staffQuote) trackQuoteAddressFound()
-
-      const map = mapRef.current
-      // Staff are usually on the phone with this customer: open right on the house.
-      if (staffQuote) {
-        map.once('moveend', () => { if (sectionsCountRef.current > 0) { setStep('done'); return } startDraw(); setStep('drawing') })
-        map.jumpTo({ center: [lon, lat], zoom: 18 })
-        getParcel(address, lat, lon).then(parcel => { if (parcel) drawParcelBoundary(parcel.coordinates) })
-        return
-      }
-      // Snap out to a wide, zoomed-out view over the address first (instant,
-      // no animation) so the flyTo below always starts from a wide shot and
-      // swoops in to the house — regardless of whatever zoom level the map
-      // was left at from a previous search.
-      map.jumpTo({ center: [lon, lat], zoom: 9 })
-      // Drive the "drawing" step off the animation actually finishing rather
-      // than a hardcoded timer, so it can never fire early/late if the
-      // duration below ever changes.
-      // Staff quotes that already have a measured lawn open ready to price; "Start over" retraces.
-      map.once('moveend', () => { if (staffQuote && sectionsCountRef.current > 0) { setStep('done'); return } startDraw(); setStep('drawing') })
-      map.flyTo({ center: [lon, lat], zoom: 18, duration: 4200 })
-
-      // Fetch parcel boundary in parallel with the fly animation
-      getParcel(address, lat, lon).then(parcel => {
-        if (parcel) drawParcelBoundary(parcel.coordinates)
-      })
+      showPropertyCandidate(hit, version)
     } catch {
-      setError('Search failed. Please try again.')
-      setStep('idle')
+      if (version !== searchVersion.current || request.signal.aborted) return
+      setError('Address lookup is temporarily unavailable. Try again, or use the location option below.'); setStep('idle')
     }
-  }, [staffQuote, address, startDraw, drawParcelBoundary])
+  }, [staffQuote, address, mapReady, invalidateSearch, closeSuggestions, stopDraw, showPropertyCandidate])
+
+  const confirmProperty = () => {
+    if (!jobLatLng) return
+    setPropertyConfirmation({ ...jobLatLng, address, contactAddress: contactAddressAtReview.current })
+    setError('')
+    if (sectionsCountRef.current > 0) setStep('done')
+    else { startDraw(); setStep('drawing') }
+  }
+
+  const locateManually = () => {
+    if (!mapReady || !mapRef.current) { setError('The map is loading. Try again in a moment.'); return }
+    const point = parseManualPropertyLocation(manualLocation)
+    if (!point || !address.trim()) { setError('Enter the full property address and a Google Maps place URL or latitude, longitude. A shortened link or map viewport alone cannot identify a house.'); return }
+    invalidateSearch(); closeSuggestions()
+    showPropertyCandidate({ label: address, lat: point.lat, lon: point.lng, precision: 'approximate' }, searchVersion.current)
+  }
 
   useEffect(() => {
     if (!staffQuote || !mapReady || restored.current) return
@@ -913,8 +933,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     if (draft?.jobLatLng) {
       mapRef.current?.jumpTo({ center: [draft.jobLatLng.lng, draft.jobLatLng.lat], zoom: 18 })
       setSections([...draft.sections])
-      setStep(draft.sections.length ? 'done' : 'idle')
-      if (draft.unfinishedPoints?.length) {
+      const confirmed = !staffQuote.addressNeedsReview || isPropertyConfirmed(draft.propertyConfirmation, draft.address, contactAddressAtReview.current, draft.jobLatLng)
+      setCandidateLabel(draft.address)
+      setStep(confirmed ? (draft.sections.length ? 'done' : 'confirming') : 'confirming')
+      if (confirmed && draft.unfinishedPoints?.length) {
         startDraw()
         drawRef.current.points = draft.unfinishedPoints
         setAddonDrawTarget(draft.unfinishedTarget ?? null)
@@ -964,6 +986,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
   /* ─── Reset ──────────────────────────────────────────── */
   const handleReset = useCallback(() => {
+    invalidateSearch(); closeSuggestions(); pickedRef.current = null
+    setPropertyConfirmation(null); setCandidateLabel(''); setManualLocation(''); setWaitlistState('idle')
+    sessionStorage.removeItem('qg_submission_waitlist'); sessionStorage.removeItem('qg_waitlist_property')
     cancelAnimationFrame(rafRef.current)
     stopDraw()
     const map = mapRef.current
@@ -982,7 +1007,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     setMaintenanceInterested(false)
     setYardAreaChoice(null); setYardCustomSqFt(null); setYardSeverity('moderate'); setYardHazards([]); setYardIncluded(false)
     scrollToNext(addressWrapRef, 'center')
-  }, [staffQuote, stopDraw, removeAddonPolygon])
+  }, [staffQuote, stopDraw, removeAddonPolygon, invalidateSearch, closeSuggestions])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
   const captureMapScreenshot = useCallback((): Promise<string> => {
@@ -1116,12 +1141,13 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
   async function saveStaffDraft(confirmed: boolean) {
     if (!staffQuote || saving) return
+    if (confirmed && staffQuote.addressNeedsReview && (jobLatLng || sections.length) && !isPropertyConfirmed(propertyConfirmation, address, contactAddressAtReview.current, jobLatLng)) { setSaveMessage('Confirm the property on the map before saving this measured quote as quoted.'); return }
     setSaving(true); setSaveMessage('')
     // Preserve unfinished trace points separately from finished/priced measurements.
     const points = drawRef.current.points
     const savedSections = sections
     const next: QuoteDraft = {
-      contactAddressAtReview: contactAddressAtReview.current, address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
+      contactAddressAtReview: contactAddressAtReview.current, propertyConfirmation, address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
       fertAreaChoice, fertCustomSqFt, fertIncluded, mulchAreaChoice, mulchCustomSqFt, mulchDepthIn, mulchIncluded,
       maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
       addonInterest, overgrowthFee, calculatedPrice: ongoingPrice, calculatedFirstVisit: firstVisitPrice, overridePrice, notes: staffNotes,
@@ -1225,13 +1251,13 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
             {/* Step 1 — Address */}
             <div className="mapq-step">
-              <div className={`mapq-step-indicator ${step !== 'idle' && step !== 'searching' ? 'done' : 'active'}`}>
+              <div className={`mapq-step-indicator ${!['idle', 'searching', 'confirming'].includes(step) ? 'done' : 'active'}`}>
                 {step !== 'idle' && step !== 'searching' ? <CheckIcon /> : '1'}
               </div>
               <div className="mapq-step-line" style={{ opacity: step !== 'idle' && step !== 'searching' ? 1 : 0.2 }} />
               <div className="mapq-step-body">
                 <div className={`mapq-step-title ${step === 'idle' || step === 'searching' ? 'active' : ''}`}>Your address</div>
-                {(step === 'idle' || step === 'searching') && (
+                {(step === 'idle' || step === 'searching' || step === 'confirming') && (
                   <form onSubmit={handleSearch} style={{ marginTop: 14 }}>
                     <div className="mapq-input-wrap" ref={addressWrapRef}>
                       <svg className="mapq-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1243,16 +1269,18 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                         placeholder="123 Main St, Austin TX…"
                         value={address}
                         autoComplete="off"
+                        ref={addressInputRef}
                         aria-label="Your street address"
                         aria-autocomplete="list"
                         aria-expanded={suggestions.length > 0}
-                        onChange={e => { setAddress(e.target.value); setActiveSug(-1); if (outsideArea) { setOutsideArea(false); setWaitlistState('idle'); setError('') }; fetchSuggestions(e.target.value) }}
+                        onChange={e => editAddress(e.target.value)}
                         onKeyDown={e => {
+                          if (e.key === 'Escape') { closeSuggestions(); return }
                           if (!suggestions.length) return
                           if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSug(i => Math.min(i + 1, suggestions.length - 1)) }
                           else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSug(i => Math.max(i - 1, -1)) }
                           else if (e.key === 'Enter' && activeSug >= 0) { e.preventDefault(); pickSuggestion(suggestions[activeSug]) }
-                          else if (e.key === 'Escape') { setSuggestions([]); setActiveSug(-1) }
+                          else if (e.key === 'Escape') { closeSuggestions() }
                         }}
                       />
                       {suggestions.length > 0 && (
@@ -1272,11 +1300,25 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                       )}
                     </div>
                     <button type="submit" className="mapq-btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={step === 'searching'}>
-                      {step === 'searching' ? <><span className="mapq-spinner" /> Flying there…</> : 'Find my property →'}
+                      {step === 'searching' ? <><span className="mapq-spinner" /> Finding property…</> : 'Find my property →'}
                     </button>
                     {error && <p className="mapq-error">{error}</p>}
                   </form>
                 )}
+                {step === 'confirming' && jobLatLng && <div className="mapq-property-confirm" role="status">
+                  <strong>Check this is the right house</strong>
+                  <p>{candidateLabel || address}</p>
+                  <p>Compare the pin with the property before tracing. A road or nearby house is not a confirmed match.</p>
+                  <button type="button" className="mapq-btn-primary" onClick={confirmProperty}>Confirm this property</button>
+                </div>}
+                {staffQuote && <details className="mapq-location-help">
+                  <summary>Can’t find the property? Set its location</summary>
+                  <p>Open the submitted address in Google Maps. Copy the place URL from the browser address bar, or right-click the house to copy its latitude, longitude.</p>
+                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noopener noreferrer">Open address in Google Maps ↗</a>
+                  <label>Place URL or latitude, longitude<input aria-label="Property location" value={manualLocation} onChange={event => setManualLocation(event.target.value)} placeholder="30.510755, -97.586527" /></label>
+                  <button type="button" className="mapq-btn-ghost" onClick={locateManually}>Show this location</button>
+                </details>}
+                {!staffQuote && error && !outsideArea && <p className="mapq-location-help"><a href="#service-inquiry">Send your address for a personal quote instead →</a></p>}
                 {outsideArea && !staffQuote && (waitlistState === 'saved' ? <p className="mapq-waitlist-success" role="status">You’re on the waitlist. We’ll reach out if service becomes available near this address.</p> :
                   <form className="mapq-waitlist" onSubmit={async event => {
                     event.preventDefault()
@@ -1297,7 +1339,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                     <button type="submit" className="mapq-btn-primary" disabled={waitlistState === 'saving'}>{waitlistState === 'saving' ? 'Saving…' : 'Join waitlist'}</button>
                     {waitlistError && <p className="mapq-error" role="alert">{waitlistError}</p>}
                   </form>)}
-                {step !== 'idle' && step !== 'searching' && (
+                {step !== 'idle' && step !== 'searching' && step !== 'confirming' && (
                   <p className="mapq-step-done-text">{address}<button className="mapq-link" onClick={handleReset}> · new search</button></p>
                 )}
               </div>
@@ -1826,7 +1868,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
               {step === 'searching' && (
                 <div className="mapq-flying-pill">
                   <span className="mapq-spinner" style={{ width: 14, height: 14, borderWidth: 2, borderTopColor: 'var(--green-bright)' }} />
-                  Flying to your property…
+                  Finding your property…
                 </div>
               )}
 
@@ -1866,7 +1908,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                   <a href="https://www.mapbox.com/map-feedback/" target="_blank" rel="noopener noreferrer">Improve this map</a>{' '}
                   © Maxar · Labels © Esri
                 </>
-              ) : 'Satellite imagery © Esri'}
+              ) : <>Satellite imagery © Esri · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">Address data © OpenStreetMap</a></>}
             </p>
 
             {compact && lawnSqFt && (

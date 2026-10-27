@@ -1,5 +1,8 @@
+import type { PropertyConfirmation } from './property-location'
+
 export interface QuoteDraft {
   contactAddressAtReview?: string | null
+  propertyConfirmation?: PropertyConfirmation | null
   address: string
   sections: { id: string; name: string; sqFt: number; coords: [number, number][] | null }[]
   unfinishedPoints?: [number, number][]
@@ -40,6 +43,7 @@ export interface StaffQuote {
   draft: QuoteDraft | null
   updated_at: string
   quote_status: 'draft' | 'accepted' | 'declined' | 'canceled'
+  lookupAddress?: string
   addressNeedsReview?: boolean
   onSaved?: (updatedAt: string, reviewed: boolean, draft: QuoteDraft) => void
 }

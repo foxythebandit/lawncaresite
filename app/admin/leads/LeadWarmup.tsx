@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
-import { cachedGeocode } from '@/lib/address-search'
 import { warmPropertyTiles } from '@/lib/map-imagery'
 
 type FullPrefetch = NonNullable<Parameters<ReturnType<typeof useRouter>['prefetch']>[1]>['kind']
@@ -25,7 +24,9 @@ export default function LeadWarmup({ leads }: { leads: WarmLead[] }) {
       void import('maplibre-gl')
       for (const lead of leads) {
         if (!alive) return
-        const point = lead.jobLatLng ?? (lead.address && !lead.needsReview ? await cachedGeocode(lead.address).then(hit => hit && { lat: hit.lat, lng: hit.lon }).catch(() => null) : null)
+        // Only warm saved locations. Final geocoding must follow an explicit search,
+        // not background page loads competing with live address requests.
+        const point = lead.jobLatLng
         if (point && alive) warmPropertyTiles(point.lat, point.lng)
       }
     }
