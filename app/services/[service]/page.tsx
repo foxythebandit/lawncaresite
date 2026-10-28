@@ -67,6 +67,24 @@ export default async function ServicePage({ params }: { params: Promise<{ servic
           <p style={{ fontSize: 17, lineHeight: 1.8, color: 'var(--ink-soft)' }}>{data.intro}</p>
         </section>
 
+        {/* Job video */}
+        {data.video && (
+          <section style={{ paddingBottom: 52 }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--green-deep)', marginBottom: 8 }}>
+              {data.video.title}
+            </h2>
+            <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--ink-soft)', marginBottom: 20 }}>{data.video.caption}</p>
+            <video
+              src={data.video.src}
+              poster={data.video.poster}
+              controls
+              playsInline
+              preload="none"
+              style={{ display: 'block', width: '100%', maxWidth: 360, aspectRatio: '9 / 16', borderRadius: 16, background: '#000', objectFit: 'cover' }}
+            />
+          </section>
+        )}
+
         {/* What's included */}
         <section style={{ paddingBottom: 52 }}>
           <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--green-deep)', marginBottom: 20 }}>

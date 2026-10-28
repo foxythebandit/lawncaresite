@@ -10,6 +10,8 @@ export interface ServicePage {
   intro: string
   included: string[]
   faqs: { q: string; a: string }[]
+  // Vertical (9:16) job video shown under the intro
+  video?: { src: string; poster: string; title: string; caption: string }
 }
 
 export const SERVICE_PAGES: ServicePage[] = [
@@ -40,6 +42,12 @@ export const SERVICE_PAGES: ServicePage[] = [
       { q: 'How is leaf cleanup priced?', a: 'It depends on the size of the property and how much has built up. Send us your address and a few details and we\'ll call you with a quote before any work starts.' },
       { q: 'Is electric equipment powerful enough for heavy leaf cover?', a: 'Yes. Commercial battery blowers handle a full fall leaf drop. They are just much quieter, so we can work without disturbing you or your neighbors.' },
     ],
+    video: {
+      src: '/videos/leaf-cleanup.mp4',
+      poster: '/videos/leaf-cleanup.jpg',
+      title: 'A real leaf cleanup, start to finish',
+      caption: 'Blown, vacuumed, mulched and bagged with battery equipment. We measured under 70 dB right next to the blower.',
+    },
   },
   {
     slug: 'garden-beds-mulch',
