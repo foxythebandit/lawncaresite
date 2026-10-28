@@ -1,66 +1,38 @@
-import Link from 'next/link'
-import { getLeads, getBookings } from '../actions'
-import { cleanAttribution, formatAttributionLabel, type Attribution } from '@/lib/attribution'
-import LeadRow from './LeadRow'
+import { requireStaff } from '@/lib/staff'
+import { adminDb } from '@/lib/supabase/admin'
+import { isColumn } from '@/lib/lead-board'
+import type { SummaryBooking, SummaryLead } from '@/lib/lead-summary'
+import { boardCard, groupBoard } from './board-cards'
+import Board from './Board'
 import LeadWarmup from './LeadWarmup'
 
 export const dynamic = 'force-dynamic'
 
-function timeAgo(dateStr: string) {
-  const diff = Math.max(0, Date.now() - new Date(dateStr).getTime())
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
+const BOOKING_FIELDS = 'lead_id,status,created_at,preferred_date,preferred_time,confirmed_date,frequency,price_per_visit,first_visit_price,overgrowth_fee,customer_notes,addon_interest,occurrence_on'
 
-export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
-  const view = (await searchParams).view ?? 'all'
-  const [leads, bookings] = await Promise.all([getLeads(), getBookings()])
-  const bookedLeadIds = new Set(bookings.filter(b => ['confirmed', 'completed'].includes(b.status)).map(b => b.lead_id).filter(Boolean))
-  // One request timestamp keeps queue ordering and due labels consistent.
+/** Lead board (PLAN.md 3.2, S6, S7): rendered on the server with every card already in place. */
+export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ view?: string; col?: string }> }) {
+  await requireStaff('/admin/leads')
+  const { view, col } = await searchParams
+  const db = adminDb()
+  const [{ data: leads }, { data: bookings }] = await Promise.all([
+    db.from('leads').select('*').order('created_at', { ascending: false }),
+    db.from('bookings').select(BOOKING_FIELDS).not('lead_id', 'is', null),
+  ])
+  const byLead = new Map<string, SummaryBooking[]>()
+  for (const booking of bookings ?? []) byLead.set(booking.lead_id, [...(byLead.get(booking.lead_id) ?? []), booking])
+  // One request timestamp keeps "12m" labels and check-back chips consistent.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
-  const needsAction = (lead: typeof leads[number]) => !['booked','lost'].includes(lead.stage ?? 'new') &&
-    (lead.stage === 'new' || (!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now))
-  const needsCount = leads.filter(needsAction).length
-  const followupCount = leads.filter(lead => lead.follow_up_at && !['booked','lost'].includes(lead.stage ?? 'new')).length
-  const visible = leads.filter(lead => view === 'needs' ? needsAction(lead) : view === 'followup' ? !!lead.follow_up_at && !['booked','lost'].includes(lead.stage ?? 'new') : true)
-    .sort((a, b) => Number(needsAction(b)) - Number(needsAction(a)) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  const totalConverted = leads.filter(lead => bookedLeadIds.has(lead.id)).length
-  // The top of the queue is what staff open while the phone rings; get it ready first.
-  const priority = visible.slice(0, 2)
-  const warm = priority.map(lead => {
+  const cards = (leads ?? []).map(lead => boardCard(lead as SummaryLead, byLead.get(lead.id) ?? [], now))
+  // The top of New is what staff open while the phone rings; get it ready first.
+  const top = groupBoard(cards).new.slice(0, 2).map(card => {
+    const lead = leads!.find(l => l.id === card.id)!
     const answers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? lead.answers as { address_needs_review?: unknown } : {}
-    return { href: `/admin/leads/${lead.id}`, address: lead.address, jobLatLng: lead.quote_draft?.jobLatLng ?? null, needsReview: answers.address_needs_review === true }
+    return { href: card.href, address: lead.address, jobLatLng: lead.quote_draft?.jobLatLng ?? null, needsReview: answers.address_needs_review === true }
   })
-
-  return <div className="crm-page">
-    <div className="crm-page-heading">
-      <div><h1>Leads</h1><p className="crm-muted">Call, quote, and follow up from one workspace.</p></div>
-    </div>
-    <div className="admin-stats">
-      <div className="admin-stat"><span className="admin-stat-val">{needsCount}</span><span className="admin-stat-label">Needs action</span></div>
-      <div className="admin-stat"><span className="admin-stat-val">{leads.length}</span><span className="admin-stat-label">Total leads</span></div>
-      <div className="admin-stat"><span className="admin-stat-val">{totalConverted}</span><span className="admin-stat-label">Confirmed booking conversion</span></div>
-      <div className="admin-stat"><span className="admin-stat-val">{leads.length ? Math.round((totalConverted / leads.length) * 100) : 0}%</span><span className="admin-stat-label">Conversion rate</span></div>
-    </div>
-    <div className="crm-toolbar">
-      <div className="crm-filter-row" role="navigation" aria-label="Lead views">
-        <Link className="crm-filter" href="/admin/leads" aria-current={view === 'all' ? 'page' : undefined}>All <strong>{leads.length}</strong></Link>
-        <Link className="crm-filter" href="/admin/leads?view=needs" aria-current={view === 'needs' ? 'page' : undefined}>Needs action <strong>{needsCount}</strong></Link>
-        <Link className="crm-filter" href="/admin/leads?view=followup" aria-current={view === 'followup' ? 'page' : undefined}>Follow-ups <strong>{followupCount}</strong></Link>
-      </div>
-    </div>
-    {visible.length === 0 ? <div className="admin-empty">{view === 'all' ? 'No leads yet.' : 'Nothing in this view.'}</div> : <div className="crm-list">
-      {visible.map(lead => {
-        const attribution = lead.attribution && typeof lead.attribution === 'object' && !Array.isArray(lead.attribution)
-          ? lead.attribution as Attribution : {}
-        const source = formatAttributionLabel(cleanAttribution(attribution).first_touch) || formatAttributionLabel(lead)
-        return <LeadRow key={lead.id} lead={lead} priority={priority.includes(lead)} source={source} converted={bookedLeadIds.has(lead.id)} timeAgo={timeAgo(lead.created_at)} needsAction={needsAction(lead)} due={!!lead.follow_up_at && new Date(lead.follow_up_at).getTime() <= now} />
-      })}
-    </div>}
-    <LeadWarmup leads={warm} />
+  return <div className="crm-page crm-board-page">
+    <Board cards={cards} initialView={view === 'list' ? 'list' : 'board'} initialColumn={isColumn(col) ? col : 'new'} />
+    <LeadWarmup leads={top} />
   </div>
 }
