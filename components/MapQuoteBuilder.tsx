@@ -276,6 +276,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const requestedFrequency = staffQuote?.frequency?.toLowerCase().replace(/[^a-z]/g, '') as Frequency | undefined
   const [leadToken, setLeadToken] = useState<string | undefined>(undefined)
   // The price on screen and the traced shapes, read by the unlock submit (PLAN.md 3.3, S10, S12).
+  // Staff mode: the lead page opens at the top; the builder only scrolls itself after staff use it.
+  const staffUsed = useRef(false)
   const shownQuote = useRef<{ price: { price_per_visit: number; first_visit_price: number; frequency: Frequency }; tracing: Omit<Section, 'id'>[] } | null>(null)
   const [saveMessage, setSaveMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -905,7 +907,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     setPropertyConfirmation(null); setError(''); setOutsideArea(false); setStep('searching')
     const previousWaitlistProperty = sessionStorage.getItem('qg_waitlist_property')
     if (previousWaitlistProperty && address !== previousWaitlistProperty) { sessionStorage.removeItem('qg_submission_waitlist'); setWaitlistState('idle') }
-    requestAnimationFrame(() => { if (version === searchVersion.current) mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
+    requestAnimationFrame(() => { if (version === searchVersion.current && (!staffQuote || staffUsed.current)) mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
     try {
       const picked = pickedRef.current
       const hit = picked?.label === address && picked.precision === 'address' ? picked
@@ -1104,13 +1106,13 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
   // Lawn finished → phone box; price unlocked (or extra area added) → price
   useEffect(() => {
-    if (step !== 'done') return
+    if (step !== 'done' || (staffQuote && !staffUsed.current)) return
     if (leadUnlocked) { scrollToNext(priceTitleRef); return }
     scrollToNext(leadGateRef, 'center')
     // Only jump into the field with a mouse — on phones it would pop the keyboard over the map
     if (window.matchMedia('(pointer: fine)').matches)
       setTimeout(() => leadPhoneRef.current?.focus({ preventScroll: true }), 450)
-  }, [step, leadUnlocked])
+  }, [step, leadUnlocked, staffQuote])
 
   // Re-frame the traced lawn whenever the map changes size between full and preview
   useEffect(() => {
@@ -1209,7 +1211,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
-    <section className={`mapq-section${staffQuote ? ' crm-staff-map' : ''}${staffQuote && !showStaffMap ? ' crm-staff-map-hidden' : ''}${outsideArea ? ' mapq-outside' : ''}`} id="map-quote">
+    <section className={`mapq-section${staffQuote ? ' crm-staff-map' : ''}${staffQuote && !showStaffMap ? ' crm-staff-map-hidden' : ''}${outsideArea ? ' mapq-outside' : ''}`} id="map-quote"
+      onPointerDownCapture={() => { staffUsed.current = true }} onKeyDownCapture={() => { staffUsed.current = true }}>
       <div className="mapq-blobs" aria-hidden="true">
         <div className="mapq-blob mapq-blob-a" />
         <div className="mapq-blob mapq-blob-b" />

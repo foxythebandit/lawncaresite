@@ -49,7 +49,7 @@ export default function Board({ cards, initialView, initialColumn }: { cards: Bo
   const boardRef = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
   const suppressClick = useRef(false)
-  const refocus = useRef<string | null>(null)
+  const refocus = useRef<{ id: string; column: BoardColumn } | null>(null)
   const prefetched = useRef(new Set<string>())
   const groups = groupBoard(shown)
 
@@ -86,11 +86,14 @@ export default function Board({ cards, initialView, initialColumn }: { cards: Bo
     })
   }
 
-  // Keep keyboard focus on a card after it moves columns.
+  // Keep keyboard focus on a card after it moves columns (after any prompt has closed).
   useEffect(() => {
-    if (!refocus.current) return
-    const link = boardRef.current?.querySelector<HTMLElement>(`[data-card="${refocus.current}"] .crm-bcard-link`)
-    if (link) { link.focus(); refocus.current = null }
+    const want = refocus.current
+    if (!want) return
+    const link = boardRef.current?.querySelector<HTMLElement>(`[data-drop="${want.column}"] [data-card="${want.id}"] .crm-bcard-link`)
+    if (!link) return
+    refocus.current = null
+    setTimeout(() => { if (link.isConnected) link.focus() }, 220)
   })
 
   useEffect(() => {
@@ -162,7 +165,7 @@ export default function Board({ cards, initialView, initialColumn }: { cards: Bo
     event.preventDefault()
     const index = BOARD_COLUMNS.indexOf(card.column) + (event.key === 'ArrowRight' ? 1 : -1)
     if (index < 0 || index >= BOARD_COLUMNS.length) return
-    refocus.current = card.id
+    refocus.current = { id: card.id, column: BOARD_COLUMNS[index] }
     requestMove(card, BOARD_COLUMNS[index])
   }
 
