@@ -7,7 +7,7 @@ export function websiteLead(data: Attribution & { name?: string; phone: string; 
   return {
     name: data.name?.trim().slice(0, 150) || null, phone: data.phone.trim(), email: data.email?.trim().slice(0, 254) || null,
     address: data.address.trim() || null, sq_ft: data.sq_ft == null ? null : Math.round(data.sq_ft), form_version: `${form}:1`,
-    services: ['Lawn care', ...Object.keys(data.addon_interest ?? {}).filter(k => ['fertilization','mulch','maintenance','yardClearout'].includes(k))], frequency: data.frequency?.slice(0, 50) || null, timing: data.preferred_date || null,
+    services: ['Lawn care', ...Object.keys(data.addon_interest ?? {}).filter(k => ['fertilization','mulch','leafCleanup','maintenance','yardClearout'].includes(k))], frequency: data.frequency?.slice(0, 50) || null, timing: data.preferred_date || null,
     answers: { notes: data.notes?.slice(0, 2000) }, attribution: attr,
     gclid: attr.first_touch?.gclid || null, gbraid: attr.first_touch?.gbraid || null,
     wbraid: attr.first_touch?.wbraid || null,

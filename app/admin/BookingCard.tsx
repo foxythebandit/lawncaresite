@@ -55,6 +55,7 @@ function addonDetails(addons: Record<string, unknown>) {
       typeof fields.severity === 'string' ? `${fields.severity} overgrowth` : null,
       typeof fields.price === 'number' ? `starting at ${money(fields.price)}` : null,
       Array.isArray(fields.hazards) ? `hazards: ${fields.hazards.join(', ')}` : null,
+      fields.haul_away === true ? 'hauled away' : null,
     ].filter(Boolean)
     return `${name}${details.length ? ` — ${details.join(', ')}` : ''}`
   }).join('; ')
