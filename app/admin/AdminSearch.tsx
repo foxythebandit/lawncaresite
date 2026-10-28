@@ -14,7 +14,7 @@ export default function AdminSearch({ defaultValue, filter }: { defaultValue: st
       const params = new URLSearchParams()
       params.set('filter', filter)
       if (val.trim()) params.set('search', val.trim())
-      router.push(`/admin?${params.toString()}`)
+      router.push(`/admin/jobs?${params.toString()}`)
     }, 300)
   }, [filter, router])
 

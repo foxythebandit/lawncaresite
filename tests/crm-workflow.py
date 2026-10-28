@@ -73,11 +73,11 @@ with sync_playwright() as p:
  assert len(db('intake_events?lead_id=eq.'+lid))==1
  page.get_by_role('button',name='Book visit',exact=True).click()
  page.get_by_role('button',name='Confirm booking',exact=True).click()
- page.get_by_text('Booking stages (1)',exact=True).wait_for()
+ page.get_by_text('Visits (1)',exact=True).wait_for()
  assert db('leads?id=eq.'+lid)[0]['quote_status']=='accepted'
  booking=db('bookings?lead_id=eq.'+lid)[0];assert booking['status']=='pending' and booking['price_per_visit']==80 and booking['utm_source']=='meta'
  assert booking['attribution']==saved['attribution']
- page.goto(BASE+'/admin');page.wait_for_load_state('load')  # the jobs map keeps geocoding, so the network rarely idles
+ page.goto(BASE+'/admin/jobs');page.wait_for_load_state('load')  # the jobs map keeps geocoding, so the network rarely idles
  page.get_by_role('button',name=name,exact=False).first.click()
  # Book visit already created and linked the customer; the job card no longer asks.
  assert booking['customer_id'] and booking['property_id']

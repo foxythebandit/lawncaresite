@@ -21,6 +21,14 @@ const paths = {
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   check: 'M5 12l5 5 9-10',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  columns: 'M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z',
+  bell: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
+  play: 'M8 5v14l11-7z',
+  pause: 'M8 5h3v14H8zM13 5h3v14h-3z',
+  note: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3',
+  tag: 'M3 12V4h8l10 10-8 8zM7.5 8.5h.01',
+  login: 'M10 17l5-5-5-5M15 12H3M15 4h4v16h-4',
 } as const
 
 export type IconName = keyof typeof paths

@@ -53,15 +53,12 @@ with sync_playwright() as playwright:
     page.wait_for_url(BASE + '/admin/leads/' + lead_id)
     page.get_by_role('heading', name=name).wait_for()
     page.add_style_tag(content='nextjs-portal { display: none !important; }')
-    assert page.get_by_role('link', name='Call 512-555-0199').get_attribute('href') == 'tel:+15125550199'
-    assert page.get_by_role('link', name='Build quote').get_attribute('href') == '#map-quote'
+    assert page.get_by_role('link', name='Call (512) 555-0199').get_attribute('href') == 'tel:+15125550199'
     assert page.locator('#map-quote').count() == 1
-    page.get_by_text('Answers and acquisition details', exact=True).click()
-    page.get_by_text('Bag the leaves by the back gate', exact=True).wait_for()
-    page.get_by_text('Meta ad', exact=True).wait_for()
-    page.get_by_text('Answers and acquisition details', exact=True).click()
-    assert page.get_by_role('link', name='Open Messages').get_attribute('href').startswith('sms:+15125550199?body=')
-    iphone_href = page.get_by_role('link', name='Open Messages').evaluate('''link => {
+    page.get_by_text('Bag the leaves by the back gate', exact=False).first.wait_for()
+    page.get_by_text('Facebook ad', exact=True).first.wait_for()
+    assert page.get_by_role('link', name='Text', exact=True).get_attribute('href').startswith('sms:+15125550199?body=')
+    iphone_href = page.get_by_role('link', name='Text', exact=True).evaluate('''link => {
       document.addEventListener('click', event => { if (event.target === link) event.preventDefault() }, { capture: true, once: true });
       link.click();
       return link.getAttribute('href');
@@ -69,15 +66,15 @@ with sync_playwright() as playwright:
     assert iphone_href.startswith('sms:+15125550199&body=')
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'mobile horizontal overflow'
     page.screenshot(path='/tmp/qg-crm-mobile-compact-390.png', full_page=True)
-    page.get_by_text('Update lead and follow-up', exact=True).click()
-    page.get_by_label('Outcome').select_option('no_answer')
-    page.get_by_role('button', name='Save call outcome').click()
-    page.get_by_text('Saved.', exact=True).first.wait_for()
-    assert db('leads?id=eq.' + lead_id)[0]['contact_outcome'] == 'no_answer'
-    page.get_by_label('Date and time').fill('2026-11-02T09:00')
-    page.get_by_role('button', name='Set follow-up').click()
-    page.get_by_text('Saved.', exact=True).first.wait_for()
-    assert db('leads?id=eq.' + lead_id)[0]['follow_up_at']
+    # Log call sheet v2: Didn't reach → No answer moves the card to In talks.
+    page.locator('.crm-sticky-actions').get_by_role('button', name='Log call').click()
+    page.locator('dialog.crm-logcall').get_by_role('radio', name="Didn't reach").click()
+    page.locator('dialog.crm-logcall .crm-outcome', has_text='No answer').click()
+    page.locator('dialog.crm-logcall').get_by_role('button', name='Save · In talks').click()
+    page.wait_for_function("document.querySelector('.crm-lead-chips')?.textContent.includes('In talks')")
+    page.wait_for_timeout(1000)
+    logged = db('leads?id=eq.' + lead_id)[0]
+    assert logged['contact_outcome'] == 'no_answer' and logged['board_column'] == 'in_talks' and logged['call_attempts'] == 1
     page.get_by_label('Leaf cleanup price').fill('125.50')
     page.get_by_role('button', name='Save', exact=True).click()
     page.get_by_role('status').filter(has_text='Price saved.').wait_for()
@@ -95,7 +92,7 @@ with sync_playwright() as playwright:
     page.get_by_text('Edit contact', exact=True).click()
     page.get_by_label('Property address', exact=True).fill('999 Temporary Test Property, Austin, TX')
     page.get_by_role('button', name='Save contact').click()
-    page.get_by_text('Contact address changed.', exact=False).wait_for()
+    page.get_by_role('heading', name='Contact address changed').wait_for()
     assert page.get_by_role('button', name='Book visit').count() == 0
     assert db('bookings?lead_id=eq.' + lead_id) == []
     page.get_by_role('button', name='Start quote for updated address').click()
@@ -125,7 +122,7 @@ with sync_playwright() as playwright:
     rpc('update_lead_workflow', {'p_lead_id': lead_id, 'p_expected_updated_at': current_version,
                                  'p_patch': {}, 'p_activity': {'kind': 'note', 'body': 'Other staff note'},
                                  'p_actor_email': 'other-staff@example.test'})
-    page.get_by_text('Update lead and follow-up', exact=True).click()
+    page.locator('summary', has_text='Add note').click()
     page.get_by_label('Note', exact=True).fill('Stale staff note')
     page.get_by_role('button', name='Add note').evaluate('(button) => button.click()')
     page.get_by_text('This lead changed since you opened it.', exact=False).first.wait_for(timeout=5000)
@@ -135,7 +132,7 @@ with sync_playwright() as playwright:
     page.get_by_label('Phone', exact=True).fill('+15125550198')
     page.get_by_label('Property address', exact=True).fill('999 New Test Property, Austin, TX')
     page.get_by_role('button', name='Save contact').click()
-    page.get_by_text('Contact address changed.', exact=False).wait_for()
+    page.get_by_role('heading', name='Contact address changed').wait_for()
     corrected = db('leads?id=eq.' + lead_id)[0]
     assert corrected['phone'] == '+15125550198'
     assert corrected['accepted_quote_snapshot']['address'] == '999 Temporary Test Property, Austin, TX'
@@ -150,7 +147,7 @@ with sync_playwright() as playwright:
     page.locator('input[name=password]').fill('Local-test-password-123!')
     page.get_by_role('button', name='Sign in').click()
     page.wait_for_url(BASE + '/admin/leads')
-    page.get_by_role('link', name='Open quote for ' + name).wait_for()
+    page.locator('.crm-bcard', has_text=name).first.wait_for()
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'desktop horizontal overflow'
     page.screenshot(path='/tmp/qg-crm-desktop-1360.png', full_page=True)
     desktop.close()

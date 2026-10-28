@@ -61,7 +61,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         <strong>Mowing plan · every {agreement.interval_count === 1 ? '' : `${agreement.interval_count} `}{agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {money(agreement.price_per_visit)}/visit</strong>
         <span>{addressById.get(agreement.property_id) || 'Property'} · next visit {dateText(agreement.next_on)}</span>
       </div>
-      <Link className="crm-button crm-button-sm" href={`/admin?search=${encodeURIComponent(customer.name ?? '')}`}>Manage visits</Link>
+      <Link className="crm-button crm-button-sm" href={`/admin/jobs?search=${encodeURIComponent(customer.name ?? '')}`}>Manage visits</Link>
     </div>)}
     <div className="crm-customer-sections">
       <section className="crm-panel crm-customer-wide"><h2>Visits ({jobs.length})</h2>

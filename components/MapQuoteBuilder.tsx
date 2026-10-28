@@ -10,6 +10,7 @@ import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 import TraceDemo        from '@/components/TraceDemo'
 import { submitLead }   from '@/app/actions/submit-lead'
+import { updateWebsitePrice } from '@/app/actions/update-website-price'
 import { submitWaitlist } from '@/app/actions/submit-waitlist'
 import { getAttribution } from '@/lib/attribution'
 import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAddonInterest, trackBookingRequested } from '@/lib/gtag'
@@ -274,6 +275,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const requestedServices = (staffQuote?.services ?? []).map(s => s.toLowerCase().replace(/[^a-z]/g, ''))
   const requestedFrequency = staffQuote?.frequency?.toLowerCase().replace(/[^a-z]/g, '') as Frequency | undefined
   const [leadToken, setLeadToken] = useState<string | undefined>(undefined)
+  // The price on screen and the traced shapes, read by the unlock submit (PLAN.md 3.3, S10, S12).
+  // Staff mode: the lead page opens at the top; the builder only scrolls itself after staff use it.
+  const staffUsed = useRef(false)
+  const shownQuote = useRef<{ price: { price_per_visit: number; first_visit_price: number; frequency: Frequency }; tracing: Omit<Section, 'id'>[] } | null>(null)
   const [saveMessage, setSaveMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [overridePrice, setOverridePrice] = useState<number | null>(() => draft?.overridePrice ?? null)
@@ -902,7 +907,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     setPropertyConfirmation(null); setError(''); setOutsideArea(false); setStep('searching')
     const previousWaitlistProperty = sessionStorage.getItem('qg_waitlist_property')
     if (previousWaitlistProperty && address !== previousWaitlistProperty) { sessionStorage.removeItem('qg_submission_waitlist'); setWaitlistState('idle') }
-    requestAnimationFrame(() => { if (version === searchVersion.current) mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
+    requestAnimationFrame(() => { if (version === searchVersion.current && (!staffQuote || staffUsed.current)) mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
     try {
       const picked = pickedRef.current
       const hit = picked?.label === address && picked.precision === 'address' ? picked
@@ -1046,7 +1051,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     if (!leadConsent) { setLeadError('Please check the box to consent to being contacted.'); return }
     setLeadStatus('submitting'); setLeadError('')
     const screenshot = await captureMapScreenshot()
-    const result = await submitLead({ submission_id: submissionId('map'), phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined, ...getAttribution() })
+    const shown = shownQuote.current
+    const result = await submitLead({ submission_id: submissionId('map'), phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined,
+      website_price: shown?.price, lawn_tracing: shown?.tracing, ...getAttribution() })
       .catch(() => ({ success: false, error: 'Something went wrong. Please try again.', leadToken: undefined, eventId: undefined }))
     if (result.success) { trackWebsiteLead(result.eventId); setLeadToken(result.leadToken); if (result.leadToken) sessionStorage.setItem('qg_lead_token', result.leadToken); setLeadUnlocked(true); setLeadStatus('idle'); if (!staffQuote) trackQuoteShown() }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
@@ -1074,18 +1081,38 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const mowingPriceCents = Math.round((overridePrice ?? ongoingPrice) * 100)
   const staffTotalCents = (includeMowing ? mowingPriceCents : 0) + manualLines.reduce((sum, line) => sum + line.amountCents, 0) - discountCents
   const isDone         = step === 'done' || step === 'editing'
+
+  // Keep what the customer sees ready for the unlock submit, and once unlocked, save frequency/price changes to their lead.
+  const quoteKey = `${freq}:${ongoingPrice}:${firstVisitPrice}`
+  const sentQuote = useRef<string | null>(null)
+  useEffect(() => {
+    if (staffQuote) return
+    shownQuote.current = { price: { price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice, frequency: freq },
+      tracing: sections.map(({ name, sqFt, coords }) => ({ name, sqFt, coords })) }
+  }, [staffQuote, ongoingPrice, firstVisitPrice, freq, sections])
+  useEffect(() => {
+    if (!leadToken) sentQuote.current = null
+    if (staffQuote || !leadUnlocked || !leadToken || ongoingPrice <= 0) return
+    if (sentQuote.current === null) { sentQuote.current = quoteKey; return }
+    if (sentQuote.current === quoteKey) return
+    const timer = setTimeout(() => {
+      sentQuote.current = quoteKey
+      void updateWebsitePrice(leadToken, { price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice, frequency: freq }).catch(() => {})
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [staffQuote, leadUnlocked, leadToken, quoteKey, ongoingPrice, firstVisitPrice, freq])
   // Once the price is unlocked the map shrinks to a preview and the quote takes over
   const compact        = !staffQuote && leadUnlocked && step === 'done' && !isDrawing
 
   // Lawn finished → phone box; price unlocked (or extra area added) → price
   useEffect(() => {
-    if (step !== 'done') return
+    if (step !== 'done' || (staffQuote && !staffUsed.current)) return
     if (leadUnlocked) { scrollToNext(priceTitleRef); return }
     scrollToNext(leadGateRef, 'center')
     // Only jump into the field with a mouse — on phones it would pop the keyboard over the map
     if (window.matchMedia('(pointer: fine)').matches)
       setTimeout(() => leadPhoneRef.current?.focus({ preventScroll: true }), 450)
-  }, [step, leadUnlocked])
+  }, [step, leadUnlocked, staffQuote])
 
   // Re-frame the traced lawn whenever the map changes size between full and preview
   useEffect(() => {
@@ -1150,11 +1177,12 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       distance_miles: Math.round(jobMiles * 10) / 10, distance_fee: distanceFee,
       map_screenshot: mapScreenshot,
       addon_interest: addonInterest,
+      lawn_tracing: sections.map(({ name, sqFt, coords }) => ({ name, sqFt, coords })),
       ...getAttribution(),
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
     if (result.success) { setBookingStatus('success'); if (!staffQuote) trackBookingRequested(firstVisitPrice) }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
-  }, [leadToken, staffQuote, bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest])
+  }, [leadToken, staffQuote, bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest, sections])
 
   async function saveStaffDraft(confirmed: boolean) {
     if (!staffQuote || saving) return
@@ -1183,7 +1211,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
-    <section className={`mapq-section${staffQuote ? ' crm-staff-map' : ''}${staffQuote && !showStaffMap ? ' crm-staff-map-hidden' : ''}${outsideArea ? ' mapq-outside' : ''}`} id="map-quote">
+    <section className={`mapq-section${staffQuote ? ' crm-staff-map' : ''}${staffQuote && !showStaffMap ? ' crm-staff-map-hidden' : ''}${outsideArea ? ' mapq-outside' : ''}`} id="map-quote"
+      onPointerDownCapture={() => { staffUsed.current = true }} onKeyDownCapture={() => { staffUsed.current = true }}>
       <div className="mapq-blobs" aria-hidden="true">
         <div className="mapq-blob mapq-blob-a" />
         <div className="mapq-blob mapq-blob-b" />

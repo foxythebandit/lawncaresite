@@ -56,7 +56,7 @@ export async function updateNotes(id: string, notes: string) {
   await requireStaff()
   if (!UUID_RE.test(id)) return
   await getAdmin().from('bookings').update({ notes: notes.slice(0, 2000) }).eq('id', id)
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
 }
 
 export async function deleteBooking(id: string): Promise<ActionResult> {
@@ -72,7 +72,7 @@ export async function deleteBooking(id: string): Promise<ActionResult> {
     p_operation_id: crypto.randomUUID(), p_action: 'cancel', p_payload: {},
   })
   if (error) return { success: false, error: commandError(error) }
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
   revalidatePath('/admin/route')
@@ -94,7 +94,7 @@ export async function updateContactDetails(id: string, data: { name: string; pho
   if (!phone) return { success: false, error: 'Phone is required.' }
   if (email && !EMAIL_RE.test(email)) return { success: false, error: 'Enter a valid email address.' }
   await getAdmin().from('bookings').update({ name, phone, email: email || null }).eq('id', id)
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
   revalidatePath('/admin/route')
@@ -146,7 +146,7 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
   if (error) return { success: false, error: 'Failed to send reminder email.' }
 
   await db.from('bookings').update({ last_reminder_sent_at: new Date().toISOString() }).eq('id', id)
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
   revalidatePath('/admin/week')
   revalidatePath('/admin/route')
 
@@ -168,7 +168,7 @@ export async function markComplete(
   })
   if (error) return { success: false, error: commandError(error) }
 
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
   revalidatePath('/admin/route')
@@ -185,7 +185,7 @@ export async function getBookings() {
 }
 
 function refreshJobs() {
-  for (const path of ['/admin', '/admin/week', '/admin/route', '/admin/revenue', '/admin/customers']) {
+  for (const path of ['/admin/jobs', '/admin/week', '/admin/route', '/admin/revenue', '/admin/customers']) {
     revalidatePath(path)
   }
 }

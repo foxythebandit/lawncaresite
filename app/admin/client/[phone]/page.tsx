@@ -23,7 +23,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
   if (visits.length === 0) {
     return (
       <div className="crm-page">
-        <Link href="/admin" className="crm-back"><Icon name="arrowLeft" size={15} />Jobs</Link>
+        <Link href="/admin/jobs" className="crm-back"><Icon name="arrowLeft" size={15} />Jobs</Link>
         <div className="admin-empty">No unlinked legacy visits found for this phone.</div>
       </div>
     )
@@ -36,7 +36,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
 
   return (
     <div className="crm-page">
-      <Link href="/admin" className="crm-back"><Icon name="arrowLeft" size={15} />Jobs</Link>
+      <Link href="/admin/jobs" className="crm-back"><Icon name="arrowLeft" size={15} />Jobs</Link>
       <div className="crm-page-heading">
         <div>
           <h1>{client.name}</h1>
