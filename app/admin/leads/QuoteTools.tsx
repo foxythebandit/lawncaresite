@@ -51,6 +51,13 @@ export function QuoteProvider({ lead, activities, bookings, customerMatches = []
   const [reviewed, setReviewed] = useState(!!lead.quote_confirmed_at)
   const [quoteStatus, setQuoteStatus] = useState(lead.quote_status)
   const [feedback, setFeedback] = useState('')
+  // A Log call or board move refreshes this page with a newer updated_at. Adopt it when the quote
+  // on screen is still the server's, so the next quote save isn't refused as a conflict.
+  const [seenVersion, setSeenVersion] = useState(lead.updated_at)
+  if (lead.updated_at !== seenVersion) {
+    setSeenVersion(lead.updated_at)
+    if (lead.updated_at > version && JSON.stringify(lead.quote_draft) === JSON.stringify(draft)) setVersion(lead.updated_at)
+  }
   const propertyChanged = !!draft && (draft.contactAddressAtReview !== undefined
     ? draft.contactAddressAtReview !== lead.address
     : activities.some(activity => activity.outcome === 'contact_address_changed' && activity.occurred_at > (lead.quote_saved_at ?? '')))
@@ -223,13 +230,13 @@ export function QuotePanel() {
 
     {bookingOpen && !propertyChanged && <div className="crm-booking-request">
       <h3>First visit</h3>
-      <label className="crm-field">Date (optional)<input type="date" value={bookingDate} onChange={event => setBookingDate(event.target.value)} /></label>
+      <label className="crm-field">Visit date (optional)<input type="date" value={bookingDate} onChange={event => setBookingDate(event.target.value)} /></label>
       <div className="crm-field" role="radiogroup" aria-label="Customer">Customer
         <label className="crm-radio"><input type="radio" name="booking-customer" checked={bookingCustomer === 'new'} onChange={() => setBookingCustomer('new')} />New · {lead.name || formatPhone(lead.phone)}</label>
         {customerMatches.map(match => <label className="crm-radio" key={match.id}><input type="radio" name="booking-customer" checked={bookingCustomer === match.id} onChange={() => setBookingCustomer(match.id)} />Existing (same phone) · {match.name || formatPhone(match.phone)}</label>)}
       </div>
       {planFreq && <label className="crm-check"><input type="checkbox" checked={startPlan && !!bookingDate} disabled={!bookingDate} onChange={event => setStartPlan(event.target.checked)} />
-        <span>Start {planFreq.toLowerCase()} plan · {formatMoney(planPrice)}/visit{bookingDate ? '' : ' (pick a date first)'}</span></label>}
+        <span>Start {planFreq.toLowerCase()} mowing plan at {formatMoney(planPrice)}/visit{bookingDate ? '' : ' (pick a visit date first)'}</span></label>}
       <div className="crm-action-row">
         <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={submitBooking}>Confirm booking</button>
         <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => setBookingOpen(false)}>Cancel</button>
@@ -299,10 +306,10 @@ export function QuoteMap() {
   const lookupAddress = addressForLookup(lead.address ?? '', answers.property_address, answers.postcode)
   return <div className="crm-quote-wrap">
     {propertyChanged && !propertyReset ? <div className="crm-panel" id="map-quote">
-      <h2>New address · start a new quote</h2>
+      <h2>Contact address changed</h2>
       <p>The saved measurement and price belong to the old property. Accepted quotes and jobs stay in history.</p>
       <div className="crm-action-row">
-        <button className="crm-button crm-button-primary" disabled={quoteStatus === 'accepted'} onClick={() => { setResetPropertyAddress(lead.address); setReviewed(false) }}>Start quote for {lead.address}</button>
+        <button className="crm-button crm-button-primary" disabled={quoteStatus === 'accepted'} onClick={() => { setResetPropertyAddress(lead.address); setReviewed(false) }}>Start quote for updated address</button>
       </div>
       {quoteStatus === 'accepted' && <p className="crm-hint">Cancel acceptance first.</p>}
     </div> : <MapQuoteBuilder key={propertyReset ? `reset-${resetPropertyAddress}` : 'saved-property'} staffQuote={{ id: lead.id, address: lead.address, lookupAddress, sq_ft: propertyReset ? null : lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,

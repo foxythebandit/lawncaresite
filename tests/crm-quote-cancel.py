@@ -51,7 +51,7 @@ with sync_playwright() as playwright:
     page.locator('.crm-booking-request input[type=date]').fill(first_visit)
     page.get_by_role('button', name='Confirm booking', exact=True).click()
     page.get_by_text('Visit booked and mowing plan started.').first.wait_for()
-    page.get_by_text('Update lead and follow-up', exact=True).click()
+    page.locator('summary', has_text='Add note').click()
     page.get_by_label('Note', exact=True).fill('Booking confirmed with customer')
     page.get_by_role('button', name='Add note').click()
     page.get_by_role('status').filter(has_text='Saved.').wait_for()
@@ -66,7 +66,7 @@ with sync_playwright() as playwright:
     assert review.locator('li').count() == 1
     assert review.get_by_text('Visit 1', exact=False).is_visible()
     review.get_by_role('button', name='Confirm cancellation').click()
-    page.get_by_text('Canceled after booking', exact=True).wait_for()
+    page.locator('.crm-quote-panel .crm-chip').filter(has_text='Canceled').wait_for()
     canceled = db('leads?id=eq.' + lead_id)[0]
     assert canceled['quote_status'] == 'canceled' and canceled['stage'] == 'lost'
     assert canceled['accepted_quote_snapshot'] and canceled['quote_accepted_at']
@@ -93,8 +93,8 @@ with sync_playwright() as playwright:
     final = db('leads?id=eq.' + lead_id)[0]
     assert final['quote_status'] == 'canceled' and final['stage'] == 'lost'
     page.goto(BASE + '/admin/leads')
-    row = page.locator('.crm-lead', has_text=name)
-    assert row.get_by_text('Canceled', exact=True).is_visible()
+    # Canceled before the first visit happened: the lost lead moves to Closed on the board.
+    assert page.locator('[data-drop=closed] .crm-bcard', has_text=name).count() == 1
     page.goto(BASE + '/admin/leads/' + lead_id)
     old_snapshots = {row['id']: row['accepted_quote_snapshot'] for row in db('bookings?lead_id=eq.' + lead_id)}
     page.get_by_label('Custom price ($)').fill('87.25')
@@ -139,7 +139,7 @@ with sync_playwright() as playwright:
     generated = [row for row in db('bookings?lead_id=eq.' + repeat['id']) if row['id'] != original['id']]
     assert len(generated) == 1 and generated[0]['status'] == 'confirmed'
     page.goto(BASE + '/admin/leads/' + repeat['id'])
-    page.locator('.crm-sec-quote .crm-chip').filter(has_text='Booked').wait_for()
+    page.locator('.crm-quote-panel .crm-chip').filter(has_text='Booked').wait_for()
     assert page.get_by_role('button', name='Customer canceled', exact=True).count() == 0
     page.goto(BASE + '/admin?search=' + urllib.parse.quote(repeat_name))
     next_card = page.locator('.admin-card', has_text=repeat_name).filter(has=page.locator('.admin-badge-confirmed')).first
@@ -167,7 +167,7 @@ with sync_playwright() as playwright:
     page.get_by_text('Edit contact', exact=True).click()
     page.get_by_label('Property address', exact=True).fill('999 Temporary Test Property, Austin, TX')
     page.get_by_role('button', name='Save contact').click()
-    page.get_by_text('Contact address changed.', exact=False).wait_for()
+    page.get_by_role('heading', name='Contact address changed').wait_for()
     assert page.get_by_role('button', name='Book visit', exact=True).count() == 0
     page.get_by_role('button', name='Cancel acceptance').click()
     page.get_by_role('status').filter(has_text='Saved.').wait_for()

@@ -141,9 +141,8 @@ with sync_playwright() as p:
     page.get_by_role('button', name='Sign in').click()
     page.wait_for_url(BASE + '/admin/leads/' + lead['id'])
     page.get_by_role('heading', name=lead['name']).wait_for()
-    page.get_by_text('Answers and acquisition details', exact=True).click()
-    assert page.get_by_text('Please discuss the front garden; no mowing requested.', exact=True).is_visible()
-    assert page.get_by_role('link', name='Call 512-555-0123').is_visible()
+    assert page.get_by_text('Please discuss the front garden; no mowing requested.', exact=False).is_visible()
+    assert page.get_by_role('link', name='Call (512) 555-0123').is_visible()
     # Storage failures must give a recoverable error rather than a stuck button.
     broken = browser.new_context()
     broken.route('**/*', lambda r: r.continue_() if urllib.parse.urlsplit(r.request.url).netloc in (urllib.parse.urlsplit(BASE).netloc, urllib.parse.urlsplit(CFG['API_URL']).netloc) else r.abort())

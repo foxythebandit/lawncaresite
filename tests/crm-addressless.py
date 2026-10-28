@@ -31,7 +31,7 @@ with sync_playwright() as p:
  page.get_by_label('Quote notes').fill('Private staff margin note')
  page.get_by_role('button',name='Save as quoted',exact=True).click();page.get_by_role('status').filter(has_text='Saved as quoted.').wait_for()
  saved=db('leads?id=eq.'+lid)[0];assert saved['address'] is None and saved['quote_draft']['address']
- page.get_by_role('button',name='Book visit',exact=True).click();page.get_by_role('button',name='Confirm booking',exact=True).click();page.get_by_text('Booking stages (1)',exact=True).wait_for()
+ page.get_by_role('button',name='Book visit',exact=True).click();page.get_by_role('button',name='Confirm booking',exact=True).click();page.get_by_text('Visits (1)',exact=True).wait_for()
  row=db('bookings?lead_id=eq.'+lid)[0]
  assert row['address']==saved['quote_draft']['address'] and row['notes']=='Private staff margin note' and row['customer_notes'] is None
  assert row['last_mow']==saved['quote_draft']['lastMow'] and row['overgrowth_fee']==saved['quote_draft']['overgrowthFee']

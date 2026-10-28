@@ -111,22 +111,24 @@ with sync_playwright() as p:
     anon.close()
     # Provider retry is explicit; acceptance is distinguished from delivery.
     pathlib.Path(__import__('os').environ.get('QG_SMS_MODE','/tmp/qg-revamp-sms-mode')).write_text('accept')
-    page.get_by_text('Staff alerts',exact=True).click()
-    alert_card=page.locator('details.crm-details').filter(has_text='Staff alerts').locator('div').filter(has_text=sms_alerts[0]['recipient']+' · sms ·')
-    alert_card.get_by_role('button',name='Retry staff alert').click()
-    page.get_by_role('button',name='Check delivery').wait_for()
+    # Lead page v2: alert delivery lives under Details › Alerts in plain words ("Sent to … · text · …").
+    shown=lambda phone: '({}) {}-{}'.format(phone[-10:-7],phone[-7:-4],phone[-4:])
+    page.locator('summary',has_text='Details').click()
+    alert_card=page.locator('.crm-alert-line').filter(has_text=shown(sms_alerts[0]['recipient'])+' · text ·')
+    alert_card.get_by_role('button',name='Retry').click()
+    alert_card.get_by_role('button',name='Check').wait_for()
     assert db('staff_alerts?id=eq.'+alert_id)[0]['state']=='accepted'
-    page.get_by_role('button',name='Check delivery').click()
-    page.get_by_text('delivered (delivered)',exact=False).wait_for()
+    alert_card.get_by_role('button',name='Check').click()
+    page.locator('.crm-alert-line').filter(has_text=shown(sms_alerts[0]['recipient'])+' · text · delivered').wait_for()
     assert db('staff_alerts?id=eq.'+alert_id)[0]['state']=='delivered'
     page.reload();page.wait_for_load_state('networkidle')
     assert db('staff_alerts?id=eq.'+alert_id)[0]['attempts']==2
     other_alert=db('staff_alerts?id=eq.'+other_alert_id)[0]
     assert other_alert['state']=='failed' and other_alert['attempts']==1
-    page.get_by_text('Staff alerts',exact=True).click()
-    sibling_card=page.locator('details.crm-details').filter(has_text='Staff alerts').locator('div').filter(has_text=sms_alerts[1]['recipient']+' · sms ·')
-    sibling_card.get_by_role('button',name='Retry staff alert').click()
-    sibling_card.get_by_role('button',name='Check delivery').wait_for()
+    page.locator('summary',has_text='Details').click()
+    sibling_card=page.locator('.crm-alert-line').filter(has_text=shown(sms_alerts[1]['recipient'])+' · text ·')
+    sibling_card.get_by_role('button',name='Retry').click()
+    sibling_card.get_by_role('button',name='Check').wait_for()
     assert db('staff_alerts?id=eq.'+other_alert_id)[0]['state']=='accepted'
     assert db('staff_alerts?id=eq.'+alert_id)[0]['state']=='delivered' and db('staff_alerts?id=eq.'+alert_id)[0]['attempts']==2
     assert intake(fixture)[0]==200
