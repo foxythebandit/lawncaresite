@@ -69,7 +69,7 @@ const AREAS: Record<string, AreaData> = {
     faqs: [
       { q: 'Do you service Teravista and Forest Creek?', a: 'Yes, both are active service areas. We work throughout Round Rock including Teravista, Forest Creek, Stone Canyon, and Paloma Lake.' },
       { q: 'What grass types are common in Round Rock?', a: 'Bermuda and Zoysia are the most common in Round Rock\'s newer subdivisions. Both do well with regular mowing and we\'re familiar with what they need each season.' },
-      { q: 'How far in advance do I need to book?', a: 'Most bookings can be confirmed within 24 hours. We\'ll text you to confirm your first visit after you submit a quote.' },
+      { q: 'How far in advance do I need to book?', a: 'Not long. We confirm your first visit the same day you book.' },
     ],
   },
   'pflugerville': {
