@@ -39,6 +39,18 @@ alter table public.leads
   add column call_log_reminded_at timestamptz,
   add constraint leads_taken_together check ((taken_by is null) = (taken_by_phone is null));
 
+-- record_intake inserts through jsonb_populate_record, which passes NULL rather than column
+-- defaults, so fill the new NOT NULL columns here.
+create function public.crm_leads_board_defaults() returns trigger language plpgsql
+  set search_path = '' as $$
+begin
+  new.board_column := coalesce(new.board_column, 'new');
+  new.call_attempts := coalesce(new.call_attempts, 0);
+  return new;
+end $$;
+create trigger crm_leads_board_defaults before insert on public.leads
+  for each row execute function public.crm_leads_board_defaults();
+
 -- Backfill short links without touching updated_at on existing leads.
 alter table public.leads disable trigger crm_leads_touch;
 do $$

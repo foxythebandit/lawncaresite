@@ -1,19 +1,6 @@
 -- Press-1 phone flow (docs/ops-plan/PLAN.md 7.2, 7.2b, 7.3, 7.7b). Additive: builds on
 -- 20261028120000_crm_board_phone.sql. Each Twilio webhook makes one RPC call.
 
--- Fix for 20261028120000: record_intake inserts leads through jsonb_populate_record, which
--- passes NULL (not the column default) for keys the payload omits, so the new NOT NULL
--- board_column / call_attempts columns rejected every intake (23502). Fill the defaults.
-create function public.crm_leads_board_defaults() returns trigger language plpgsql
-  set search_path = '' as $$
-begin
-  new.board_column := coalesce(new.board_column, 'new');
-  new.call_attempts := coalesce(new.call_attempts, 0);
-  return new;
-end $$;
-create trigger crm_leads_board_defaults before insert on public.leads
-  for each row execute function public.crm_leads_board_defaults();
-
 -- Alerts the flow deliberately does not place (TEST lead, no valid phone, too old to ring).
 alter table public.staff_alerts drop constraint staff_alerts_state_check;
 alter table public.staff_alerts add constraint staff_alerts_state_check check (state in
