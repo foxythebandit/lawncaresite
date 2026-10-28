@@ -1516,7 +1516,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                               onChange={e => setLeadConsent(e.target.checked)}
                               required
                             />
-                            <span className="mapq-consent-text">{LEAD_CONSENT_TEXT}</span>
+                            <span className="mapq-consent-text">{LEAD_CONSENT_TEXT} <a href="/privacy#sms" target="_blank" rel="noopener">Privacy Policy</a></span>
                           </label>
                           <button type="submit" className="mapq-btn-primary" disabled={leadStatus === 'submitting'}>
                             {leadStatus === 'submitting' ? <span className="mapq-spinner" /> : 'Unlock price →'}

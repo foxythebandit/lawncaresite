@@ -149,7 +149,7 @@ export default function GeneralInquiry() {
                 <label>Email <span className={styles.optional}>(optional)</span> <input name="email" type="email" autoComplete="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} /></label>
                 <label className={styles.wide}>Project details <span className={styles.optional}>(optional)</span> <textarea name="notes" rows={4} maxLength={2000} placeholder="What would you like done? Anything we should know about the property?" value={notes} onChange={e => setNotes(e.target.value)} /></label>
               </div>
-              <label className={styles.consent}><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> <span>{QUOTE_CONSENT_TEXT} (Optional)</span></label>
+              <label className={styles.consent}><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> <span>{QUOTE_CONSENT_TEXT} (Optional) <a href="/privacy#sms" target="_blank" rel="noopener">Privacy Policy</a></span></label>
               {error && <p className={styles.error} role="alert">{error}</p>}
               <button type="submit" className={styles.submit} disabled={status === 'submitting'}>{status === 'submitting' ? 'Sending…' : 'Send project inquiry'} <span aria-hidden="true">→</span></button>
             </form>

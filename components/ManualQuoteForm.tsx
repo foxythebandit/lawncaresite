@@ -139,7 +139,7 @@ export default function ManualQuoteForm() {
 
         <label className="mapq-consent-row manualq-consent">
           <input type="checkbox" className="mapq-consent-checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />
-          <span className="mapq-consent-text">{QUOTE_CONSENT_TEXT} (Optional)</span>
+          <span className="mapq-consent-text">{QUOTE_CONSENT_TEXT} (Optional) <a href="/privacy#sms" target="_blank" rel="noopener">Privacy Policy</a></span>
         </label>
         {error && <p className="mapq-error">{error}</p>}
 
