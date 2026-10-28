@@ -431,3 +431,6 @@ Business line on (512), number switch, inbound customer texts to (512), auto tex
 | 2026-10-28 | Twilio business profile approved; brand submitted and approved | Twilio console |
 | 2026-10-28 | Terms page + carrier privacy sentence shipped | `57cc06d` |
 | 2026-10-28 | Twilio campaign submitted (Low Volume Mixed) | `CMd34536602ab70719a7a15ac4ff6df60b` |
+| 2026-10-28 | Build step 1 (foundation): migration `20261028120000_crm_board_phone.sql` (board column, reasons, check-back, phone/website price, tracing, short links, taken-by, `lead_calls`, auto-move triggers, RPCs `crm_move_lead` / `crm_log_call` / `crm_claim_lead` / `crm_finish_customer_leg`); shared `lib/lead-summary.ts` (chips, price line with 1st visit −30%, card headline, alert/spoken/staff texts, history rows), `lib/lead-board.ts`, `lib/lead-labels.ts` (A1/A2 tables), `lib/staff-directory.ts`, `/l/<code>` short links; `npm test` runner (`tests/ts-resolve.mjs`). Applied to local `qg-crm-test` only | `d70c4f1` |
+| 2026-10-28 | P7 signed map links helper + bucket-private migration `20261028130000_private_map_screenshots.sql` | `6db9f13` |
+| 2026-10-28 | Build step 2 started: CRM agent and Phone agent in separate worktrees | — |
