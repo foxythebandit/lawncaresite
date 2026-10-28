@@ -127,7 +127,7 @@ export async function requestLeadBooking(id: string, expectedUpdatedAt: string, 
   if (error) return { error: error.code === '23514' || error.code === '22023' ? error.message : 'Could not create booking request.' }
   const { data: updatedLead } = await db.from('leads').select('updated_at').eq('id', id).single()
   revalidatePath(`/admin/leads/${id}`)
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
   revalidatePath('/admin/leads')
   return { success: true, bookingId: (data as CreateJobResult).booking_id, duplicate: (data as CreateJobResult).duplicate,
     updatedAt: updatedLead?.updated_at ?? expectedUpdatedAt }
@@ -218,7 +218,7 @@ export async function bookLeadVisit(id: string, expectedUpdatedAt: string, input
   const { data: finalLead, error: finalLeadError } = await db.from('leads').select('updated_at').eq('id', id).single()
   if (finalLeadError || !finalLead) return { error: 'Visit booked, but the lead could not be reloaded. Refresh before editing it again.' }
   revalidatePath(`/admin/leads/${id}`)
-  revalidatePath('/admin')
+  revalidatePath('/admin/jobs')
   revalidatePath('/admin/customers')
   return { success: true, bookingId, customerId, planStarted, updatedAt: finalLead.updated_at }
 }

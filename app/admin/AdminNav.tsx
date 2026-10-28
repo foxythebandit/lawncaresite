@@ -9,7 +9,7 @@ import Icon, { type IconName } from './icons'
 const tabs: { href: string; label: string; icon: IconName; match: (path: string) => boolean }[] = [
   { href: '/admin/leads', label: 'Leads', icon: 'inbox', match: path => path.startsWith('/admin/leads') },
   { href: '/admin/route', label: 'Today', icon: 'calendar', match: path => path.startsWith('/admin/route') || path.startsWith('/admin/week') },
-  { href: '/admin', label: 'Jobs', icon: 'briefcase', match: path => path === '/admin' || path.startsWith('/admin/client') },
+  { href: '/admin/jobs', label: 'Jobs', icon: 'briefcase', match: path => path.startsWith('/admin/jobs') || path.startsWith('/admin/client') },
   { href: '/admin/customers', label: 'Customers', icon: 'users', match: path => path.startsWith('/admin/customers') },
   { href: '/admin/revenue', label: 'Revenue', icon: 'chart', match: path => path.startsWith('/admin/revenue') },
 ]

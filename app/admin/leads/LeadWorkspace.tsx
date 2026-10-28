@@ -354,7 +354,7 @@ export default function LeadWorkspace({ lead, activities, events, bookings, cust
               <p>{booking?.confirmed_date ? `Scheduled ${booking.confirmed_date}` : booking?.preferred_date ? `Requested ${booking.preferred_date}` : 'Visit needs a date'} · this lead is done. Later work starts from the customer.</p>
               <div className="crm-action-row">
                 {bookedCustomerId && <Link className="crm-button crm-button-primary" href={`/admin/customers/${bookedCustomerId}`}>Open customer</Link>}
-                <Link className="crm-button" href={`/admin?search=${encodeURIComponent(lead.name ?? lead.phone)}`}>Open job</Link>
+                <Link className="crm-button" href={`/admin/jobs?search=${encodeURIComponent(lead.name ?? lead.phone)}`}>Open job</Link>
                 {firstVisitOpen && <button type="button" className="crm-button crm-button-ghost crm-button-danger" disabled={pending} onClick={customerCanceled}>Customer canceled</button>}
               </div>
               {cancellationPreview && <div className="crm-booking-request" role="group" aria-label="Review cancellation">
