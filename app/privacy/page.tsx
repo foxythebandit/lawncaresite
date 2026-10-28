@@ -70,7 +70,8 @@ export default function PrivacyPage() {
           <li>Carriers are not liable for delayed or undelivered messages.</li>
         </ul>
         <p style={p}>
-          <strong>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.</strong>{' '}
+          <strong>We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes.</strong>{' '}
+          No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.{' '}
           Text messaging opt-in data and consent are never shared with or sold to any third party.
           The service providers listed above, such as Twilio, receive your number only to deliver our messages to you.
         </p>

@@ -24,6 +24,7 @@ export default function Footer() {
         <a href="#service-areas">Service areas</a>
         <a href="mailto:hello@quietgreen.co">Contact</a>
         <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Terms</Link>
       </div>
       <div id="service-areas" className={styles.areas} role="navigation" aria-label="Service areas">
         <span className={styles.areasLabel}>Where we work</span>

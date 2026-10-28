@@ -17,5 +17,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     })),
     { url: 'https://quietgreen.co/privacy', changeFrequency: 'yearly', priority: 0.3 },
+    { url: 'https://quietgreen.co/terms', changeFrequency: 'yearly', priority: 0.3 },
   ]
 }
