@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuietGreen CRM mockups</title>
+<!-- Approved sketches from the 28 Oct 2026 planning session. Layout and content are approved; colors and spacing are placeholders for the real CRM styles in app/admin/crm.css. See PLAN.md sections 3, 4 and 7. -->
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--line:#e3e1da;--ink:#1d1d1b;--soft:#6b6a65;--muted:#9a9890;--warn-bg:#faeeda;--warn:#854f0b;--ok-bg:#eaf3de;--ok:#3b6d11;--acc-bg:#e6f1fb;--acc:#185fa5;--bad:#a32d2d}
+*{box-sizing:border-box}body{margin:0;padding:24px 16px;font:14px/1.5 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:32px 0 8px}p.note{color:var(--soft);margin:0 0 12px;max-width:760px}
+.row{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.ph{width:300px;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:14px 12px}
+.desk{flex:1;min-width:320px;max-width:760px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.chip{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;margin:0 4px 4px 0;font-weight:600}
+.cw{background:var(--warn-bg);color:var(--warn)}.cg{background:#f1efe8;color:var(--soft)}.cs{background:var(--ok-bg);color:var(--ok)}.ca{background:var(--acc-bg);color:var(--acc)}
+.btn{display:inline-block;padding:7px 10px;border:1px solid #c9c7bf;border-radius:8px;font-size:12px;text-align:center}
+.blk{border-top:1px solid var(--line);padding:8px 0 6px}.hd{font-size:11px;color:var(--muted);margin:0 0 4px;display:flex;justify-content:space-between}
+.kv{display:grid;grid-template-columns:72px minmax(0,1fr);row-gap:3px}.k{color:var(--soft);font-size:12px}
+.big{font-size:22px;font-weight:600}.q{font-size:12px;color:var(--soft);font-style:italic}
+.map{height:80px;border-radius:8px;background:#ecebe5;position:relative}.poly{position:absolute;left:30%;top:18%;width:40%;height:58%;border:2px solid var(--ok);background:var(--ok-bg);border-radius:4px}
+.tl{display:grid;grid-template-columns:44px minmax(0,1fr);row-gap:3px;font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 8px}.pill{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--line);color:var(--soft)}.pill.on{background:var(--ink);color:#fff;border-color:var(--ink)}.pill.hot{border-color:#ef9f27}
+.card{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px;font-size:13px}.nm{font-weight:600}.ago{float:right;font-size:11px;color:var(--muted)}
+.cols{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}.col{background:#efeee8;border-radius:10px;padding:8px}.col h3{font-size:12px;margin:0 0 6px}
+.opt{border:1px solid #c9c7bf;border-radius:8px;padding:8px 10px;margin-bottom:6px}.to{float:right;font-size:11px;padding:1px 6px;border-radius:6px;background:#f1efe8;color:var(--soft)}
+.sms{background:#e9e9eb;border-radius:16px;padding:10px 12px;font-size:13px;white-space:pre-line;width:280px}
+@media (max-width:900px){.cols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<h1>QuietGreen CRM mockups (approved 28 Oct 2026)</h1>
+<p class="note">Rules: no sentences in the UI; every block has a one-word header; status is chips from a fixed set; numbers big, units small; raw codes only under Details. Source of truth for behavior: docs/ops-plan/PLAN.md.</p>
+
+<h2>1. Lead board: phone (option A, chosen) and desktop</h2>
+<div class="row">
+  <div class="ph"><div style="font-weight:600;font-size:15px">Leads</div>
+    <div class="chips"><span class="pill on">New 2</span><span class="pill">In talks 1</span><span class="pill">Quoted 2</span><span class="pill hot">Booking req. 1</span><span class="pill">Customer 2</span><span class="pill">Closed 1</span></div>
+    <div class="card"><span class="nm">Jane Smith</span><span class="ago">12m</span><div style="color:var(--warn);font-size:12px">$45/visit · website · didn't book</div><div class="k">Mowing · Round Rock · Facebook ad</div></div>
+    <div class="card"><span class="nm">Luis R.</span><span class="ago">2h</span><div style="font-size:12px">No price · wants hedge trimming</div><div class="k">ConviFlo · no address yet</div></div>
+  </div>
+  <div class="desk"><div class="cols">
+    <div class="col"><h3>New</h3><div class="card"><span class="nm">Jane Smith</span><div class="k">$45 · website · didn't book</div></div></div>
+    <div class="col"><h3>In talks</h3><div class="card"><span class="nm">Amy K.</span><div class="k">No answer ×2</div></div></div>
+    <div class="col"><h3>Quoted</h3><div class="card"><span class="nm">Tom B.</span><div class="k">Not now · start in spring · Mar 1</div></div></div>
+    <div class="col" style="outline:2px solid #ef9f27"><h3>Booking request</h3><div class="card"><span class="nm">Rita P.</span><div class="k">Wants Tue Nov 4 · morning · $45</div></div></div>
+    <div class="col"><h3>Customer</h3><div class="card"><span class="nm">Mark D.</span><div class="k" style="color:var(--ok)">First visit Fri Nov 7</div></div><div class="card"><span class="nm">Sue L.</span><div class="k" style="color:var(--bad)">Canceled Oct 20</div></div></div>
+    <div class="col"><h3>Closed</h3><div class="card"><span class="nm">Dan W.</span><div class="k">No · price</div></div></div>
+  </div><p class="k" style="margin:8px 0 0">Toggle to a plain list view. Drag cards between columns; dragging to Closed asks for a reason.</p></div>
+</div>
+
+<h2>2. Lead page v2: phone and desktop</h2>
+<div class="row">
+  <div class="ph">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--soft)"><span>← Board</span><span>12 min ago</span></div>
+    <div style="font-size:17px;font-weight:600;margin:2px 0 6px">Jane Smith</div>
+    <div><span class="chip ca">New</span><span class="chip cw">Not booked</span><span class="chip cg">Website price</span></div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:6px;margin:4px 0 8px"><span class="btn" style="background:var(--ok-bg);color:var(--ok)">Call (512) 555-0142</span><span class="btn">Text</span></div>
+    <div class="blk"><p class="hd"><span>Price</span><span>website · Oct 28</span></p><span class="big">$45</span> <span class="k">/ visit · every 2 wks</span>
+      <div class="kv" style="margin-top:4px"><span class="k">1st visit</span><span>$32 <span class="chip cs">−30%</span></span><span class="k">Plan disc.</span><span>−10% every 2 wks</span></div></div>
+    <div class="blk"><p class="hd"><span>Property</span><span>directions ↗</span></p><div class="kv"><span class="k">Address</span><span>1234 Oak St, Round Rock</span><span class="k">Traced</span><span>6,200 sq ft</span></div><div class="map" style="margin-top:6px"><div class="poly"></div></div></div>
+    <div class="blk"><p class="hd"><span>Request</span></p><div class="kv"><span class="k">Services</span><span>Mowing, edging</span><span class="k">Start</span><span>ASAP</span><span class="k">Lawn</span><span>St. Augustine</span></div><div class="q">"Gate code 4411, dog in yard"</div></div>
+    <div class="blk"><p class="hd"><span>Source</span></p><span class="chip cg">Facebook ad</span><span class="chip cg">Dave · video</span></div>
+    <div class="blk"><p class="hd"><span>History</span></p><div class="tl"><span class="k">2:14p</span><span>Came in</span><span class="k">2:15p</span><span>Caelan took alert</span><span class="k">2:19p</span><span>Talked 4 min · recording</span></div></div>
+    <div class="blk"><p class="hd"><span>Log call</span></p><span class="btn" style="width:100%">Log call</span></div>
+    <p class="k" style="margin:6px 0 0">Details ▸ consent · tracking · alerts</p>
+  </div>
+  <div class="desk">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div><b style="font-size:17px">Jane Smith</b> <span class="k">· 12 min ago</span></div><div><span class="btn">Call</span> <span class="btn">Text</span> <span class="btn">Log call</span></div></div>
+    <div style="margin:6px 0"><span class="chip ca">New</span><span class="chip cw">Not booked</span><span class="chip cg">Website price</span><span class="chip cg">Facebook ad · Dave</span></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px">
+      <div><div class="blk" style="border:0"><p class="hd"><span>Price</span></p><span class="big">$45</span> <span class="k">/ visit · every 2 wks · 1st $32 (−30%)</span></div>
+        <div class="blk"><p class="hd"><span>Request</span></p><div class="kv"><span class="k">Services</span><span>Mowing, edging</span><span class="k">Start</span><span>ASAP</span></div></div>
+        <div class="blk"><p class="hd"><span>History</span></p><div class="tl"><span class="k">2:14p</span><span>Came in</span><span class="k">2:15p</span><span>Caelan took alert</span></div></div></div>
+      <div><p class="hd"><span>Property · 1234 Oak St, Round Rock</span><span>6,200 sq ft</span></p><div class="map" style="height:170px"><div class="poly"></div></div><div class="blk"><p class="hd"><span>Quote tools</span></p><span class="k">Services · frequency · discount · save</span></div></div>
+    </div>
+  </div>
+</div>
+
+<h2>3. Log call sheet v2 (two steps)</h2>
+<div class="row">
+  <div class="ph"><p class="hd"><span>Step 1</span></p><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div class="opt" style="text-align:center">Didn't reach</div><div class="opt" style="text-align:center;background:var(--ok-bg)">Talked</div></div>
+    <p class="hd"><span>Didn't reach</span></p>
+    <div class="opt"><span class="to">In talks</span>⚪ No answer</div><div class="opt"><span class="to">In talks</span>⚪ Left voicemail</div><div class="opt"><span class="to">Closed</span>⚫ Bad number</div></div>
+  <div class="ph"><p class="hd"><span>Step 2 · Talked</span></p>
+    <div class="opt"><span class="to">Customer</span>🟢 Booked<div class="k">Price · frequency · first visit date</div></div>
+    <div class="opt"><span class="to">Booking request</span>🟢 Yes, date TBD<div class="k">Price · frequency · when to set it</div></div>
+    <div class="opt"><span class="to">Quoted</span>🟡 Not now<div class="k">Price told · reason · check back (1 wk · 1 mo · Spring · date)</div></div>
+    <div class="opt"><span class="to">Closed</span>🔴 No<div class="k">Reason · price told (optional)</div></div></div>
+</div>
+
+<h2>4. Alert texts (approved wording, PLAN.md 7.6)</h2>
+<div class="row">
+<div class="sms">NEW LEAD · Jane Smith
+Not booked · saw $45/visit, 1st $32
+Mowing, edging · every 2 wks
+6,200 sq ft traced
+1234 Oak St, Round Rock
+(512) 555-0142
+Facebook ad · Dave video
+quietgreen.co/l/AB12
+[then: map image as a second message]</div>
+<div class="sms">BOOKING REQUEST · Jane Smith
+Wants Tue Nov 4 · morning · every 2 wks
+$45/visit · 1st $32 (−30%)
+Add-ons: hedge trim
+"Gate code 4411, dog in yard"
+1234 Oak St, Round Rock · 6,200 sq ft
+(512) 555-0142
+quietgreen.co/l/AB12</div>
+<div class="sms">Caelan took Jane Smith (512) 555-0142
+
+Nobody took Jane Smith · call now: (512) 555-0142
+
+Jane Smith: 🟢 Booked Tue Nov 4 · $45/visit
+
+Log your call with Jane Smith: quietgreen.co/l/AB12</div>
+</div>
+</body>
+</html>
