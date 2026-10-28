@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { submitServiceInquiry, type ServiceInquiryKind } from '@/app/actions/submit-service-inquiry'
 import { photonSearch, type GeoResult } from '@/lib/address-search'
 import { getAttribution } from '@/lib/attribution'
@@ -13,7 +14,7 @@ const SERVICES: ServiceInquiryKind[] = ['Landscaping', 'Yard cleanup', 'Hedge tr
 // Every job is different — these are quoted in person rather than from a formula
 const QUOTED_ON_SITE: ServiceInquiryKind[] = ['Hedge trimming', 'Tree pruning']
 
-export default function GeneralInquiry() {
+export default function GeneralInquiry({ defaultService }: { defaultService?: ServiceInquiryKind } = {}) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
@@ -24,7 +25,7 @@ export default function GeneralInquiry() {
   const suggestionVersion = useRef(0)
   const addressInput = useRef<HTMLInputElement>(null)
   const [email, setEmail] = useState('')
-  const [service, setService] = useState<ServiceInquiryKind | ''>('')
+  const [service, setService] = useState<ServiceInquiryKind | ''>(defaultService ?? '')
   const [notes, setNotes] = useState('')
   const [consent, setConsent] = useState(false)
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
@@ -67,7 +68,7 @@ export default function GeneralInquiry() {
   function startNewInquiry() {
     closeSuggestions()
     try { sessionStorage.removeItem('qg_submission_service') } catch { /* Storage may be unavailable. */ }
-    setName(''); setPhone(''); setAddress(''); setEmail(''); setService(''); setNotes(''); setConsent(false)
+    setName(''); setPhone(''); setAddress(''); setEmail(''); setService(defaultService ?? ''); setNotes(''); setConsent(false)
     setError(''); setStatus('idle')
   }
 
@@ -100,7 +101,7 @@ export default function GeneralInquiry() {
           <span className={styles.eyebrow}>Have another project in mind?</span>
           <h2 id="service-inquiry-heading">Landscaping &amp; other outdoor projects.</h2>
           <p>Tell us what you have in mind. We&apos;ll call to discuss the scope and a quote.</p>
-          <a href="#map-quote" className={styles.mowingLink}>Just need lawn mowing? See your price <span aria-hidden="true">↗</span></a>
+          <Link href="/#map-quote" className={styles.mowingLink}>Just need lawn mowing? See your price <span aria-hidden="true">↗</span></Link>
         </div>
         <div className={styles.card}>
           {status === 'success' ? (
