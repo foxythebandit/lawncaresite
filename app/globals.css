@@ -2516,3 +2516,11 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   .hotspot-ring { animation: none; opacity: .4; }
 }
+
+/* Service pages: copy beside the illustration, stacked on narrow screens */
+.service-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 48px; align-items: center; }
+.service-hero-art { width: 100%; height: auto; display: block; }
+@media (max-width: 860px) {
+  .service-hero { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .service-hero-art { max-width: 440px; }
+}

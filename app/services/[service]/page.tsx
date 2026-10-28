@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
 import GeneralInquiry from '@/components/GeneralInquiry'
+import ServiceIllustration from '@/components/ServiceIllustration'
 import { SERVICE_PAGES, servicePage } from '@/lib/service-pages'
 
 export async function generateStaticParams() {
@@ -41,7 +42,7 @@ export default async function ServicePage({ params }: { params: Promise<{ servic
       <Nav />
 
       {/* Hero */}
-      <section style={{ background: 'var(--green-deep)', padding: '80px 8vw 72px', color: '#fff' }}>
+      <section className="service-hero" style={{ background: 'var(--green-deep)', padding: '80px 8vw 72px', color: '#fff' }}>
         <div style={{ maxWidth: 680 }}>
           <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--green-bright)', marginBottom: 16 }}>
             Austin, TX · {data.name}
@@ -56,6 +57,7 @@ export default async function ServicePage({ params }: { params: Promise<{ servic
             Request a quote →
           </a>
         </div>
+        <ServiceIllustration slug={data.slug} label={`Illustration: ${data.name.toLowerCase()}`} />
       </section>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '0 8vw' }}>
