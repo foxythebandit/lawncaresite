@@ -43,7 +43,10 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
     startTransition(async () => {
       setColumn(to)
       const result = await logCall(leadId, operationId, outcome, detail).catch(() => ({ ok: false as const, error: 'Not saved' }))
-      if (result.ok) { operation.current = null; setDraft(null) }
+      if (result.ok) {
+        operation.current = null; setDraft(null)
+        if ('warning' in result && result.warning) setToast({ text: result.warning, error: true })
+      }
       else { setToast({ text: `Call not saved · ${result.error}`, error: true }); setOpen(true) }
     })
   }
