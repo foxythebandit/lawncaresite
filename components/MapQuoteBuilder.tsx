@@ -1135,7 +1135,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       addon_interest: addonInterest,
       ...getAttribution(),
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setBookingStatus('success'); if (!staffQuote) trackBookingRequested() }
+    if (result.success) { setBookingStatus('success'); if (!staffQuote) trackBookingRequested(firstVisitPrice) }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
   }, [leadToken, staffQuote, bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest])
 
