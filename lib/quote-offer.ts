@@ -11,7 +11,12 @@ const FREQ: Record<OfferFrequency, { label: string; detail: string; discount: nu
   monthly:  { label: 'Monthly',   detail: '1× a month',           discount: 0 },
   onetime:  { label: 'Just once', detail: 'Single visit',         discount: 0 },
 }
-const FIRST_VISIT_DISCOUNT_PCT = 30
+export const FIRST_VISIT_DISCOUNT_PCT = 30
+
+export const planDiscountPct = (freq: OfferFrequency) => FREQ[freq].discount
+/** Recurring plans get the first visit 30% off; a one-time job does not. Whole dollars, like the website. */
+export const firstVisitPrice = (price: number, freq: OfferFrequency) =>
+  freq === 'onetime' ? price : Math.round(price * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
 
 export const frequencyLabel = (freq: OfferFrequency) => FREQ[freq].label
 
@@ -30,7 +35,7 @@ export function quoteOffer(draft: QuoteDraft): QuoteOffer {
   const base = quotedPrice / (1 - FREQ[draft.freq].discount / 100)
   const options = (Object.keys(FREQ) as OfferFrequency[]).map(freq => {
     const price = freq === draft.freq ? quotedPrice : Math.round(base * (1 - FREQ[freq].discount / 100))
-    const firstVisit = freq === 'onetime' ? price : Math.round(price * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
+    const firstVisit = firstVisitPrice(price, freq)
     return { freq, label: FREQ[freq].label, detail: FREQ[freq].detail, price, firstVisit }
   })
   return { recurring, quoted: draft.freq, options, sqFt }
