@@ -401,8 +401,8 @@ Business line on (512), number switch, inbound customer texts to (512), auto tex
 | # | Question | Section |
 |---|---|---|
 | S8 | Placing existing leads on the board: build ships a one-time placement script + preview; run it on prod only after the prod data review | 3.5, 8 |
-| A1 | How new ads get readable names: research session collects every Meta ad ID → name (docs/ops-plan/RESEARCH-ads.md); build ships a name table the research fills | 5 |
-| A2 | ConviFlo answer labels: research session lists each live form's field keys → question text; build maps them in code | 5 |
+| A1 | How new ads get readable names. Research done (`RESEARCH-ads.md` §1, §3): all 12 live ads already match `launchAds`. Recommended: keep the ad ID → name table in code, name future ads `<SET>-<V\|I><NN> \| <Name> \| <stage>`, add a row per new ad; unknown IDs show "new ad (ID …)". Caelan to confirm | 5 |
+| A2 | ConviFlo answer labels. Research done (`RESEARCH-ads.md` §2–4): in use = Mowing + Leaves & Gutters review forms. Recommended: map in code per form ID (key → question, slug → label), don't rename keys; landing-page keys shifted, so label by slug. Check §4 items (e.g. `both_leaves_and_gutters_save_30`) on real leads in S8 | 5 |
 
 ## 10. Execution order (Claude owns; drafted 28 Oct)
 
