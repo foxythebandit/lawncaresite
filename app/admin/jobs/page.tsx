@@ -6,6 +6,7 @@ import CalendarView from '../CalendarView'
 import Icon from '../icons'
 import { formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
+import { signMapUrls } from '../signed-maps'
 
 export default async function AdminPage({
   searchParams,
@@ -16,6 +17,8 @@ export default async function AdminPage({
   const [all, identities, agreements, allItems, allPayments] = await Promise.all([
     getBookings(), getCustomers(), getAgreements(), getJobItems(), getJobPayments(),
   ])
+  // The map bucket is private (P7): sign each screenshot on the server; unsigned ones show no image.
+  const signedMaps = await signMapUrls(all.map(b => b.map_screenshot_url))
 
   const now = new Date()
   const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7)
@@ -140,7 +143,7 @@ export default async function AdminPage({
               </div>
             ) : (
               filtered.map(b => (
-                <BookingCard key={b.id} booking={b as any}
+                <BookingCard key={b.id} booking={{ ...b, map_screenshot_url: signedMaps.get(b.map_screenshot_url) ?? null } as any}
                   emailConfigured={Boolean(process.env.RESEND_API_KEY)}
                   historyCount={visitCounts.get(b.customer_id ?? b.id) ?? 1}
                   quotedVisit={!!b.lead_id && quotedVisitByLead.get(b.lead_id) === b.id}

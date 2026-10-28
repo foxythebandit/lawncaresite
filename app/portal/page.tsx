@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { adminDb } from '@/lib/supabase/admin'
 import { jobPrice } from '@/lib/crm-jobs'
+import { signedMapUrl } from '@/lib/map-screenshot'
 
 function formatDate(s: string) {
   return new Date(s + 'T12:00:00').toLocaleDateString('en-US', {
@@ -57,6 +58,8 @@ export default async function PortalPage() {
   const upcoming = visits.find(b =>
     b.status === 'confirmed' && (b.confirmed_date || b.preferred_date)
   )
+  // The map bucket is private (P7); a short-lived signed link, or no image if signing fails.
+  const upcomingMap = upcoming ? await signedMapUrl(upcoming.map_screenshot_url, 3600) : null
   const history = visits.filter(b => b.status === 'completed')
   const pending  = visits.filter(b => b.status === 'pending')
 
@@ -97,8 +100,8 @@ export default async function PortalPage() {
                   ? <>${visitPrice(upcoming)!.toFixed(2)}<span>/visit</span></>
                   : 'Price not set'}
               </div>
-              {upcoming.map_screenshot_url && (
-                <img src={upcoming.map_screenshot_url} alt="Your lawn" className="portal-upcoming-map" />
+              {upcomingMap && (
+                <img src={upcomingMap} alt="Your lawn" className="portal-upcoming-map" />
               )}
             </div>
           ) : pending.length > 0 ? (

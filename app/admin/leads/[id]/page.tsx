@@ -35,9 +35,15 @@ function Rows({ rows }: { rows: Row[] }) {
 }
 const Pill = ({ tone = 'neutral', children }: { tone?: string; children: React.ReactNode }) => <span className={`crm-pill crm-pill-${tone}`}>{children}</span>
 
+/** Staff first name for a phone, when STAFF_PEOPLE names it. */
+function staffName(phone: string) {
+  const person = staffByPhone(phone)
+  return person && person.name !== person.phone ? person.name : null
+}
+
 /** Plain words for an alert delivery row (PLAN.md 4.1f: "Sent to Caelan · call · answered"). */
 function alertWords(alert: Alert) {
-  const who = staffByPhone(alert.recipient)?.name ?? (phoneDisplay(alert.recipient) || 'nobody set up')
+  const who = staffName(alert.recipient) ?? (phoneDisplay(alert.recipient) || 'nobody set up')
   const channel = alert.channel === 'voice' ? 'call' : 'text'
   const status = alert.provider_status?.toLowerCase()
   const state = channel === 'call' && status === 'completed' ? 'answered' : status === 'no-answer' ? 'no answer' : status === 'busy' ? 'busy'
@@ -45,7 +51,7 @@ function alertWords(alert: Alert) {
   return `Sent to ${who} · ${channel} · ${state}${alert.attempts > 1 ? ` · ${alert.attempts} tries` : ''}${alert.error_code ? ` · code ${alert.error_code}` : ''}`
 }
 function callWords(call: Call) {
-  const who = call.staff_name ?? staffByPhone(call.staff_phone)?.name ?? phoneDisplay(call.staff_phone)
+  const who = call.staff_name ?? staffName(call.staff_phone) ?? phoneDisplay(call.staff_phone)
   const result = call.result ? humanize(call.result).toLowerCase() : call.status
   const shownAs = call.caller_id && call.caller_id !== call.staff_phone ? ` · shown as ${phoneDisplay(call.caller_id)}` : ''
   return call.leg === 'alert' ? `Alert call to ${who} · ${result}` : `${who} called · ${result}${call.result === 'talked' ? ` ${mins(call.duration_seconds)}` : ''}${shownAs}`
@@ -111,7 +117,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   const map = (big: boolean) => shapes.length
     ? <TracingMap shapes={shapes} width={big ? 720 : 640} height={big ? 440 : 300} label={`Traced lawn${s.tracedSqFt ? `, ${s.tracedSqFt.toLocaleString('en-US')} sq ft` : ''}`} />
-    : mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="crm-map-shot">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={mapUrl} alt="Map screenshot from the website" /></a>
+    : mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="crm-map-shot">
+      {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset */}
+      <img src={mapUrl} alt="Map screenshot from the website" />
+    </a>
       : null
 
   return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={price?.cents ?? null} frequency={price?.frequency ?? normalizeFrequency(lead.frequency)}>
