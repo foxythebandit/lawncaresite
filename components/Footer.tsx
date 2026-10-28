@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { SERVICE_PAGES } from '@/lib/service-pages'
 import styles from './Footer.module.css'
 
 const AREAS = [
@@ -28,6 +29,12 @@ export default function Footer() {
         <span className={styles.areasLabel}>Where we work</span>
         <div className={styles.areasLinks}>
           {AREAS.map(area => <Link key={area.slug} href={`/areas/${area.slug}`}>{area.name}</Link>)}
+        </div>
+      </div>
+      <div className={styles.areas} role="navigation" aria-label="More services">
+        <span className={styles.areasLabel}>More services</span>
+        <div className={styles.areasLinks}>
+          {SERVICE_PAGES.map(page => <Link key={page.slug} href={`/services/${page.slug}`}>{page.name}</Link>)}
         </div>
       </div>
       <div className="footer-copy">© {new Date().getFullYear()} QuietGreen · <a href="mailto:hello@quietgreen.co" style={{ color: 'inherit', textDecoration: 'none' }}>hello@quietgreen.co</a></div>
