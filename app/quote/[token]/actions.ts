@@ -1,6 +1,5 @@
 'use server'
 import { recordIntake, verifiedLead } from '@/lib/intake'
-import { staffRecipients } from '@/lib/staff-alerts'
 import { adminDb } from '@/lib/supabase/admin'
 import { frequencyLabel, quoteOffer, type OfferFrequency } from '@/lib/quote-offer'
 import type { QuoteDraft } from '@/lib/quote-draft'
@@ -48,13 +47,7 @@ export async function bookQuote(request: QuoteBookingRequest): Promise<{ success
     }, request.token)
     const confirmationTo = typedEmail || lead.email || null
     if (result.duplicate) return { success: true, confirmationTo }
-    // Repeat submissions from a known lead stay quiet by default; a booked quote should still ring both phones.
-    const recipients = staffRecipients()
-    if (recipients.length) {
-      await db.from('intake_events').update({ alert_version: 2 }).eq('id', result.event_id)
-      await db.from('staff_alerts').upsert(recipients.flatMap(recipient => (['sms', 'voice'] as const).map(channel => ({ event_id: result.event_id, recipient, channel }))),
-        { onConflict: 'event_id,recipient,channel', ignoreDuplicates: true })
-    }
+    // Staff alerts for this booking are routed by recordIntake (E10): claimed lead -> text the claimer; else ring both.
     const { data: fresh } = await db.from('leads').select('updated_at,quote_confirmed_at,quote_status').eq('id', id).single()
     if (fresh) {
       const accept = !!fresh.quote_confirmed_at && ['draft', 'accepted'].includes(fresh.quote_status)

@@ -361,6 +361,8 @@ export const staffText = {
   claimed: (lead: SummaryLead, staffName: string) => clean(`${staffName} took ${nameOf(lead)} ${phoneDisplay(lead.phone)}`),
   notTaken: (lead: SummaryLead) => clean(`Nobody took ${nameOf(lead)} · call now: ${phoneDisplay(lead.phone) || 'no valid phone'}`),
   reminder: (lead: SummaryLead, baseUrl: string) => clean(`Log your call with ${nameOf(lead)}: ${lead.short_code ? leadLink(baseUrl, lead.short_code) : ''}`),
+  /** Dial-yourself mode (E16): the claimer gets the number to tap. */
+  callNow: (lead: SummaryLead) => clean(`Call ${nameOf(lead)} now: ${phoneDisplay(lead.phone) || 'no valid phone'}`),
   bookedOnline: (lead: SummaryLead, bookings: SummaryBooking[]) => {
     const s = summarizeLead(lead, bookings)
     return clean(`${nameOf(lead)} just booked online: ${[s.wanted.label ?? 'date TBD', s.price ? priceShort(s.price) : null].filter(Boolean).join(' · ')}`)
