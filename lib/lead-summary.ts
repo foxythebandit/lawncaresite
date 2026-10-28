@@ -419,3 +419,8 @@ export function historyItem(activity: HistoryActivity, now = Date.now()): { time
   const quote = activity.kind === 'note' || activity.kind === 'call' ? activity.body?.trim() || null : null
   return { time: clockLabel(activity.occurred_at, now), icon, text, quote }
 }
+
+/** The column chip summarizeLead puts first, for screens that change the column before the server answers. */
+export function columnChip(column: BoardColumn): Chip {
+  return { key: 'column', label: COLUMN_LABEL[column], tone: column === 'booking_request' ? 'warn' : column === 'customer' ? 'ok' : column === 'closed' ? 'neutral' : 'accent' }
+}

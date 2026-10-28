@@ -12,6 +12,9 @@ export interface LeadData extends Attribution {
   consent: boolean
   consentText: string
   map_screenshot?: string
+  /** The instant price shown at unlock and the traced shapes (PLAN.md 3.3); validated in websiteLead. */
+  website_price?: { price_per_visit: number; first_visit_price: number; frequency: string }
+  lawn_tracing?: { name: string; sqFt: number; coords: [number, number][] | null }[]
 }
 export async function submitLead(data: LeadData) {
   try {
