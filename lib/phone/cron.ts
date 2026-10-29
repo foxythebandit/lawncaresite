@@ -4,7 +4,7 @@ import { staffText, type SummaryLead } from '../lead-summary'
 import { adminDb } from '../supabase/admin'
 import { sendStaffText } from './staff-texts'
 
-/** Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}`. Constant-time; a missing or short secret refuses everything. */
+/** The Supabase cron job sends `Authorization: Bearer ${CRON_SECRET}` (Vault secret `crm_cron_secret`). Constant-time; a missing or short secret refuses everything. */
 export function cronAuthorized(header: string | null, secret = process.env.CRON_SECRET): boolean {
   if (!secret || secret.length < 16) return false
   const actual = Buffer.from(header ?? ''), expected = Buffer.from(`Bearer ${secret}`)

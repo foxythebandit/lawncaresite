@@ -5,7 +5,7 @@ import { recoverStaffAlerts } from '@/lib/staff-alerts'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Vercel Cron, every 5 minutes (vercel.json): due "Log your call" reminders (S20), retries of rejected staff texts and the alert recovery sweep (R6, E17). */
+/** Supabase pg_cron job `crm-phone`, every 5 minutes (migration 20261029130000): due "Log your call" reminders (S20), retries of rejected staff texts and the alert recovery sweep (R6, E17). */
 export async function GET(request: Request) {
   if (!cronAuthorized(request.headers.get('authorization'))) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   const [reminders, alerts, texts] = await Promise.allSettled([sendDueReminders(), recoverStaffAlerts(), retryFailedStaffTexts()])
