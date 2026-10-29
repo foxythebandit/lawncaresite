@@ -2,7 +2,7 @@
 
 For the deployment handoff on Paxton's laptop. Do these in order. Nothing here has been done yet.
 
-**Order matters:** voice alerts are already on in production (`STAFF_VOICE_ENABLED=true`), so the moment this code deploys, new leads use the press-1 flow. Do steps 1–3 (database, env vars, Twilio caller-ID verification) before merging to `main`, then deploy, then run step 4. Texts stay off until the campaign is approved (HANDOFF.md "Waiting on").
+**Order matters:** voice alerts are already on in production (`STAFF_VOICE_ENABLED=true`), so the moment this code deploys, new leads use the press-1 flow. Do steps 2–3 (env vars, Vault secret, Twilio caller-ID verification) first, then step 1 (database), then merge to `main` right away (step 4). The database push makes the `booking-maps` bucket private, so map images on the old live admin and customer portal break until the new code deploys; keep that gap to a few minutes. Texts stay off until the campaign is approved (HANDOFF.md "Waiting on").
 
 ## 1. Database
 `supabase db push --dry-run`, then `supabase db push`. It applies, in order: `20261028120000_crm_board_phone.sql` (board, call log, short links, claim RPCs), `20261028130000_private_map_screenshots.sql` (makes the `booking-maps` bucket private; the code signs links), `20261028150000_phone_flow.sql` (press-1 RPCs, `staff_texts`) `20261028160000_crm_call_job.sql` (Log call Booked → first visit on Jobs) `20261029120000_crm_call_job_first_visit.sql` (that first visit charged the 30% first-visit price; the plan keeps the full price) and `20261029130000_phone_cron_schedule.sql` (Supabase calls `/api/cron/phone` every 5 minutes). Push all six before the code. Existing leads all start in New; place them with the S8 script after the prod data review (`node scripts/place-leads-on-board.mjs` dry run first).
@@ -15,7 +15,7 @@ For the deployment handoff on Paxton's laptop. Do these in order. Nothing here h
 | `TWILIO_VERIFIED_CALLER_IDS` | Comma list of the cells verified in step 3, e.g. `+1979…,+1682…`. A cell missing from this list shows (512) 643-5722 to the customer (R14). |
 | `CRON_SECRET` | Random, 32+ characters (`openssl rand -hex 24`). Put the same value in Supabase → Integrations → Vault as a secret named `crm_cron_secret`; the scheduled job sends it as a bearer token and does nothing until it exists. |
 | `CRM_BASE_URL` | `https://quietgreen.co`. Twilio's signatures are checked against this origin. If it's wrong, every webhook returns 403. |
-| Already set | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_STAFF_PHONES`, `STAFF_SMS_ENABLED`, `STAFF_VOICE_ENABLED`, `ALERT_RECOVERY_SECRET` |
+| Already set | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_STAFF_PHONES`, `STAFF_SMS_ENABLED`, `STAFF_VOICE_ENABLED`, `ALERT_RECOVERY_SECRET`. Check `STAFF_SMS_ENABLED=false` (texts wait for campaign approval) and `STAFF_VOICE_ENABLED=true`. |
 
 **Vercel plan:** Hobby is fine. The every-5-minutes job runs in Supabase (pg_cron + pg_net), not Vercel Cron, so there is no `vercel.json`. Check it after deploy: Supabase → Integrations → Cron → `crm-phone` → recent runs, and `select status_code from net._http_response order by id desc limit 5` should show 200s.
 
