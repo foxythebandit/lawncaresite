@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 type Row = { label: string; value: React.ReactNode }
 type Alert = { id: string; recipient: string; channel: string; state: string; provider_status: string | null; error_code: string | null; attempts: number; provider_sid: string | null }
 type Call = { id: string; leg: string; staff_name: string | null; staff_phone: string; caller_id: string | null; result: string | null; status: string; duration_seconds: number | null; recording_sid: string | null; answered_at: string | null; ended_at: string | null; created_at: string }
-type Customer = { id: string; name: string | null; phone: string | null }
+type Customer = { id: string; name: string | null; phone: string | null; created_at: string }
 
 const ICON: Record<HistoryIcon, IconName> = { in: 'inbox', phone: 'phone', alert: 'bell', call: 'note', quote: 'tag', board: 'columns', note: 'note', booking: 'calendar' }
 const asObject = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -69,7 +69,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const phoneDigits = String(lead.phone ?? '').replace(/\D/g, '').slice(-10)
   // customers.phone is stored in mixed formats: match the ten digits in order on the server, then exactly below.
   const phonePattern = phoneDigits.length === 10 ? `%${phoneDigits.split('').join('%')}%` : null
-  const customerFields = 'id,name,phone'
+  const customerFields = 'id,name,phone,created_at'
   const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }] = await Promise.all([
     db.from('lead_activities').select('id,kind,outcome,body,actor_email,occurred_at,data').eq('lead_id', id).order('occurred_at').limit(200),
     db.from('intake_events').select('id,source,submission_id,booking_id,created_at,staff_alerts(*)').eq('lead_id', id).order('created_at'),
@@ -81,12 +81,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   // Same-phone customers are suggestions only; staff confirms before linking.
   const customerMatches = ((phoneCustomers ?? []) as Customer[]).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits)
   const existing = linkedCustomer ?? customerMatches[0] ?? null
+  const existedBefore = !!existing && Date.parse(existing.created_at) < Date.parse(lead.created_at)
   const quoteUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
   // One request timestamp for every relative label on the page.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
   const addressChanged = (activities ?? []).some(a => a.outcome === 'contact_address_changed')
-  const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: !!existing, addressChanged, now })
+  const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: existedBefore, addressChanged, now })
   const answers = asObject(lead.answers)
   const own = requestBookings((bookings ?? []) as SummaryBooking[])
   const live = (own.find(b => b.status !== 'canceled') ?? own[0]) as (SummaryBooking & { lawn_size_bucket?: string | null; map_screenshot_url?: string | null }) | undefined
@@ -216,7 +217,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 {existing && <li>
                   <span className="crm-history-time" />
                   <Icon name="users" size={15} className="crm-history-icon" />
-                  <span className="crm-history-text"><Link href={`/admin/customers/${existing.id}`}>Existing customer · {existing.name ?? phoneDisplay(existing.phone)}</Link></span>
+                  <span className="crm-history-text"><Link href={`/admin/customers/${existing.id}`}>{existedBefore ? 'Existing customer' : 'Customer'} · {existing.name ?? phoneDisplay(existing.phone)}</Link></span>
                 </li>}
               </ol>
             </Block>

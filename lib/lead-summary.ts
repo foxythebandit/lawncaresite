@@ -169,28 +169,49 @@ export function requestBookings(bookings: SummaryBooking[] = []) {
     .sort((a, b) => time(b.created_at) - time(a.created_at))
 }
 
-/** Latest price we know they saw or heard, with where it came from (PLAN.md 3.2, 4.1e). */
-export function leadPrice(lead: SummaryLead, bookings: SummaryBooking[] = []): Price | null {
-  const candidates: Price[] = []
+/** Where a booking's price came from: the latest phone price or emailed quote before it, else the website. */
+function bookingSource(lead: SummaryLead, booking: SummaryBooking): PriceSource {
+  const at = time(booking.created_at)
+  const before = (value: string | null | undefined) => value && time(value) <= at ? time(value) : 0
+  const phone = before(lead.phone_price_at), emailed = before(lead.quote_emailed_at)
+  return phone || emailed ? (phone >= emailed ? 'phone' : 'emailed') : 'website'
+}
+
+type PriceCandidate = Omit<PriceRow, 'value'> & { headline: boolean }
+
+/** Every known price. Unsaved drafts are listed but never the headline. */
+function priceRows(lead: SummaryLead, bookings: SummaryBooking[]): PriceCandidate[] {
+  const rows: PriceCandidate[] = []
   if (lead.website_price_cents) {
-    candidates.push(makePrice('website', lead.website_price_at ?? lead.created_at, lead.website_price_cents,
-      normalizeFrequency(lead.website_frequency), lead.website_first_visit_cents))
+    rows.push({ key: 'website', label: 'Website', headline: true, price: makePrice('website', lead.website_price_at ?? lead.created_at, lead.website_price_cents,
+      normalizeFrequency(lead.website_frequency), lead.website_first_visit_cents) })
   }
-  if (lead.phone_price_cents) candidates.push(makePrice('phone', lead.phone_price_at ?? null, lead.phone_price_cents, normalizeFrequency(lead.phone_frequency)))
-  if (lead.quote_status === 'accepted' && lead.accepted_quote_snapshot) {
-    const accepted = draftPrice(lead.accepted_quote_snapshot, lead.quote_emailed_at ? 'emailed' : 'phone', lead.quote_accepted_at ?? null)
-    if (accepted) candidates.push(accepted)
-  } else if (lead.quote_emailed_at || lead.quote_confirmed_at) {
-    const saved = draftPrice(lead.quote_draft, lead.quote_emailed_at ? 'emailed' : 'phone', lead.quote_emailed_at ?? lead.quote_confirmed_at ?? null)
-    if (saved) candidates.push(saved)
+  if (lead.phone_price_cents) {
+    rows.push({ key: 'phone', label: 'Phone', headline: true, price: makePrice('phone', lead.phone_price_at ?? null, lead.phone_price_cents, normalizeFrequency(lead.phone_frequency)) })
+  }
+  const quoteSource = lead.quote_emailed_at ? 'emailed' : 'phone'
+  const accepted = lead.quote_status === 'accepted' && lead.accepted_quote_snapshot
+    ? draftPrice(lead.accepted_quote_snapshot, quoteSource, lead.quote_accepted_at ?? null) : null
+  if (accepted) rows.push({ key: 'accepted', label: 'Accepted', headline: true, price: accepted })
+  else if (lead.quote_status !== 'accepted' && lead.quote_draft) {
+    const saved = typeof lead.quote_saved_at === 'string' ? lead.quote_saved_at : null
+    const draft = draftPrice(lead.quote_draft, quoteSource, lead.quote_emailed_at ?? lead.quote_confirmed_at ?? saved)
+    if (draft) rows.push({ key: 'quote', label: lead.quote_emailed_at ? 'Emailed quote' : lead.quote_confirmed_at ? 'Saved quote' : 'Draft quote',
+      headline: !!(lead.quote_emailed_at || lead.quote_confirmed_at), price: draft })
   }
   const booking = requestBookings(bookings).find(b => b.status !== 'canceled' && (b.price_per_visit ?? 0) > 0)
   if (booking) {
-    const freq = normalizeFrequency(booking.frequency) ?? 'onetime'
-    candidates.push(makePrice(lead.quote_emailed_at && time(booking.created_at) >= time(lead.quote_emailed_at) ? 'emailed' : 'website',
-      booking.created_at ?? null, booking.price_per_visit! * 100, freq, booking.first_visit_price != null ? booking.first_visit_price * 100 : null))
+    const source = bookingSource(lead, booking)
+    rows.push({ key: 'booking', label: source === 'phone' ? 'Booked by phone' : 'Online booking', headline: true,
+      price: makePrice(source, booking.created_at ?? null, booking.price_per_visit! * 100, normalizeFrequency(booking.frequency) ?? 'onetime',
+        booking.first_visit_price != null ? booking.first_visit_price * 100 : null) })
   }
-  return candidates.sort((a, b) => time(b.at) - time(a.at))[0] ?? null
+  return rows
+}
+
+/** Latest price we know they saw or heard, with where it came from (PLAN.md 3.2, 4.1e). */
+export function leadPrice(lead: SummaryLead, bookings: SummaryBooking[] = []): Price | null {
+  return priceRows(lead, bookings).filter(row => row.headline).map(row => row.price).sort((a, b) => time(b.at) - time(a.at))[0] ?? null
 }
 
 export function bookingState(lead: SummaryLead, bookings: SummaryBooking[] = []): BookingState {
@@ -249,7 +270,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
     chips.push({ key: 'check_back', label: `Check back ${dayLabel(lead.check_back_on)}`, tone: due ? 'bad' : 'neutral' })
   }
   if (lead.taken_by) chips.push({ key: 'taken', label: `Taken by ${lead.taken_by}`, tone: 'neutral' })
-  else if (lead.not_taken_at) chips.push({ key: 'not_taken', label: 'Not taken', tone: 'bad' })
+  else if (lead.not_taken_at && column === 'new') chips.push({ key: 'not_taken', label: 'Not taken', tone: 'bad' })
   if (lead.needs_call_log_at) chips.push({ key: 'log_call', label: 'Log this call', tone: 'warn' })
   if (options.existingCustomer) chips.push({ key: 'existing', label: 'Existing customer', tone: 'ok' })
   if (answers.address_missing === true || !lead.address) chips.push({ key: 'address', label: 'No address', tone: 'warn' })
@@ -490,30 +511,9 @@ export type PriceRow = { key: 'website' | 'phone' | 'quote' | 'accepted' | 'book
  * rest as label → value rows, newest first.
  */
 export function allPrices(lead: SummaryLead, bookings: SummaryBooking[] = []): { headline: Price | null; others: PriceRow[] } {
-  const rows: Omit<PriceRow, 'value'>[] = []
-  if (lead.website_price_cents) {
-    rows.push({ key: 'website', label: 'Website', price: makePrice('website', lead.website_price_at ?? lead.created_at, lead.website_price_cents,
-      normalizeFrequency(lead.website_frequency), lead.website_first_visit_cents) })
-  }
-  if (lead.phone_price_cents) {
-    rows.push({ key: 'phone', label: 'Phone', price: makePrice('phone', lead.phone_price_at ?? null, lead.phone_price_cents, normalizeFrequency(lead.phone_frequency)) })
-  }
-  const accepted = lead.quote_status === 'accepted' && lead.accepted_quote_snapshot
-    ? draftPrice(lead.accepted_quote_snapshot, lead.quote_emailed_at ? 'emailed' : 'phone', lead.quote_accepted_at ?? null) : null
-  if (accepted) rows.push({ key: 'accepted', label: 'Accepted', price: accepted })
-  else if (lead.quote_status !== 'accepted' && lead.quote_draft) {
-    const saved = typeof lead.quote_saved_at === 'string' ? lead.quote_saved_at : null
-    const draft = draftPrice(lead.quote_draft, lead.quote_emailed_at ? 'emailed' : 'phone', lead.quote_emailed_at ?? lead.quote_confirmed_at ?? saved)
-    if (draft) rows.push({ key: 'quote', label: lead.quote_emailed_at ? 'Emailed quote' : lead.quote_confirmed_at ? 'Saved quote' : 'Draft quote', price: draft })
-  }
-  const booking = requestBookings(bookings).find(b => b.status !== 'canceled' && (b.price_per_visit ?? 0) > 0)
-  if (booking) {
-    rows.push({ key: 'booking', label: 'Online booking', price: makePrice(lead.quote_emailed_at && time(booking.created_at) >= time(lead.quote_emailed_at) ? 'emailed' : 'website',
-      booking.created_at ?? null, booking.price_per_visit! * 100, normalizeFrequency(booking.frequency) ?? 'onetime',
-      booking.first_visit_price != null ? booking.first_visit_price * 100 : null) })
-  }
+  const rows = priceRows(lead, bookings)
   const headline = leadPrice(lead, bookings)
   const index = headline ? rows.findIndex(row => row.price.source === headline.source && row.price.at === headline.at && row.price.cents === headline.cents) : -1
   const others = rows.filter((_, i) => i !== index).sort((a, b) => time(b.price.at) - time(a.price.at))
-  return { headline, others: others.map(row => ({ ...row, value: priceLine(row.price) })) }
+  return { headline, others: others.map(({ key, label, price }) => ({ key, label, price, value: priceLine(price) })) }
 }
