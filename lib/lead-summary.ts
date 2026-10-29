@@ -23,11 +23,11 @@ export type SummaryLead = {
   taken_by?: string | null; taken_at?: string | null; not_taken_at?: string | null; needs_call_log_at?: string | null
 } & Record<string, unknown>
 
-/** Bookings for this lead. Generated plan visits (agreement set at insert) are ignored for status. */
+/** Bookings for this lead. Generated plan visits are ignored for the request (see requestBookings). */
 export type SummaryBooking = {
   status?: string | null; created_at?: string | null; preferred_date?: string | null; preferred_time?: string | null
   confirmed_date?: string | null; frequency?: string | null; price_per_visit?: number | null; first_visit_price?: number | null
-  overgrowth_fee?: number | null; customer_notes?: string | null; addon_interest?: unknown; occurrence_on?: string | null
+  overgrowth_fee?: number | null; customer_notes?: string | null; addon_interest?: unknown; occurrence_on?: string | null; agreement_id?: string | null
 }
 
 export type PriceSource = 'website' | 'phone' | 'emailed'
@@ -158,7 +158,15 @@ function draftPrice(draft: unknown, source: PriceSource, at: string | null): Pri
 
 /** The bookings that describe this lead's own request (not later generated plan visits). */
 export function requestBookings(bookings: SummaryBooking[] = []) {
-  return bookings.filter(b => !b.occurrence_on).sort((a, b) => time(b.created_at) - time(a.created_at))
+  // Starting a plan gives the lead's own first visit an agreement and occurrence date too; it is
+  // the plan's earliest booking. Every later visit of the plan is generated.
+  const firstOfPlan = new Map<string, SummaryBooking>()
+  for (const b of bookings) {
+    const first = b.agreement_id ? firstOfPlan.get(b.agreement_id) : undefined
+    if (b.agreement_id && (!first || time(b.created_at) < time(first.created_at))) firstOfPlan.set(b.agreement_id, b)
+  }
+  return bookings.filter(b => b.agreement_id ? firstOfPlan.get(b.agreement_id) === b : !b.occurrence_on)
+    .sort((a, b) => time(b.created_at) - time(a.created_at))
 }
 
 /** Latest price we know they saw or heard, with where it came from (PLAN.md 3.2, 4.1e). */

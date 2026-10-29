@@ -110,3 +110,10 @@ test('history rows are two or three words', () => {
   assert.equal(historyItem({ kind: 'phone', outcome: 'talked', data: { duration_seconds: 240 }, occurred_at: '2026-10-28T19:19:00Z' }, now).text, 'Talked 4 min')
   assert.equal(historyItem({ kind: 'call', outcome: 'no', data: { reason: 'price' }, occurred_at: '2026-10-27T19:19:00Z' }, now).time, 'Oct 27')
 })
+
+test('a plan keeps the lead\'s own first visit as the request; generated visits are ignored', () => {
+  const own = { status: 'completed', created_at: '2026-10-01T00:00:00Z', agreement_id: 'p1', occurrence_on: '2026-10-03', price_per_visit: 45, frequency: 'biweekly' }
+  const next = { status: 'confirmed', created_at: '2026-10-03T00:00:00Z', agreement_id: 'p1', occurrence_on: '2026-10-17', price_per_visit: 60, frequency: 'biweekly' }
+  const s = summarizeLead({ ...jane, website_price_cents: null, board_column: 'customer' }, [next, own])
+  assert.equal(s.price?.cents, 4500)
+})
