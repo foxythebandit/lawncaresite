@@ -133,4 +133,6 @@ Its remaining points, and what happened:
 
 ## 7. Demo data
 
-_Pending._
+- `scripts/fetch-demo-properties.mjs` (run once; needs internet) picks a real detached house from OpenStreetMap for every demo lead with an address: right town, house on its own named residential street, 14–40 m back from the street. It traces **one** lawn: the front yard between the house and the curb. Output: `scripts/demo-properties.json` (29 homes).
+- `scripts/seed-demo-leads.mjs` uses those addresses and lawns, and now adds the website's **travel fee** (straight-line miles from the office, as `MapQuoteBuilder` does), so a lead's website price equals what the calculator shows. Lawns are front yards (1,350–4,350 sq ft), so demo prices are lower than before ($78 instead of $140 for Megan Carter).
+- Reseeded `qg-crm-test` after the screenshot pass. The before/after pairs above use the old data. Without the JSON file the seed falls back to the old rectangles.

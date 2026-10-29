@@ -51,8 +51,16 @@ function basePrice(sqFt) {
 const DISCOUNT = { weekly: 15, biweekly: 10, monthly: 0, onetime: 0 }
 const FREQ_LABEL = { weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly', onetime: 'One-time' }
 const PLAN = { weekly: { unit: 'week', count: 1, days: 7 }, biweekly: { unit: 'week', count: 2, days: 14 }, monthly: { unit: 'month', count: 1 } }
-function offer(sqFt, freq) {
-  const price = Math.round(basePrice(sqFt) * (1 - DISCOUNT[freq] / 100))
+// The builder adds a travel fee by straight-line miles from the office (lib/address-search.ts OFFICE_LAT/LNG).
+const OFFICE = [30.3049, -97.7184]
+function travelFee([lat, lng]) {
+  const rad = Math.PI / 180, dLat = (lat - OFFICE[0]) * rad, dLng = (lng - OFFICE[1]) * rad
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(OFFICE[0] * rad) * Math.cos(lat * rad) * Math.sin(dLng / 2) ** 2
+  const miles = 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return miles <= 10 ? 0 : miles <= 15 ? 10 : miles <= 20 ? 18 : 28
+}
+function offer(sqFt, freq, spot) {
+  const price = Math.round(basePrice(sqFt) * (1 - DISCOUNT[freq] / 100)) + travelFee(spot)
   return { price, first: Math.round(price * 0.7) }
 }
 
@@ -84,8 +92,16 @@ function touchFor(source, at) {
   return { utm_source: 'meta', utm_medium: 'paid_social', utm_campaign: META_CAMPAIGN, utm_content: id, meta_ad_id: id, fbclid: `IwAR${hex(12)}`, captured_at: at }
 }
 
-/** Two rectangles (front and back) adding up to `sqFt`, as [lng, lat] like the map builder saves them. */
-function tracing([lat, lng], sqFt, seed) {
+/** Real houses with one traced front lawn each (scripts/fetch-demo-properties.mjs), keyed by spec `n`. */
+const propsFile = new URL('./demo-properties.json', import.meta.url)
+const HOMES = existsSync(propsFile) ? JSON.parse(readFileSync(propsFile, 'utf8')) : {}
+
+/**
+ * The lead's lawn as [lng, lat] shapes like the map builder saves them: the traced lawn on its house when
+ * demo-properties.json has one, else two rectangles (front and back) adding up to `sqFt`.
+ */
+function tracing([lat, lng], sqFt, seed, home) {
+  if (home) return [{ name: 'Lawn', sqFt: home.sqFt, coords: home.coords }]
   const jitter = ((seed * 7919) % 100) / 100000
   const box = (name, area, north) => {
     const m2 = area * 0.0929, w = Math.sqrt(m2 * 1.6), h = m2 / w
@@ -255,12 +271,16 @@ async function must(promise, what) {
 /* ── Seed ─────────────────────────────────────────────── */
 const counts = {}
 for (const spec of LEADS) {
+  const home = HOMES[spec.n]
+  if (home && spec.kind === 'map') Object.assign(spec, { address: `${home.street}, ${home.town}, TX ${home.zip}`, sq: home.sqFt })
+  else if (home && spec.street) Object.assign(spec, { street: home.street, town: home.town, zip: home.zip })
+  spec.spot = home ? [home.lat, home.lng] : CITY[spec.city] ?? CITY.north
   const createdAgo = spec.age
   const at = (m) => { if (m > createdAgo) throw new Error(`${spec.name}: event in the future`); return iso(createdAgo - m) }
   const leadId = randomUUID(), phone = phoneOf(spec.n)
   const email = spec.email && spec.name ? `${spec.name.toLowerCase().replace(/[^a-z]+/g, '.')}@example.com` : null
   const touch = touchFor(spec.ad, at(-0.2))
-  const site = spec.kind === 'map' ? offer(spec.sq, spec.freq) : null
+  const site = spec.kind === 'map' ? offer(spec.sq, spec.freq, spec.spot) : null
   const address = spec.kind === 'map' ? spec.address : spec.street ? `${spec.street}, ${spec.town}, TX ${spec.zip}` : null
 
   // Lead fields that change with events (mirrors crm_log_call / crm_finish_customer_leg / crm_move_lead).
@@ -279,7 +299,7 @@ for (const spec of LEADS) {
   if (spec.kind === 'map') {
     Object.assign(lead, { source: 'website-map', form_version: 'map:1', sq_ft: spec.sq, services: ['Lawn care'], frequency: FREQ_LABEL[spec.freq],
       answers: { last_mow: spec.n % 3 ? 'thisweek' : 'biweekly' }, website_price_cents: site.price * 100, website_first_visit_cents: site.first * 100,
-      website_frequency: spec.freq, website_price_at: at(0), lawn_tracing: tracing(CITY[spec.city], spec.sq, spec.n) })
+      website_frequency: spec.freq, website_price_at: at(0), lawn_tracing: tracing(spec.spot, spec.sq, spec.n, home) })
   } else {
     const formId = CONVIFLO_FORM[spec.form]
     const services = spec.form === 'mowing' ? ['Lawn care']
@@ -314,7 +334,7 @@ for (const spec of LEADS) {
   const calls = [], activities = [], bookingRows = request ? [request] : [], plan = { agreement: null, customer: null, property: null }
   const activity = (kind, outcome, when, extra = {}) => activities.push({ lead_id: leadId, kind, outcome, occurred_at: when, ...extra })
   const priceOf = (price) => price === 'website' ? { cents: site.price * 100, freq: spec.freq }
-    : { cents: offer(price[0], price[1]).price * 100, freq: price[1], sq: price[0] }
+    : { cents: offer(home?.sqFt ?? price[0], price[1], spec.spot).price * 100, freq: price[1], sq: home?.sqFt ?? price[0] }
 
   for (const event of spec.events) {
     const [type, t] = event
@@ -396,9 +416,10 @@ for (const spec of LEADS) {
       if (column === 'closed' && state.stage !== 'booked') state.stage = 'lost'
       activity('board', column, at(t), { actor_email: STAFF[staff].email, data: { from, reason: detail.closed_reason } })
     } else if (type === 'emailQuote') {
-      const [, , staff, [sq, freq]] = event
-      const { price, first } = offer(sq, freq)
-      lead.quote_draft = quoteDraft(address, CITY[spec.city], sq, freq, price, first)
+      const [, , staff, [quotedSq, freq]] = event
+      const sq = home?.sqFt ?? quotedSq
+      const { price, first } = offer(sq, freq, spec.spot)
+      lead.quote_draft = quoteDraft(address, spec.spot, sq, freq, price, first, home)
       Object.assign(state, { quote_emailed_at: at(t) })
       await must(db.from('leads').update({ quote_draft: lead.quote_draft, sq_ft: sq, quote_saved_at: at(t - 4), quote_confirmed_at: at(t - 2) }).eq('id', leadId), 'quote')
       activity('quote', 'reviewed', at(t - 2), { actor_email: STAFF[staff].email })
@@ -482,7 +503,7 @@ async function book(spec, { when, first, price, request, plan, bookingRows, lead
     creation_operation_id: randomUUID(), creation_request: { job: { frequency: freq, first_visit_on: first, first_visit_price: Math.round(dollars * 0.7) }, items: snapshot.items, lead_id: leadId },
     items: [{ kind: 'service', description: 'Lawn care', amount: dollars }] })
   if (!request) bookingRows.push(job)
-  const [lat, lng] = CITY[spec.city] ?? CITY.north
+  const [lat, lng] = spec.spot
   plan.customer = { id: randomUUID(), name: spec.name ?? phone, phone, email, created_at: when }
   plan.property = { id: randomUUID(), customer_id: plan.customer.id, address: job.address, latitude: lat, longitude: lng, created_at: when }
   Object.assign(job, { customer_id: plan.customer.id, property_id: plan.property.id })
@@ -514,8 +535,8 @@ function completeVisit(row) {
 }
 
 /** A saved and emailed staff quote, shaped like MapQuoteBuilder's draft. */
-function quoteDraft(address, [lat, lng], sqFt, freq, price, first) {
-  const shapes = tracing([lat, lng], sqFt, sqFt)
+function quoteDraft(address, [lat, lng], sqFt, freq, price, first, home) {
+  const shapes = tracing([lat, lng], sqFt, sqFt, home)
   return { address, sections: shapes.map((s, i) => ({ id: `s${i + 1}`, ...s })), jobLatLng: { lat, lng }, freq, lastMow: 'thisweek',
     fertAreaChoice: null, fertCustomSqFt: null, fertIncluded: false, mulchAreaChoice: null, mulchCustomSqFt: null, mulchDepthIn: 3, mulchIncluded: false,
     leafIncluded: false, leafHaulAway: false, maintenanceInterested: false, yardAreaChoice: null, yardCustomSqFt: null, yardSeverity: 'moderate',
