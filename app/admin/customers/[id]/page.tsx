@@ -17,6 +17,7 @@ function dateText(value: string | null) {
 }
 
 const money = formatMoney
+const visitCount = (n: number) => `${n} visit${n === 1 ? '' : 's'}`
 
 export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -49,9 +50,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <p className="crm-muted">{formatPhone(customer.phone) || 'No phone'}{customer.email ? ` · ${customer.email}` : ''}</p></div>
       </div>
       <div className="crm-head-actions">
-        {customer.email && <a className="crm-button" href={`mailto:${customer.email}`}><Icon name="mail" size={15} />Email</a>}
-        {customer.phone && <a className="crm-button" href={`sms:${customer.phone}`}><Icon name="message" size={15} />Text</a>}
         {customer.phone && <a className="crm-button crm-button-primary" href={`tel:${customer.phone}`}><Icon name="phone" size={15} />Call</a>}
+        {customer.phone && <a className="crm-button" href={`sms:${customer.phone}`}><Icon name="message" size={15} />Text</a>}
+        {customer.email && <a className="crm-button" href={`mailto:${customer.email}`}><Icon name="mail" size={15} />Email</a>}
       </div>
     </div>
     <CustomerActions customerId={id} properties={ownProperties.map(property => ({ id: property.id, address: property.address,
@@ -79,7 +80,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         {ownProperties.length ? ownProperties.map(property => <div className="crm-customer-entry" key={property.id}>
           <div>
             <strong>{property.address}</strong>
-            <span>{jobs.filter(job => job.property_id === property.id).length} visits{property.measured_at ? ` · Measured ${dateText(property.measured_at)}` : ''}</span>
+            <span>{visitCount(jobs.filter(job => job.property_id === property.id).length)}{property.measured_at ? ` · Measured ${dateText(property.measured_at)}` : ''}</span>
           </div>
         </div>) : <p className="crm-muted">No property linked yet.</p>}
       </section>

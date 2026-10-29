@@ -19,7 +19,7 @@ export default async function CustomersPage() {
       <div><h1>Customers</h1>
         <p className="crm-muted">Linked customers, properties, and visit history.</p></div>
     </div>
-    <p className="crm-customer-help">A customer appears here after a staff member reviews and links a visit. Matching phone numbers alone do not combine records.</p>
+    <details className="crm-customer-help"><summary>How customers get here</summary>A customer appears here after a staff member reviews and links a visit. Matching phone numbers alone do not combine records.</details>
     {customers.length === 0 ? <div className="admin-empty">No linked customers yet. Open a job to review and link its customer and property.</div>
       : <div className="crm-list">{customers.map(customer => <Link key={customer.id} className="crm-customer-card" href={`/admin/customers/${customer.id}`}>
         <span className="crm-avatar" aria-hidden="true">{initials(customer.name)}</span>

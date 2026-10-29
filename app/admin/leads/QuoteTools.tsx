@@ -194,11 +194,11 @@ export function QuotePanel() {
     : booking && booking.status !== 'canceled' && quoteStatus === 'accepted' ? 'booked'
     : quoteStatus === 'accepted' ? 'accepted' : quoteStatus === 'declined' ? 'declined'
       : reviewed && draft ? 'quoted' : draft ? 'draft' : 'none'
-  const quoteLabel = { booked: 'Booked', canceled: 'Canceled', accepted: 'Accepted', declined: 'Said no', quoted: 'Quoted', draft: 'Draft', none: 'No quote' }[quoteState]
+  const quoteLabel = { booked: 'Booked', canceled: 'Canceled', accepted: 'Accepted', declined: 'Said no', quoted: 'Quoted', draft: 'Draft', none: 'None yet' }[quoteState]
   const tone = { booked: 'booked', canceled: 'lost', accepted: 'booked', declined: 'lost', quoted: 'quoted', draft: 'new', none: 'lost' }[quoteState]
 
   return <section className="crm-block crm-quote-panel" aria-label="Quote">
-    <p className="crm-block-head"><span>Quote</span><span className={`crm-chip crm-chip-${tone}`}>{quoteLabel}</span></p>
+    <p className="crm-block-head"><span>Saved quote</span><span className={`crm-chip crm-chip-${tone}`}>{quoteLabel}</span></p>
     {draft ? <p className="crm-quote-total">{formatMoney(quoteTotalCents(draft) / 100)}<small>{draft.includeMowing !== false && draft.freq !== 'onetime' ? '/ visit' : 'total'}</small></p>
       : <p className="crm-quote-total">—</p>}
     {draft && quoteState === 'draft' && !emailOpen && <div className="crm-action-row">

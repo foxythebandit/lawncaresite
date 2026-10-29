@@ -1239,8 +1239,8 @@ export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
 
       <div className="mapq-inner">
         {staffQuote && <div className="staff-quote-controls">
-          <h2>Price</h2>
-          <p>Build the price for this lead. Saving never contacts the customer.</p>
+          <h2>Price calculator</h2>
+          <p>Saving never contacts the customer.</p>
           <QuotePriceEditor lines={manualLines} onLinesChange={setManualLines} discountCents={discountCents} onDiscountChange={setDiscountCents} includeMowing={includeMowing} onIncludeMowingChange={included => { setIncludeMowing(included); if (included) setShowStaffMap(true) }} mowingPriceCents={mowingPriceCents}
             lawn={{ sqFt: lawnSqFt, freq, freqOptions: (Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([value, f]) => ({ value, label: f.discount ? `${f.label} (−${f.discount}%)` : f.label })),
               onFreqChange: value => setFreq(value as Frequency), calculatedCents: Math.round(ongoingPrice * 100), overridePrice, onOverrideChange: setOverridePrice }} />
@@ -1321,7 +1321,7 @@ export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
               </div>
               <div className="mapq-step-line" style={{ opacity: step !== 'idle' && step !== 'searching' ? 1 : 0.2 }} />
               <div className="mapq-step-body">
-                <div className={`mapq-step-title ${step === 'idle' || step === 'searching' ? 'active' : ''}`}>Your address</div>
+                <div className={`mapq-step-title ${step === 'idle' || step === 'searching' ? 'active' : ''}`}>{staffQuote ? 'Property address' : 'Your address'}</div>
                 {(step === 'idle' || step === 'searching' || step === 'confirming') && (
                   <form onSubmit={handleSearch} style={{ marginTop: 14 }}>
                     <div className="mapq-input-wrap" ref={addressWrapRef}>
@@ -1418,7 +1418,7 @@ export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
               <div className="mapq-step-line" style={{ opacity: isDone && !isDrawing ? 1 : 0.2 }} />
               <div className="mapq-step-body">
                 <div className={`mapq-step-title ${isDrawing ? 'active' : ''}`}>
-                  Trace your lawn
+                  {staffQuote ? 'Lawn trace' : 'Trace your lawn'}
                 </div>
 
                 <div className="mapq-first-visit-promo" style={{ marginTop: 12, marginBottom: 0 }}>

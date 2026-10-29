@@ -160,7 +160,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         <a href={`sms:${booking.phone}`} className="crm-button admin-action-text"><Icon name="message" size={15} />Text</a>
         {booking.email && <a href={`mailto:${booking.email}`} className="crm-button admin-action-email"><Icon name="mail" size={15} />Email</a>}
         <div className="admin-card-links">
-          {linked ? <a href={`/admin/customers/${booking.customer_id}`} className="admin-card-history-link">Customer history ({historyCount} visits) →</a>
+          {linked ? <a href={`/admin/customers/${booking.customer_id}`} className="admin-card-history-link">Customer history ({historyCount} visit{historyCount === 1 ? '' : 's'}) →</a>
             : <a href={`/admin/client/${encodeURIComponent(booking.phone)}`} className="admin-card-history-link">Unlinked phone history →</a>}
           <button className="admin-edit-service-link" onClick={() => setShowContact(!showContact)}>Edit visit contact</button>
         </div>

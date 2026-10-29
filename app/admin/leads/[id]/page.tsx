@@ -105,7 +105,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   // History: came in, later intake (online booking), alert legs, every activity; time · icon · 2–3 words.
   const callById = new Map((calls ?? []).map(call => [call.id, call as Call]))
   const legRows = ((calls ?? []) as Call[]).filter(call => call.leg === 'alert').flatMap(call =>
-    alertLegHistory(call, now).map((row, i) => ({ key: `${call.id}-${i}`, ...row, recording: null })))
+    alertLegHistory(call, now).map((row, i) => ({ key: `${call.id}-${i}`, ...row, recording: null, alert: true })))
   const history = [
     { key: 'in', at: lead.created_at, time: historyItem({ kind: 'note', occurred_at: lead.created_at }, now).time, icon: 'in' as HistoryIcon, text: 'Came in', quote: null as string | null, recording: null as string | null },
     ...(events ?? []).slice(1).map(event => ({ key: event.id, at: event.created_at, time: historyItem({ kind: 'note', occurred_at: event.created_at }, now).time,
@@ -114,9 +114,18 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     ...(activities ?? []).map(activity => {
       const item = historyItem(activity, now)
       const call = callById.get(String(asObject(activity.data).call_id ?? ''))
-      return { key: activity.id, at: activity.occurred_at, ...item, recording: call?.recording_sid ? `/api/twilio/recordings/${call.id}` : null }
+      return { key: activity.id, at: activity.occurred_at, ...item, recording: call?.recording_sid ? `/api/twilio/recordings/${call.id}` : null, alert: activity.kind === 'alert' }
     }),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+  // Alert-call steps (ring, answered, pressed 1) fold into one row headed by how it ended; all steps stay one tap away.
+  type HistoryRow = (typeof history)[number] & { alert?: boolean }
+  const timeline: (HistoryRow | { key: string; steps: HistoryRow[] })[] = []
+  for (const item of history as HistoryRow[]) {
+    const last = timeline[timeline.length - 1]
+    if (item.alert && last && 'steps' in last) last.steps.push(item)
+    else timeline.push(item.alert ? { key: `alerts-${item.key}`, steps: [item] } : item)
+  }
+  const alertSummary = (steps: HistoryRow[]) => [...steps].reverse().find(step => /took|passed|Nobody/.test(step.text))?.text ?? 'Alert calls'
 
   const firstTouch = asObject(asObject(lead.attribution).first_touch)
   const latestTouch = asObject(asObject(lead.attribution).latest_touch)
@@ -171,7 +180,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 ...(price?.planDiscountPct ? [{ label: 'Plan discount', value: <span className="crm-muted">{price.planDiscountPct}% off · {price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}</span> }] : []),
                 { label: 'Source', value: chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
                 ...otherPrices.map(row => ({ label: row.label, value: row.value })),
-                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
+                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill>
+                  {s.booking === 'requested' && live && <> <Link className="crm-inline-link" href={`/admin/jobs?filter=pending&search=${encodeURIComponent(lead.name ?? lead.phone)}`}>Schedule in Jobs →</Link></>}</> },
                 ...(lead.first_visit_on ? [{ label: 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),
                 ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: money(live!.overgrowth_fee! * 100) }] : []),
               ]} />
@@ -205,13 +215,24 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </div>
             </Block>
 
-            <Block title="History" className="crm-o5">
+            <Block title="History" className="crm-o5" aside={<LogCallButton className="crm-button crm-button-sm" />}>
               <ol className="crm-history">
-                {history.map(item => <li key={item.key}>
-                  <span className="crm-history-time">{item.time}</span>
-                  <Icon name={ICON[item.icon]} size={15} className="crm-history-icon" />
-                  <span className="crm-history-text">{item.text}{item.recording && <> <RecordingButton src={item.recording} /></>}
-                    {item.quote && <span className="crm-quote-text">&ldquo;{item.quote}&rdquo;</span>}</span>
+                {timeline.map(row => 'steps' in row ? <li key={row.key}>
+                  <span className="crm-history-time">{row.steps[0].time}</span>
+                  <Icon name="bell" size={15} className="crm-history-icon" />
+                  <details className="crm-history-text crm-history-group">
+                    <summary>{alertSummary(row.steps)} <small>{row.steps.length} alert steps</small></summary>
+                    <ol className="crm-history">{row.steps.map(item => <li key={item.key}>
+                      <span className="crm-history-time">{item.time}</span>
+                      <Icon name={ICON[item.icon]} size={15} className="crm-history-icon" />
+                      <span className="crm-history-text">{item.text}</span>
+                    </li>)}</ol>
+                  </details>
+                </li> : <li key={row.key}>
+                  <span className="crm-history-time">{row.time}</span>
+                  <Icon name={ICON[row.icon]} size={15} className="crm-history-icon" />
+                  <span className="crm-history-text">{row.text}{row.recording && <> <RecordingButton src={row.recording} /></>}
+                    {row.quote && <span className="crm-quote-text">&ldquo;{row.quote}&rdquo;</span>}</span>
                 </li>)}
                 {existing && <li>
                   <span className="crm-history-time" />
@@ -219,10 +240,6 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                   <span className="crm-history-text"><Link href={`/admin/customers/${existing.id}`}>{existedBefore ? 'Existing customer' : 'Customer'} · {existing.name ?? phoneDisplay(existing.phone)}</Link></span>
                 </li>}
               </ol>
-            </Block>
-
-            <Block title="Log call" className="crm-o6">
-              <LogCallButton className="crm-button crm-button-lg crm-button-block" />
             </Block>
 
             <details className="crm-block crm-lead2-details crm-o8">

@@ -44,7 +44,7 @@ export default async function WeekPage() {
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{weekJobs}</span>
-          <span className="admin-stat-label">Jobs this week</span>
+          <span className="admin-stat-label">Jobs next 7 days</span>
         </div>
         <div className="admin-stat">
           <span className="admin-stat-val">{formatMoneyWhole(weekRevenue)}</span>
@@ -61,17 +61,11 @@ export default async function WeekPage() {
                 {day.label}
                 {day.isToday && <span className="admin-week-day-today-tag">Today</span>}
               </span>
-              {day.jobs.length > 0 && (
-                <span className="admin-week-day-summary">
-                  {day.jobs.length} job{day.jobs.length === 1 ? '' : 's'} · {formatMoney(day.revenue)}
-                </span>
-              )}
+              <span className="admin-week-day-summary">
+                {day.jobs.length > 0 ? `${day.jobs.length} job${day.jobs.length === 1 ? '' : 's'} · ${formatMoney(day.revenue)}` : 'No jobs'}
+              </span>
             </div>
-            {day.jobs.length === 0 ? (
-              <div className="admin-week-day-empty">No jobs confirmed.</div>
-            ) : (
-              <DayJobs jobs={day.jobs} />
-            )}
+            {day.jobs.length > 0 && <DayJobs jobs={day.jobs} />}
           </div>
         ))}
       </div>

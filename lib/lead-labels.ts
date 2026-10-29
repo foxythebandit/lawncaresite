@@ -91,6 +91,9 @@ const HIDDEN_ANSWERS = new Set(['name', 'phone', 'email', 'address', 'contact', 
   'address_needs_review', 'address_missing', 'service_unmapped', 'map_screenshot_url', 'addon_interest', 'waitlist'])
 
 /** Customer answers as label → value rows (Request block, alert text). Free text stays as typed. */
+/** The website builder's "last mowed" keys (components/MapQuoteBuilder.tsx LAST_MOW_OPTS). */
+const LAST_MOW: Record<string, string> = { thisweek: 'This week', biweekly: '2–3 weeks ago', month: '~1 month ago', overdue: '2+ months ago' }
+
 export function readableAnswers(answers: unknown): { label: string; value: string }[] {
   if (!answers || typeof answers !== 'object' || Array.isArray(answers)) return []
   return Object.entries(answers as Record<string, unknown>)
@@ -101,6 +104,7 @@ export function readableAnswers(answers: unknown): { label: string; value: strin
       const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
       const label = (/^(choice(_\d+)?|opener_[a-z_]+)$/.test(key) ? QUESTION_BY_CHOICE[slug] : null) ?? CONVIFLO_QUESTIONS[key] ?? humanize(key)
       const shown = typeof value === 'boolean' ? (value ? 'Yes' : 'No')
+        : key === 'last_mow' && Object.hasOwn(LAST_MOW, raw) ? LAST_MOW[raw]
         : CONVIFLO_CHOICES[raw] ?? CONVIFLO_CHOICES[slug] ?? (/^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(raw) ? humanize(raw) : raw)
       return { label, value: shown }
     })

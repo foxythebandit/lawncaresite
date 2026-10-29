@@ -202,9 +202,9 @@ export default function Board({ cards, initialView, initialColumn, children }: {
     {children}
 
     <div className="crm-board-chips" role="tablist" aria-label="Columns">
-      {BOARD_COLUMNS.map(column => <button key={column} type="button" role="tab" data-drop={column} aria-selected={selected === column}
+      {BOARD_COLUMNS.map(column => <button key={column} type="button" role="tab" data-drop={column} aria-selected={view !== 'list' && selected === column}
         className={`crm-board-chip${column === 'booking_request' ? ' is-hot' : ''}${column === 'booking_request' && groups[column].length ? ' has-cards' : ''}`}
-        onClick={() => { setSelected(column); remember({ col: column }) }}>
+        onClick={event => { setSelected(column); remember({ col: column }); event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }}>
         {COLUMN_LABEL[column]} <strong>{groups[column].length}</strong>
       </button>)}
     </div>
@@ -228,7 +228,7 @@ export default function Board({ cards, initialView, initialColumn, children }: {
       {prompt?.step === 'menu' && <div className="crm-move-list">
         {BOARD_COLUMNS.map(column => <button key={column} type="button" className="crm-move-option" aria-current={prompt.card.column === column || undefined}
           onClick={() => requestMove(prompt.card, column)}>
-          <span>{COLUMN_LABEL[column]}</span>{prompt.card.column === column && <small>Now</small>}
+          <span>{COLUMN_LABEL[column]}</span>{prompt.card.column === column && <small>Current</small>}
         </button>)}
       </div>}
       {prompt?.step === 'closed' && <>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CALL_OUTCOME, CALL_OUTCOMES, CLOSED_REASONS, CLOSED_REASON_LABEL, COLUMN_LABEL, FREQUENCIES, FREQUENCY_LABEL, QUOTED_REASONS,
   QUOTED_REASON_LABEL, type CallOutcome, type ClosedReason, type Frequency, type QuotedReason } from '@/lib/lead-board'
+import { columnChip } from '@/lib/lead-summary'
 import type { CallDetail } from './board-actions'
 import { CheckBack, Choices, todayChicago } from './pickers'
 
@@ -64,8 +65,8 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
       {CALL_OUTCOMES.filter(key => CALL_OUTCOME[key].step === form.step).map(key => <button key={key} type="button" role="radio" aria-checked={outcome === key}
         className="crm-outcome" onClick={() => set({ outcome: key, reason: null, ...(key === 'no' && outcome !== 'no' ? { price: '' } : {}),
           ...(key !== 'no' && outcome === 'no' && !form.price && priceCents ? { price: String(priceCents / 100) } : {}) })}>
-        <span className="crm-outcome-main"><span aria-hidden="true">{CALL_OUTCOME[key].icon}</span>{CALL_OUTCOME[key].label}</span>
-        <span className="crm-outcome-to">{COLUMN_LABEL[CALL_OUTCOME[key].to]}</span>
+        <span className="crm-outcome-main"><span className="crm-outcome-radio" aria-hidden="true" />{CALL_OUTCOME[key].label}</span>
+        <span className={`crm-pill crm-pill-${columnChip(CALL_OUTCOME[key].to).tone}`}>→ {COLUMN_LABEL[CALL_OUTCOME[key].to]}</span>
         {ASKS[key] && <small>{ASKS[key]}</small>}
       </button>)}
     </div>}
@@ -102,7 +103,7 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
     </label>}
     <div className="crm-dialog-actions crm-logcall-actions">
       <button type="submit" className="crm-button crm-button-primary crm-button-lg" disabled={!valid}>
-        {outcome ? `Save · ${COLUMN_LABEL[CALL_OUTCOME[outcome].to]}` : 'Save'}</button>
+        {outcome ? `Save · ${COLUMN_LABEL[CALL_OUTCOME[outcome].to]}` : 'Pick an outcome'}</button>
     </div>
   </form>
 }
