@@ -34,7 +34,8 @@ export function websitePrice(input: { price_per_visit: unknown; first_visit_pric
   if (!input) return null
   const price = Number(input.price_per_visit), first = Number(input.first_visit_price)
   const frequency = typeof input.frequency === 'string' ? FREQUENCY_KEYS[input.frequency.toLowerCase()] : undefined
-  if (!frequency || !Number.isFinite(price) || !Number.isFinite(first) || price <= 0 || price > 100000 || first < 0 || first > 100000) return null
+  if (!frequency || !Number.isFinite(price) || !Number.isFinite(first) || price <= 0 || price > 100000 || first < 0 || first > 100000
+    || first > price * 2) return null // first visit adds at most an overgrowth fee
   return { website_price_cents: Math.round(price * 100), website_first_visit_cents: Math.round(first * 100), website_frequency: frequency }
 }
 

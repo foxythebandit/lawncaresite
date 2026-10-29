@@ -1,10 +1,13 @@
 -- Log call "Booked" (PLAN.md 3.2, S3): the first visit goes on the Jobs schedule as a confirmed
 -- job at the price told by phone. Same shape and idempotency as create_job_from_quote, without
--- needing an accepted map quote. The bookings trigger moves the card to Customer.
+-- needing an accepted map quote. An open booking request is confirmed instead of adding a second
+-- job, and an already confirmed first visit is kept as is. The bookings trigger moves the card to
+-- Customer.
 create function public.crm_create_call_job(p_lead_id uuid,p_operation_id uuid,p_job jsonb,p_items jsonb)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare v_lead public.leads; v_existing public.bookings; v_id uuid; v_item jsonb;
   v_total numeric; v_request jsonb; v_date date; v_freq text; v_first integer;
+  v_open public.bookings; v_result jsonb;
 begin
   perform pg_advisory_xact_lock(hashtextextended('call-job:' || p_operation_id::text,0));
   v_request := jsonb_build_object('lead_id',p_lead_id,'job',p_job,'items',p_items);
@@ -15,6 +18,8 @@ begin
     end if;
     return jsonb_build_object('booking_id',v_existing.id,'duplicate',true);
   end if;
+  v_result := public.crm_operation_reply(p_operation_id,'call_job',p_lead_id,v_request);
+  if v_result is not null then return v_result || jsonb_build_object('duplicate',true); end if;
   if coalesce(p_job->>'first_visit_on','') !~ '^\d{4}-\d{2}-\d{2}$'
     or coalesce(p_job->>'frequency','') not in ('weekly','biweekly','monthly','onetime')
     or (p_job ? 'first_visit_price' and jsonb_typeof(p_job->'first_visit_price') <> 'number') then
@@ -26,6 +31,31 @@ begin
   select * into v_lead from public.leads where id = p_lead_id for update;
   if not found then raise exception 'Lead not found' using errcode = 'P0002'; end if;
   v_total := public.crm_validate_items(p_items);
+  -- The lead's own first visit: an open request or a visit already confirmed (not plan visits).
+  select * into v_open from public.bookings where lead_id = p_lead_id and agreement_id is null
+    and occurrence_on is null and status in ('pending','confirmed')
+    order by (status = 'confirmed') desc, created_at desc limit 1 for update;
+  if found then
+    if v_open.status = 'pending' then
+      update public.bookings set status = 'confirmed', confirmed_date = v_date,
+        preferred_date = coalesce(preferred_date,v_date),
+        price_per_visit = case when v_total = trunc(v_total) and v_total <= 2147483647
+          then v_total::integer else price_per_visit end,
+        first_visit_price = coalesce(v_first,first_visit_price),
+        frequency = v_freq, one_time = v_freq = 'onetime', job_total = v_total
+        where id = v_open.id;
+      delete from public.job_items where booking_id = v_open.id;
+      for v_item in select value from jsonb_array_elements(p_items) loop
+        insert into public.job_items(booking_id,kind,description,amount)
+          values(v_open.id,v_item->>'kind',v_item->>'description',(v_item->>'amount')::numeric);
+      end loop;
+    end if;
+    update public.leads set stage = 'booked' where id = p_lead_id;
+    v_result := jsonb_build_object('booking_id',v_open.id,'reused',v_open.status);
+    insert into public.crm_operations(id,action,target_id,request,result)
+      values(p_operation_id,'call_job',p_lead_id,v_request,v_result);
+    return v_result || jsonb_build_object('duplicate',false);
+  end if;
   insert into public.bookings(name,phone,email,address,lead_id,customer_id,property_id,
     status,preferred_date,confirmed_date,price_per_visit,first_visit_price,creation_operation_id,
     creation_request,accepted_quote_snapshot,job_total,manual_quote,one_time,notify_failed,

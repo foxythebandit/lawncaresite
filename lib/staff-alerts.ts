@@ -45,6 +45,9 @@ export async function dispatchAlert(eventId: string, alertId?: string) {
 }
 
 const VOICE_MAX_AGE_MS = 15 * 60 * 1000
+// Recovery may send a late text, but never old ones: switching STAFF_SMS_ENABLED on must not
+// replay every lead whose text was held while texting was off.
+const SMS_MAX_AGE_MS = 60 * 60 * 1000
 
 function crmBaseUrl() {
   const url = new URL(process.env.CRM_BASE_URL!)
@@ -55,26 +58,27 @@ function crmBaseUrl() {
 /**
  * One alert intent (PLAN.md 7.2). SMS: the approved alert text, then the map image as a
  * second message (R8). Voice: the press-1 ring (Timeout 20 s, no machine detection); TEST
- * leads, leads without a dialable phone and rings older than 15 minutes are skipped (E8, E20).
+ * leads, leads without a dialable phone and rings older than 15 minutes are skipped (E8, E20);
+ * texts older than an hour are skipped too.
  */
 async function sendAlert(eventId: string, current: Alert) {
   const db = adminDb()
   const config = twilioConfig(), to = current.recipient
   const enabled = current.channel === 'sms' ? process.env.STAFF_SMS_ENABLED === 'true' : process.env.STAFF_VOICE_ENABLED === 'true'
-  if (!enabled || !config || !to || !process.env.CRM_BASE_URL) {
-    await db.from('staff_alerts').update({ state: 'disabled', error_code: 'configuration_required', updated_at: new Date().toISOString() }).eq('id', current.id).in('state', ['pending','disabled'])
-    return
-  }
   const { data: event } = await db.from('intake_events').select('id, created_at, booking_id, leads(*)').eq('id', eventId).single()
   if (!event?.leads) return
   const lead = event.leads as unknown as SummaryLead
-  if (current.channel === 'voice') {
-    const skip = isTestLead(lead) ? 'test_lead' : !dialable(lead.phone) ? 'no_valid_phone'
-      : Date.now() - Date.parse(event.created_at) > VOICE_MAX_AGE_MS ? 'expired' : null
-    if (skip) {
-      await db.from('staff_alerts').update({ state: 'skipped', error_code: skip, updated_at: new Date().toISOString() }).eq('id', current.id).in('state', ['pending','disabled'])
-      return
-    }
+  // Decided before the on/off check, so held alerts age out instead of piling up while disabled.
+  const age = Date.now() - Date.parse(event.created_at)
+  const skip = current.channel === 'sms' ? (age > SMS_MAX_AGE_MS ? 'expired' : null)
+    : isTestLead(lead) ? 'test_lead' : !dialable(lead.phone) ? 'no_valid_phone' : age > VOICE_MAX_AGE_MS ? 'expired' : null
+  if (skip) {
+    await db.from('staff_alerts').update({ state: 'skipped', error_code: skip, updated_at: new Date().toISOString() }).eq('id', current.id).in('state', ['pending','disabled'])
+    return
+  }
+  if (!enabled || !config || !to || !process.env.CRM_BASE_URL) {
+    await db.from('staff_alerts').update({ state: 'disabled', error_code: 'configuration_required', updated_at: new Date().toISOString() }).eq('id', current.id).in('state', ['pending','disabled'])
+    return
   }
   const { data: bookings } = current.channel === 'sms' ? await db.from('bookings').select('*').eq('lead_id', lead.id) : { data: [] }
   const body = current.channel === 'sms' ? alertText(lead, bookings ?? [], crmBaseUrl(), event.booking_id ? 'booking' : 'new') : ''

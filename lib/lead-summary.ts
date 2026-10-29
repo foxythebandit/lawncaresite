@@ -84,6 +84,17 @@ export function phoneDisplay(phone: string | null | undefined): string {
   return `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`
 }
 
+/** "+15125550142" from what a customer typed; null when it can't be dialed (E8). */
+export function dialable(phone: string | null | undefined): string | null {
+  const raw = (phone ?? '').trim()
+  if (!raw || /[a-z]/i.test(raw)) return null
+  const digits = raw.replace(/\D/g, '')
+  if (raw.startsWith('+')) return /^\+[1-9]\d{9,14}$/.test(`+${digits}`) ? `+${digits}` : null
+  if (digits.length === 10 && /^[2-9]/.test(digits)) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith('1') && /^[2-9]/.test(digits[1])) return `+${digits}`
+  return null
+}
+
 /** "Oct 28", or "Tue Nov 4" with the weekday. Date-only values are calendar days, not instants. */
 export function dayLabel(value: string | null | undefined, weekday = false): string | null {
   if (!value) return null
@@ -178,7 +189,7 @@ export function bookingState(lead: SummaryLead, bookings: SummaryBooking[] = [])
   if (lead.customer_canceled_at) return 'canceled'
   const own = requestBookings(bookings)
   if (lead.board_column === 'customer' || bookings.some(b => ['confirmed', 'completed'].includes(b.status ?? ''))) return 'booked'
-  if (own.some(b => b.status === 'pending')) return 'requested'
+  if (own.some(b => b.status === 'pending') || lead.board_column === 'booking_request') return 'requested'
   return 'not_booked'
 }
 
@@ -320,7 +331,7 @@ export function alertText(lead: SummaryLead, bookings: SummaryBooking[], baseUrl
     addons.length ? `Add-ons: ${addons.join(', ').toLowerCase()}` : null,
     s.notes ? `"${s.notes.slice(0, 80)}"` : null,
     [place, s.tracedSqFt ? sqFt(s.tracedSqFt) : null].filter(Boolean).join(' · ') || null,
-    s.phoneDisplay || 'No valid phone',
+    dialable(lead.phone) ? s.phoneDisplay : 'No valid phone',
     s.link,
   ] : [
     `${test}NEW LEAD · ${s.name}`,
@@ -329,7 +340,7 @@ export function alertText(lead: SummaryLead, bookings: SummaryBooking[], baseUrl
     ...answers,
     s.tracedSqFt ? `${sqFt(s.tracedSqFt)}${Array.isArray(lead.lawn_tracing) && lead.lawn_tracing.length ? ' traced' : ''}` : null,
     place,
-    s.phoneDisplay || 'No valid phone',
+    dialable(lead.phone) ? s.phoneDisplay : 'No valid phone',
     sourceLine,
     s.link,
   ]

@@ -3,7 +3,7 @@
 For the deployment handoff on Paxton's laptop. Do these in order. Nothing here has been done yet.
 
 ## 1. Database
-`supabase db push --dry-run`, then `supabase db push`. It applies `20261028120000_crm_board_phone.sql`, `20261028130000_private_map_screenshots.sql` and `20261028150000_phone_flow.sql`. The last one also fixes a bug in the first: without it, every intake fails with 23502 (null `board_column`). Push all three together, before the code.
+`supabase db push --dry-run`, then `supabase db push`. It applies, in order: `20261028120000_crm_board_phone.sql` (board, call log, short links, claim RPCs), `20261028130000_private_map_screenshots.sql` (makes the `booking-maps` bucket private; the code signs links), `20261028150000_phone_flow.sql` (press-1 RPCs, `staff_texts`) and `20261028160000_crm_call_job.sql` (Log call Booked → first visit on Jobs). Push all four before the code. Existing leads all start in New; place them with the S8 script after the prod data review (`node scripts/place-leads-on-board.mjs` dry run first).
 
 ## 2. Vercel environment variables (Production)
 | Variable | Value |
@@ -17,7 +17,7 @@ For the deployment handoff on Paxton's laptop. Do these in order. Nothing here h
 
 **Vercel plan:** `vercel.json` runs `/api/cron/phone` every 5 minutes. Hobby only allows daily crons, and the deploy fails on Hobby with this file. Paxton needs to confirm the project is on Pro first. If it isn't, change the schedule to daily and accept slower reminders (or use an external scheduler that sends `GET` with `Authorization: Bearer $CRON_SECRET`).
 
-**Before the first cron run:** the cron also runs the existing alert recovery sweep, which re-sends `pending`/`disabled` alerts. Check the backlog first: `select state, channel, count(*) from staff_alerts group by 1,2`. Old disabled SMS rows would send as texts. Voice rows older than 15 minutes are never rung; they are marked `skipped` (`expired`).
+**Before the first cron run:** the cron also runs the existing alert recovery sweep. Held alerts never replay: texts older than 1 hour and rings older than 15 minutes are marked `skipped` (`expired`) instead of sent, so turning `STAFF_SMS_ENABLED` on doesn't text old leads. Expect the first runs to mark the old `disabled` backlog as skipped (20 events per run).
 
 ## 3. Twilio console
 1. **Verify both cells as caller IDs:** Phone Numbers → Manage → Verified Caller IDs → Add. Twilio calls the cell with a code. Then add both numbers to `TWILIO_VERIFIED_CALLER_IDS`.

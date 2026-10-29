@@ -2,9 +2,10 @@
 -- Additive only: existing leads keep every value and start in the New column. The one-time
 -- placement of existing leads (S8) is scripts/place-leads-on-board.mjs, run after review.
 
+-- Six characters from the random bytes of a v4 UUID (strong randomness; 256 is a multiple of 32).
 create function public.crm_short_code() returns text language sql volatile set search_path = '' as $$
-  select string_agg(substr('23456789ABCDEFGHJKLMNPQRSTUVWXYZ',1 + floor(random() * 32)::integer,1),'')
-  from generate_series(1,6)
+  select string_agg(substr('23456789ABCDEFGHJKLMNPQRSTUVWXYZ',1 + get_byte(b,i) % 32,1),'' order by i)
+  from (select uuid_send(gen_random_uuid()) as b) r, generate_series(0,5) i
 $$;
 
 alter table public.leads
@@ -64,6 +65,10 @@ begin
     update public.leads set short_code = v_code where id = v_id;
   end loop;
 end $$;
+update public.leads l set quote_emailed_at = a.at
+  from (select lead_id, max(occurred_at) as at from public.lead_activities
+    where kind = 'quote' and outcome = 'emailed' group by lead_id) a
+  where a.lead_id = l.id;
 alter table public.leads enable trigger crm_leads_touch;
 alter table public.leads alter column short_code set not null;
 create unique index leads_short_code_key on public.leads(short_code);
@@ -139,6 +144,7 @@ begin
         new.customer_canceled_at := coalesce(new.customer_canceled_at, now());
       else
         new.board_column := 'closed';
+        new.closed_reason := coalesce(new.closed_reason,'other');
       end if;
     elsif new.stage = 'quoted' and new.board_column in ('new','in_talks') then
       new.board_column := 'quoted';
@@ -156,8 +162,10 @@ begin
   if new.lead_id is null then return null; end if;
   if new.status in ('confirmed','completed')
     and (tg_op = 'INSERT' or old.status is distinct from new.status) then
+    -- Plan visits keep a customer current, but never pull a card staff closed back out.
     update public.leads set board_column = 'customer', customer_canceled_at = null
-      where id = new.lead_id and (board_column <> 'customer' or customer_canceled_at is not null);
+      where id = new.lead_id and (board_column <> 'customer' or customer_canceled_at is not null)
+        and not (new.agreement_id is not null and board_column = 'closed');
   elsif tg_op = 'INSERT' and new.status = 'pending' and new.agreement_id is null then
     -- Online booking, emailed-quote booking or a staff job still waiting for a date.
     update public.leads set board_column = 'booking_request'
@@ -165,8 +173,12 @@ begin
   elsif tg_op = 'UPDATE' and new.status = 'canceled' and old.status is distinct from 'canceled'
     and not exists (select 1 from public.bookings where lead_id = new.lead_id and id <> new.id
       and status in ('pending','confirmed')) then
-    update public.leads set customer_canceled_at = now()
-      where id = new.lead_id and board_column = 'customer' and customer_canceled_at is null;
+    -- Customers keep their card with a Canceled chip (S9); a dropped request goes back to Quoted.
+    update public.leads set
+      customer_canceled_at = case when board_column = 'customer' then coalesce(customer_canceled_at, now())
+        else customer_canceled_at end,
+      board_column = case when board_column = 'booking_request' then 'quoted' else board_column end
+      where id = new.lead_id and board_column in ('customer','booking_request');
   end if;
   return null;
 end $$;

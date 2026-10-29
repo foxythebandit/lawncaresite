@@ -1,5 +1,6 @@
 import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
+export { dialable } from '../lead-summary'
 
 /** Twilio REST, TwiML and webhook signatures (PLAN.md 7.7b R12). No SDK: plain fetch with a timeout. */
 
@@ -29,17 +30,6 @@ export async function twilioApi(resource: string, fields?: URLSearchParams): Pro
 }
 
 export const basicAuth = (sid: string, token: string) => `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`
-
-/** "+15125550142" from what a customer typed; null when it can't be dialed (E8). */
-export function dialable(phone: string | null | undefined): string | null {
-  const raw = (phone ?? '').trim()
-  if (!raw || /[a-z]/i.test(raw)) return null
-  const digits = raw.replace(/\D/g, '')
-  if (raw.startsWith('+')) return digits.length >= 10 && E164.test(`+${digits}`) ? `+${digits}` : null
-  if (digits.length === 10 && /^[2-9]/.test(digits)) return `+1${digits}`
-  if (digits.length === 11 && digits.startsWith('1') && /^[2-9]/.test(digits[1])) return `+${digits}`
-  return null
-}
 
 /** Last four digits only, for logs (never log full numbers). */
 export const tail = (phone: string | null | undefined) => `…${(phone ?? '').slice(-4)}`

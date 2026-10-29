@@ -21,6 +21,7 @@ create table public.staff_texts (
   provider_sid text unique check (provider_sid is null or provider_sid ~ '^(SM|MM)[0-9a-f]{32}$'),
   provider_status text,
   error_code text,
+  attempts integer not null default 1 check (attempts between 1 and 5),
   dedupe_key text not null unique check (length(dedupe_key) between 1 and 200),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

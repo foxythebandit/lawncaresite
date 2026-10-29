@@ -50,3 +50,39 @@ export async function sendStaffText(text: StaffText): Promise<'sent' | 'duplicat
     return 'failed'
   }
 }
+
+/**
+ * Cron retry for texts Twilio definitely rejected (state failed), at most 3 attempts within 30
+ * minutes. "unknown" outcomes are never retried, matching the alert outbox. Picture messages are
+ * not retried: their signed link has expired.
+ */
+export async function retryFailedStaffTexts(limit = 20): Promise<{ retried: number; sent: number }> {
+  const db = adminDb()
+  const config = twilioConfig()
+  if (process.env.STAFF_SMS_ENABLED !== 'true' || !config) return { retried: 0, sent: 0 }
+  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  const { data: rows, error } = await db.from('staff_texts').select('id, recipient, body, attempts, kind')
+    .eq('state', 'failed').eq('has_media', false).lt('attempts', 3).gt('created_at', since).order('created_at').limit(limit)
+  if (error) throw error
+  let retried = 0, sent = 0
+  for (const row of rows ?? []) {
+    const { data: claimed } = await db.from('staff_texts').update({ state: 'pending', attempts: row.attempts + 1, error_code: null, updated_at: new Date().toISOString() })
+      .eq('id', row.id).eq('state', 'failed').eq('attempts', row.attempts).select('id').maybeSingle()
+    if (!claimed || !row.body) continue
+    retried += 1
+    try {
+      const result = await twilioApi('Messages.json', new URLSearchParams({ To: row.recipient, From: config.from, Body: row.body }))
+      const sid = typeof result.body.sid === 'string' && /^(SM|MM)[0-9a-f]{32}$/.test(result.body.sid) ? result.body.sid : null
+      await db.from('staff_texts').update({
+        state: sid ? 'accepted' : result.ok || result.status >= 500 ? 'unknown' : 'failed', provider_sid: sid,
+        provider_status: typeof result.body.status === 'string' ? result.body.status : null,
+        error_code: result.ok ? null : String(result.body.code ?? result.status), updated_at: new Date().toISOString(),
+      }).eq('id', row.id)
+      if (sid) sent += 1
+      else console.error('Staff text retry not accepted', row.kind, tail(row.recipient))
+    } catch {
+      await db.from('staff_texts').update({ state: 'unknown', error_code: 'transport_or_response_unknown', updated_at: new Date().toISOString() }).eq('id', row.id)
+    }
+  }
+  return { retried, sent }
+}
