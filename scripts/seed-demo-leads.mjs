@@ -324,7 +324,9 @@ for (const spec of LEADS) {
       one_time: spec.freq === 'onetime', price_per_visit: site.price, first_visit_price: site.first, overgrowth_fee: 0, last_mow: lead.answers.last_mow,
       preferred_date: day(b.date), preferred_time: b.time, customer_notes: b.notes, addon_interest: b.addons ?? null, status: 'pending', manual_quote: false,
       created_at: at(b.at), attribution: lead.attribution, utm_source: lead.utm_source, utm_medium: lead.utm_medium, utm_campaign: lead.utm_campaign,
-      utm_content: lead.utm_content, gclid: lead.gclid }
+      utm_content: lead.utm_content, gclid: lead.gclid,
+      // The first visit is charged the 30% first-visit price: plan price plus a discount line.
+      items: firstVisitItems(site.price, site.first) }
     const ev = await must(db.from('intake_events').insert({ source: 'website-booking', submission_id: randomUUID(), payload_hash: hex(32),
       lead_id: leadId, created_at: at(b.at), alert_version: 2 }).select('id').single(), 'booking intake')
     events.booking = ev.id
@@ -493,15 +495,19 @@ for (const spec of LEADS) {
 /** Booked by phone (app/admin/leads/board-actions.ts scheduleCallVisit): confirm the request or add a job, link a customer, start the plan. */
 async function book(spec, { when, first, price, request, plan, bookingRows, leadId, phone, email, address, lead }) {
   const freq = price.freq, dollars = price.cents / 100
-  const items = [{ kind: 'service', description: 'Lawn care', amount: dollars }]
-  const snapshot = { items: items.map(i => ({ ...i, amount: i.amount.toFixed(2) })), total: dollars, source: 'phone_call', currency: 'USD', frequency: freq, accepted_at: when }
+  // Like scheduleCallVisit (lib/crm-jobs.ts callVisitItems): recurring plans charge the first visit 30% off.
+  const firstPrice = freq === 'onetime' ? null : Math.round(dollars * 0.7)
+  const items = firstVisitItems(dollars, firstPrice ?? dollars)
+  const total = items.reduce((sum, i) => sum + i.amount, 0)
+  const snapshot = { items: items.map(i => ({ ...i, amount: i.amount.toFixed(2) })), total, source: 'phone_call', currency: 'USD', frequency: freq, accepted_at: when }
   const job = request ?? { id: randomUUID(), lead_id: leadId, name: spec.name ?? phone, phone, email, address, sq_ft: price.sq ?? spec.sq ?? null,
     created_at: when, attribution: lead.attribution, utm_source: lead.utm_source, utm_medium: lead.utm_medium, utm_campaign: lead.utm_campaign,
     utm_content: lead.utm_content, gclid: lead.gclid, one_time: freq === 'onetime', overgrowth_fee: 0 }
   Object.assign(job, { status: 'confirmed', confirmed_date: first, preferred_date: request?.preferred_date ?? first, confirmed_at: when, manual_quote: true,
-    price_per_visit: dollars, first_visit_price: Math.round(dollars * 0.7), frequency: freq, accepted_quote_snapshot: snapshot,
-    creation_operation_id: randomUUID(), creation_request: { job: { frequency: freq, first_visit_on: first, first_visit_price: Math.round(dollars * 0.7) }, items: snapshot.items, lead_id: leadId },
-    items: [{ kind: 'service', description: 'Lawn care', amount: dollars }] })
+    price_per_visit: dollars, first_visit_price: firstPrice, frequency: freq, accepted_quote_snapshot: snapshot,
+    creation_operation_id: randomUUID(), creation_request: { job: { frequency: freq, first_visit_on: first, price_per_visit: dollars,
+      ...(firstPrice != null ? { first_visit_price: firstPrice } : {}) }, items: snapshot.items, lead_id: leadId },
+    items })
   if (!request) bookingRows.push(job)
   const [lat, lng] = spec.spot
   plan.customer = { id: randomUUID(), name: spec.name ?? phone, phone, email, created_at: when }
@@ -514,6 +520,12 @@ async function book(spec, { when, first, price, request, plan, bookingRows, lead
       items_template: [{ kind: 'service', description: 'Lawn care', amount: dollars.toFixed(2) }], created_at: when }
     Object.assign(job, { agreement_id: plan.agreement.id, occurrence_on: first })
   }
+}
+
+/** Plan price as a service line, plus a "First visit 30% off" line when the first visit costs less. */
+function firstVisitItems(price, first) {
+  return [{ kind: 'service', description: 'Lawn care', amount: price },
+    ...(first != null && first < price ? [{ kind: 'discount', description: 'First visit 30% off', amount: first - price }] : [])]
 }
 
 function nextVisit(date, freq) {
@@ -531,7 +543,7 @@ function planVisit(own, plan, date) {
 function completeVisit(row) {
   Object.assign(row, { status: 'completed', completed_at: `${row.confirmed_date}T${row.preferred_time === 'Afternoon' ? '20' : '15'}:30:00Z`,
     // The plan's first visit is the one booked with the 30% first-visit price.
-    amount_charged: row.creation_request ? row.first_visit_price : row.price_per_visit, payment_method: 'Zelle' })
+    amount_charged: row.creation_request ? row.first_visit_price ?? row.price_per_visit : row.price_per_visit, payment_method: 'Zelle' })
 }
 
 /** A saved and emailed staff quote, shaped like MapQuoteBuilder's draft. */

@@ -6,10 +6,8 @@ import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { isCallOutcome, isClosedReason, isColumn, isQuotedReason, FREQUENCIES, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { notifyCallLogged } from '@/lib/phone/notify'
-import { centsToAmount } from '@/lib/crm-contracts'
-import { addInterval } from '@/lib/crm-jobs'
+import { addInterval, callVisitItems } from '@/lib/crm-jobs'
 import { serviceLabels } from '@/lib/lead-labels'
-import { firstVisitPrice } from '@/lib/quote-offer'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
@@ -94,9 +92,10 @@ async function scheduleCallVisit(leadId: string, operationId: string, detail: Re
   const { data: lead } = await db.from('leads').select('name,phone,email,services').eq('id', leadId).single()
   if (!lead) return 'Call saved · visit not scheduled'
   const description = freq === 'onetime' ? serviceLabels(lead.services).join(', ').slice(0, 100) || 'Service' : 'Lawn care'
-  const items = [{ kind: 'service', description, amount: centsToAmount(cents) }]
-  const job: Record<string, string | number> = { first_visit_on: date, frequency: freq }
-  if (freq !== 'onetime' && cents % 100 === 0) job.first_visit_price = firstVisitPrice(cents / 100, freq)
+  // The first visit is charged 30% off (plan price + discount line); later plan visits use `plan`.
+  const { items, plan, firstVisitPrice } = callVisitItems(cents, freq, description)
+  const job: Record<string, string | number> = { first_visit_on: date, frequency: freq, price_per_visit: cents / 100 }
+  if (firstVisitPrice != null) job.first_visit_price = firstVisitPrice
   const { data: created, error } = await db.rpc('crm_create_call_job', {
     p_lead_id: leadId, p_operation_id: subOperation(operationId, 'job'), p_job: job, p_items: items,
   })
@@ -126,7 +125,7 @@ async function scheduleCallVisit(leadId: string, operationId: string, detail: Re
     const { error: planError } = await db.rpc('crm_start_agreement', {
       p_booking_id: bookingId, p_expected_updated_at: current?.updated_at, p_operation_id: subOperation(operationId, 'plan'),
       p_config: { anchor_on: date, next_on: addInterval(date, interval.unit, interval.count), end_on: null,
-        interval_unit: interval.unit, interval_count: interval.count, items_template: items },
+        interval_unit: interval.unit, interval_count: interval.count, items_template: plan },
     })
     if (planError) return 'Visit scheduled · start the plan from the customer page'
   }

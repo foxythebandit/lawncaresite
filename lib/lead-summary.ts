@@ -6,7 +6,7 @@
 import { CALL_OUTCOME, CLOSED_REASON_LABEL, COLUMN_LABEL, FREQUENCY_LABEL, QUOTED_REASON_LABEL, isCallOutcome,
   isClosedReason, isColumn, isQuotedReason, normalizeFrequency, type BoardColumn, type Frequency } from './lead-board'
 import { leadSource, readableAnswers, serviceLabels } from './lead-labels'
-import { FIRST_VISIT_DISCOUNT_PCT, firstVisitPrice, planDiscountPct, quoteOffer } from './quote-offer'
+import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer } from './quote-offer'
 import { quoteTotalCents, type QuoteDraft } from './quote-draft'
 
 export type SummaryLead = {
@@ -135,9 +135,6 @@ export function cityOf(address: string | null | undefined): string | null {
   const parts = (shortAddress(address) ?? '').split(',').map(s => s.trim()).filter(Boolean)
   return parts.length > 1 ? parts[parts.length - 1] : null
 }
-
-const firstVisitCents = (cents: number, freq: Frequency) => cents % 100 === 0
-  ? firstVisitPrice(cents / 100, freq) * 100 : Math.round(cents * (100 - FIRST_VISIT_DISCOUNT_PCT) / 100)
 
 function makePrice(source: PriceSource, at: string | null, cents: number, freq: Frequency | null, firstCents?: number | null): Price {
   const recurring = !!freq && freq !== 'onetime'

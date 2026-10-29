@@ -111,7 +111,7 @@ Monthly has no full-price row (0% plan discount); one-time reads "One time $120 
 
 **Lawn map (note B).** Prod's lead page has no lawn map at all (main has no `TracingMap`), and Jobs shows the website's saved map image. Now both use `app/admin/LawnMap.tsx`: the saved map image when there is one (what the customer drew), else the tracing drawn on satellite tiles. Jobs fetches the lead's tracing for visits without an image, so local demo jobs show the lawn too.
 
-**Open question (billing, not changed).** A visit booked by phone (Log call → Booked) is saved with job total = the full per-visit price ($105), while its first-visit price is $74; a website booking has no job total, so Jobs charges $74. So the Jobs row and "Confirm & email" total say $105 while the price steps say "First visit −30% $74". Should a phone-booked first visit charge the first-visit price? The demo seed copies the phone behavior for every booking.
+**Phone-booked first visit (answered 29 Oct: yes, 30% off).** Log call → Booked now saves the first visit as the plan price plus a "First visit 30% off" line, so its job total is the first-visit price ($74), like a website booking; the Jobs total, the confirmation email and the price rows agree. Later plan visits charge the plan price ($105). Helper `callVisitItems()` in `lib/crm-jobs.ts` (tested in `tests/call-visit-price.test.ts`); migration `20261029120000_crm_call_job_first_visit.sql` lets `crm_create_call_job` keep the plan price as `price_per_visit`. The demo seed does the same; the local demo rows were corrected in place (no reseed, lead IDs unchanged).
 
 ## 5. Before / after
 

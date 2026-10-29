@@ -1,3 +1,5 @@
+import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, type OfferFrequency } from './quote-offer'
+
 /** Operational job price; accepted quote snapshots are separate and immutable. */
 export function jobPrice(job: { job_total?: number | string | null; first_visit_price?: number | null; price_per_visit?: number | null }): number {
   return Number(job.job_total ?? job.first_visit_price ?? job.price_per_visit ?? 0)
@@ -50,6 +52,20 @@ export function jobStatusLabel(status: string) {
 }
 
 export type JobLine = { kind: 'service' | 'discount'; description: string; amount: string }
+
+/**
+ * Items for a first visit booked by phone (Caelan, 29 Oct): recurring plans charge the first visit
+ * 30% off, like a website booking, as the plan price plus a discount line. `plan` is what later
+ * visits charge. `firstVisitPrice` is whole dollars for the bookings column, or null.
+ */
+export function callVisitItems(cents: number, freq: OfferFrequency, description: string) {
+  const plan: JobLine[] = [{ kind: 'service', description, amount: centsAmount(cents) }]
+  const first = firstVisitCents(cents, freq)
+  const items: JobLine[] = first < cents
+    ? [...plan, { kind: 'discount', description: `First visit ${FIRST_VISIT_DISCOUNT_PCT}% off`, amount: `-${centsAmount(cents - first)}` }]
+    : plan
+  return { items, plan, firstVisitPrice: freq !== 'onetime' && first % 100 === 0 ? first / 100 : null }
+}
 export type ActionResult = { success: true; data?: Record<string, unknown> } | { success: false; error: string }
 
 export function commandError(error: { code?: string; message?: string } | null): string {

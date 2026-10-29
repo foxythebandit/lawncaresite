@@ -18,6 +18,10 @@ export const planDiscountPct = (freq: OfferFrequency) => FREQ[freq].discount
 export const firstVisitPrice = (price: number, freq: OfferFrequency) =>
   freq === 'onetime' ? price : Math.round(price * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
 
+/** The same rule in cents: whole-dollar prices round like the website, other prices to the cent. */
+export const firstVisitCents = (cents: number, freq: OfferFrequency) => cents % 100 === 0
+  ? firstVisitPrice(cents / 100, freq) * 100 : freq === 'onetime' ? cents : Math.round(cents * (100 - FIRST_VISIT_DISCOUNT_PCT) / 100)
+
 export const frequencyLabel = (freq: OfferFrequency) => FREQ[freq].label
 
 /**

@@ -233,6 +233,7 @@
 .crm-price-steps dd strong { font-weight: 650; }
 .crm-price-steps dd small { color: var(--c-text-3); }
 .crm-price-card .crm-kv > div, .admin-card-price .crm-kv > div { grid-template-columns: 136px minmax(0, 1fr); }
+.crm-price-steps dt { white-space: nowrap; }
 .crm-price-steps dt .crm-pill { margin-left: 4px; }
 .admin-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 0 16px; }
 .admin-card-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-left: auto; font-size: 13px; }
