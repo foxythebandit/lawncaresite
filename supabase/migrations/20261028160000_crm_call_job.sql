@@ -1,7 +1,8 @@
 -- Log call "Booked" (PLAN.md 3.2, S3): the first visit goes on the Jobs schedule as a confirmed
 -- job at the price told by phone. Same shape and idempotency as create_job_from_quote, without
 -- needing an accepted map quote. An open booking request is confirmed instead of adding a second
--- job, and an already confirmed first visit is kept as is. The bookings trigger moves the card to
+-- job, and a lead with a confirmed or completed visit keeps it. manual_quote marks a booking
+-- priced by phone. The bookings trigger moves the card to
 -- Customer.
 create function public.crm_create_call_job(p_lead_id uuid,p_operation_id uuid,p_job jsonb,p_items jsonb)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
@@ -31,10 +32,14 @@ begin
   select * into v_lead from public.leads where id = p_lead_id for update;
   if not found then raise exception 'Lead not found' using errcode = 'P0002'; end if;
   v_total := public.crm_validate_items(p_items);
-  -- The lead's own first visit: an open request or a visit already confirmed (not plan visits).
+  -- An open request is confirmed; a lead that already has a confirmed or completed visit (its
+  -- own, or one in the plan it started) keeps it, so a second Booked call never adds a job.
   select * into v_open from public.bookings where lead_id = p_lead_id and agreement_id is null
-    and occurrence_on is null and status in ('pending','confirmed')
-    order by (status = 'confirmed') desc, created_at desc limit 1 for update;
+    and occurrence_on is null and status = 'pending' order by created_at desc limit 1 for update;
+  if not found then
+    select * into v_open from public.bookings where lead_id = p_lead_id
+      and status in ('confirmed','completed') order by created_at limit 1;
+  end if;
   if found then
     if v_open.status = 'pending' then
       update public.bookings set status = 'confirmed', confirmed_date = v_date,
@@ -42,7 +47,8 @@ begin
         price_per_visit = case when v_total = trunc(v_total) and v_total <= 2147483647
           then v_total::integer else price_per_visit end,
         first_visit_price = coalesce(v_first,first_visit_price),
-        frequency = v_freq, one_time = v_freq = 'onetime', job_total = v_total
+        frequency = v_freq, one_time = v_freq = 'onetime', job_total = v_total,
+        manual_quote = true -- priced by phone, like a new call job
         where id = v_open.id;
       delete from public.job_items where booking_id = v_open.id;
       for v_item in select value from jsonb_array_elements(p_items) loop

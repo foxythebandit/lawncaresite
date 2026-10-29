@@ -17,7 +17,7 @@ const LEAD_FIELDS = 'id,name,phone,address,sq_ft,created_at,source,services,freq
   + 'quote_status,quote_draft,quote_confirmed_at,quote_emailed_at,accepted_quote_snapshot,quote_accepted_at,'
   + 'taken_by,not_taken_at,needs_call_log_at,estimated_value'
 // Only the summary's columns; requestBookings() picks the lead's own visit out of any plan visits.
-const BOOKING_FIELDS = 'lead_id,status,created_at,preferred_date,preferred_time,confirmed_date,frequency,price_per_visit,first_visit_price,customer_notes,occurrence_on,agreement_id'
+const BOOKING_FIELDS = 'lead_id,status,created_at,preferred_date,preferred_time,confirmed_date,frequency,price_per_visit,first_visit_price,customer_notes,occurrence_on,agreement_id,manual_quote'
 
 /** Lead board (PLAN.md 3.2, S6, S7): rendered on the server with every card already in place. */
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ view?: string; col?: string }> }) {

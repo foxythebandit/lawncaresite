@@ -144,7 +144,9 @@ begin
         new.customer_canceled_at := coalesce(new.customer_canceled_at, now());
       else
         new.board_column := 'closed';
-        new.closed_reason := coalesce(new.closed_reason,'other');
+        -- Same rule as the S8 placement (lib/board-placement.ts).
+        new.closed_reason := coalesce(new.closed_reason, case when new.contact_outcome is null
+          or new.contact_outcome = 'no_answer' then 'never_responded' else 'other' end);
       end if;
     elsif new.stage = 'quoted' and new.board_column in ('new','in_talks') then
       new.board_column := 'quoted';

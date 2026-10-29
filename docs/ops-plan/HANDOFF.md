@@ -11,7 +11,7 @@ Read this first, then `PLAN.md` (the decisions) and `mockups.html` (the approved
 | Website | `/privacy` (with the carrier sentence) and `/terms` (SMS Terms) are live (`cc57c38`, `57cc06d`). |
 | Twilio account | Business profile Quietgreen LLC approved. Brand QuietGreen (Low-Volume Standard) approved. Auto-recharge on. |
 | Twilio campaign | `CMd34536602ab70719a7a15ac4ff6df60b`, Low Volume Mixed, staff alerts only. **In review** (submitted 28 Oct). Messaging Service "QuietGreen Staff Alerts" `MG604aadfb9429a4f5f6652c4067c7d3ab`. |
-| Code | Nothing from the plan is built yet. |
+| Code | Built, reviewed twice and verified on localhost on branch `claude/crm-phone-build-62cc5f` (not pushed, not deployed). Go-live steps: `PHONE-GO-LIVE.md`. Ledger: PLAN.md section 11. |
 
 ## Waiting on
 

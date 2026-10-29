@@ -117,3 +117,13 @@ test('a plan keeps the lead\'s own first visit as the request; generated visits 
   const s = summarizeLead({ ...jane, website_price_cents: null, board_column: 'customer' }, [next, own])
   assert.equal(s.price?.cents, 4500)
 })
+
+test('booking price source comes from the booking itself', () => {
+  const lead = { ...jane, website_price_cents: 4500, website_price_at: '2026-10-20T00:00:00Z', phone_price_cents: 6000, phone_frequency: 'biweekly', phone_price_at: '2026-10-28T00:00:00Z' }
+  const phoneBooked = { status: 'confirmed', created_at: '2026-10-20T00:00:00Z', price_per_visit: 60, frequency: 'biweekly', manual_quote: true }
+  assert.equal(summarizeLead(lead, [phoneBooked]).price?.source, 'phone')
+  const online = { status: 'pending', created_at: '2026-10-29T00:00:00Z', price_per_visit: 45, frequency: 'biweekly', manual_quote: false }
+  const s = summarizeLead(lead, [online])
+  assert.equal(s.price?.source, 'website')
+  assert.equal(s.price?.cents, 4500)
+})

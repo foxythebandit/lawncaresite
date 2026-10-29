@@ -28,6 +28,8 @@ export type SummaryBooking = {
   status?: string | null; created_at?: string | null; preferred_date?: string | null; preferred_time?: string | null
   confirmed_date?: string | null; frequency?: string | null; price_per_visit?: number | null; first_visit_price?: number | null
   overgrowth_fee?: number | null; customer_notes?: string | null; addon_interest?: unknown; occurrence_on?: string | null; agreement_id?: string | null
+  /** Set on bookings priced by phone (Log call Booked). */
+  manual_quote?: boolean | null
 }
 
 export type PriceSource = 'website' | 'phone' | 'emailed'
@@ -169,12 +171,10 @@ export function requestBookings(bookings: SummaryBooking[] = []) {
     .sort((a, b) => time(b.created_at) - time(a.created_at))
 }
 
-/** Where a booking's price came from: the latest phone price or emailed quote before it, else the website. */
+/** Where a booking's price came from: phone when staff priced it on a call, emailed when booked after an emailed quote, else the website. */
 function bookingSource(lead: SummaryLead, booking: SummaryBooking): PriceSource {
-  const at = time(booking.created_at)
-  const before = (value: string | null | undefined) => value && time(value) <= at ? time(value) : 0
-  const phone = before(lead.phone_price_at), emailed = before(lead.quote_emailed_at)
-  return phone || emailed ? (phone >= emailed ? 'phone' : 'emailed') : 'website'
+  if (booking.manual_quote) return 'phone'
+  return lead.quote_emailed_at && time(lead.quote_emailed_at) <= time(booking.created_at) ? 'emailed' : 'website'
 }
 
 type PriceCandidate = Omit<PriceRow, 'value'> & { headline: boolean }
@@ -203,7 +203,7 @@ function priceRows(lead: SummaryLead, bookings: SummaryBooking[]): PriceCandidat
   if (booking) {
     const source = bookingSource(lead, booking)
     rows.push({ key: 'booking', label: source === 'phone' ? 'Booked by phone' : 'Online booking', headline: true,
-      price: makePrice(source, booking.created_at ?? null, booking.price_per_visit! * 100, normalizeFrequency(booking.frequency) ?? 'onetime',
+      price: makePrice(source, (source === 'phone' ? lead.phone_price_at : null) ?? booking.created_at ?? null, booking.price_per_visit! * 100, normalizeFrequency(booking.frequency) ?? 'onetime',
         booking.first_visit_price != null ? booking.first_visit_price * 100 : null) })
   }
   return rows
