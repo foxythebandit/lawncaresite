@@ -1,5 +1,7 @@
 # QuietGreen CRM — friend's machine handoff
 
+**Newer release (28 October 2026): the lead board + press-1 phone flow on `claude/crm-phone-build-62cc5f`. Its deploy steps are in `docs/ops-plan/PHONE-GO-LIVE.md`; this document covers the earlier 23 October release.**
+
 **Prepared release — 23 October 2026; deploy from Paxton’s laptop.** The owner authorized completing and pushing this branch for deployment from Paxton’s laptop. The historical receipt below covers the earlier checkpoint only; the current release receipt at the end of this document supersedes it for the redesigned CRM. Paxton’s deployment agent uses the existing Supabase/Vercel/Twilio setup. Do not place secret values in this document or copy local test configuration to production.
 
 ## Historical release evidence

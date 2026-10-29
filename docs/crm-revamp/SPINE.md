@@ -288,3 +288,7 @@ Owner asked for visible tap feedback and for the top lead to open instantly whil
 - Leads list: the first two visible leads use `<Link prefetch>` (full route, cached ≤5 min client-side; stale saves are still rejected by the `updated_at` check). `LeadWarmup` then loads the MapQuoteBuilder/maplibre chunks, geocodes those addresses into sessionStorage (`cachedGeocode` in `lib/address-search.ts`) and pre-fetches zoom-18 imagery tiles (`lib/map-imagery.ts`). Address-needs-review leads are not geocoded.
 - Staff quote map jumps straight to the house (no 4.2 s fly-in) and uses the cached geocode; the public map keeps its fly-in.
 - Local `next start` cannot sign in without `STAFF_EMAILS`; verified on production after owner-authorized push to `main`.
+
+### Lead board + press-1 phone flow — 28 October 2026
+
+Built from `docs/ops-plan/PLAN.md` (decisions, execution ledger in section 11) on branch `claude/crm-phone-build-62cc5f`; go-live steps in `docs/ops-plan/PHONE-GO-LIVE.md`. Six-column lead board replaces the leads list (`/admin` now opens it; Jobs moved to `/admin/jobs`), lead page v2, two-step Log call sheet, Twilio press-1 claim/connect, staff texts, recordings, cron reminders. One shared module (`lib/lead-summary.ts`) produces every chip, price line and alert wording. Four additive migrations `20261028120000`–`20261028160000`. Existing leads start in New until the S8 placement script (`scripts/place-leads-on-board.mjs`) is reviewed and applied.

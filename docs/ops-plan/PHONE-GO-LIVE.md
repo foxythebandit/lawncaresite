@@ -38,3 +38,9 @@ Use a lead named like a real person, with the third phone's number. A `TEST…` 
 9. Map lead: the text arrives, then the map image as a second message. A ConviFlo lead gets text only.
 
 Local equivalents (test database only): `node tests/phone-claim-race.mjs`, `node tests/phone-e2e.mjs` (starts its own dev server on 3202 with Twilio mocked), and `npm test`.
+
+## 5. Known limits (reviewed 28 Oct, kept on purpose)
+- **Customer voicemail reads as a talked call.** With voicemail detection off (R7), Twilio reports a customer's voicemail as an answered call, so History says "Talked N min" and the "Log this call" banner appears. Log it as "Left voicemail" on the sheet; that moves the card to In talks with attempt +1. Detecting it would mean answering-machine detection on the customer leg, which adds seconds of silence when a real person picks up.
+- **Winner hangs up while the customer's phone rings (R11)** relies on Twilio reporting `canceled` for that leg. Confirm during check 3: hang up before the third phone answers and the card must not move.
+- **A retried keypress can dial again (R2):** only when Twilio retries the same call's keypress because it never received the first reply, so the first dial never happened. A press on any other call never dials.
+- **Unlock then book within seconds (E10 overlap):** the booking's own rings can start before the first claim lands; the loser hears "… has it". Harmless.
