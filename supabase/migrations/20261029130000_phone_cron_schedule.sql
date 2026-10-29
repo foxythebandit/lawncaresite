@@ -15,3 +15,8 @@ select cron.schedule('crm-phone', '*/5 * * * *', $job$
   from vault.decrypted_secrets s
   where s.name = 'crm_cron_secret'
 $job$);
+
+-- pg_cron logs every run to cron.job_run_details and never prunes it (pg_net's response table expires on its own after 6 hours).
+select cron.schedule('crm-prune-cron-history', '0 9 * * *', $job$
+  delete from cron.job_run_details where end_time < now() - interval '7 days'
+$job$);
