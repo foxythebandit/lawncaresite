@@ -534,7 +534,10 @@
 
 /* ── Customers ─────────────────────────────────────────── */
 .crm-customer-help { margin: -10px 0 18px; color: var(--c-text-3); font-size: 13px; line-height: 1.5; }
-.crm-customer-help > summary { display: inline-flex; align-items: center; min-height: 32px; color: var(--c-text-2); font-weight: 500; cursor: pointer; }
+.crm-customer-help > summary { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; color: var(--c-brand); font-weight: 500; cursor: pointer; list-style: none; }
+.crm-customer-help > summary::-webkit-details-marker { display: none; }
+.crm-customer-help > summary::after { content: '▸'; transition: transform .15s; }
+.crm-customer-help[open] > summary::after { transform: rotate(90deg); }
 .crm-customer-card {
   display: grid; grid-template-columns: 36px minmax(0, 1.2fr) minmax(0, 1fr) auto 16px; gap: 14px; align-items: center;
   padding: 12px 16px; color: inherit; text-decoration: none; transition: background .12s;
@@ -1048,6 +1051,7 @@
 .crm-setup-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: -6px 0 16px; padding: 8px 12px; border: 1px solid #f1d3a4; border-radius: var(--r-control); background: var(--c-amber-bg); color: #6f4208; font-size: 13px; }
 .crm-setup-note strong { font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
 .crm-setup-note-detail { color: var(--c-amber); font-weight: 500; }
+@media (max-width: 860px) { .crm-setup-note { margin: -2px 0 12px; padding: 6px 10px; font-size: 12px; line-height: 1.35; } }
 .crm-block { min-width: 0; padding: 14px 16px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
 .crm-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font: 600 11.5px/1.3 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--c-text-3); }
 .crm-block-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

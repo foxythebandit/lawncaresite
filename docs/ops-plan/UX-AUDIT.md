@@ -114,7 +114,22 @@ Left = before, right = after. Phone shots are one screen; desktop is cropped to 
 
 ## 6. Confirmation review (blind A/B)
 
-_Pending._
+A fourth subagent, persona "busy owner on a phone", got 21 before/after pairs labeled only X (after) and Y (before), with no hint which is newer.
+
+**Verdict: X (after) on 20 of 21 pairs, Y on 0, 1 the same** (desktop Jobs, apart from the Map badge). Its reasons: one price and one status pill per card instead of a wrapping orange sentence; one setup note instead of cryptic number strings on every lead; History folded to "5 alert steps ▸"; dates on phone Jobs; a readable Revenue list; solid bars; clear Log call radios. It noted that Y showed no price at all on Quoted cards.
+
+Moved, not lost (the reviewer noticed): the first-visit price, the ad source and the full services list left the card. All three are on the lead page (Price, Source, Request).
+
+Its remaining points, and what happened:
+
+| Point | Done |
+|---|---|
+| Setup note takes the top of Leads on phone | Compact one-to-two-line strip on phone. It disappears once both cells are verified caller IDs (go-live checklist 7.7b). |
+| "How customers get here" doesn't look tappable | Green with ▸, like other disclosures |
+| Lead page still repeats (two Calls, Website row restating the headline price, empty "Saved quote —" card, two maps on desktop) | Q2, Q3 (the Website row is kept on purpose: PLAN 4.1f keeps the website price visible after a phone price replaces it) |
+| Revenue "Paid — · $102.00 older record · Zelle" reads oddly | Q9 |
+| "→ In talks" tags look like buttons | Kept: they sit inside the tappable outcome row, so a tap there does the right thing |
+| Closed card chip "Price" is vague | Kept: S4 reason label, and the card sits in the Closed column, and the lead page shows "Closed" and "Price" chips side by side |
 
 ## 7. Demo data
 
