@@ -1,6 +1,7 @@
 import ReminderButtons from './ReminderButtons'
 import { formatMoney, jobPrice } from '@/lib/crm-jobs'
 import Icon from './icons'
+import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
 
 export function formatTime(t: string) {
   const [h, m] = t.split(':').map(Number)
@@ -43,7 +44,7 @@ export default function DayJobs({ jobs, emptyLabel = 'No jobs confirmed.' }: { j
             <div className="admin-route-meta">
               {jobPrice(b) > 0 && <strong>{formatMoney(jobPrice(b))} job value</strong>}
               {b.sq_ft        && <span>{b.sq_ft.toLocaleString()} sq ft</span>}
-              {b.frequency    && <span>{b.frequency}</span>}
+              {b.frequency    && <span>{normalizeFrequency(b.frequency) ? FREQUENCY_LABEL[normalizeFrequency(b.frequency)!] : b.frequency}</span>}
             </div>
             {b.notes && <div className="admin-route-notes">{b.notes}</div>}
             <ReminderButtons
