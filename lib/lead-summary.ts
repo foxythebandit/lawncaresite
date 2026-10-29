@@ -204,7 +204,7 @@ function wanted(lead: SummaryLead, booking: SummaryBooking | undefined) {
 
 const nameOf = (lead: SummaryLead) => lead.name?.trim() || phoneDisplay(lead.phone) || 'No name'
 
-export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = [], options: { baseUrl?: string; existingCustomer?: boolean; now?: number } = {}): LeadSummary {
+export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = [], options: { baseUrl?: string; existingCustomer?: boolean; addressChanged?: boolean; now?: number } = {}): LeadSummary {
   const column: BoardColumn = isColumn(lead.board_column) ? lead.board_column : 'new'
   const booking = bookingState(lead, bookings)
   const price = leadPrice(lead, bookings)
@@ -219,7 +219,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   const city = cityOf(lead.address)
 
   const chips: Chip[] = [
-    { key: 'column', label: COLUMN_LABEL[column], tone: column === 'booking_request' ? 'warn' : column === 'customer' ? 'ok' : column === 'closed' ? 'neutral' : 'accent' },
+    columnChip(column),
     { key: 'booking', label: BOOKING_LABEL[booking], tone: booking === 'booked' ? 'ok' : booking === 'canceled' ? 'bad' : booking === 'requested' ? 'warn' : 'neutral' },
   ]
   if (price) chips.push({ key: 'price', label: PRICE_SOURCE_LABEL[price.source], tone: 'neutral' })
@@ -235,6 +235,8 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   if (options.existingCustomer) chips.push({ key: 'existing', label: 'Existing customer', tone: 'ok' })
   if (answers.address_missing === true || !lead.address) chips.push({ key: 'address', label: 'No address', tone: 'warn' })
   else if (answers.address_needs_review === true) chips.push({ key: 'address', label: 'Check address', tone: 'warn' })
+  if (options.addressChanged) chips.push({ key: 'address_changed', label: 'Address changed', tone: 'warn' })
+  if (answers.service_unmapped === true) chips.push({ key: 'service_unclear', label: 'Service unclear', tone: 'warn' })
 
   const want1 = services.length ? services.join(', ').toLowerCase() : null
   let headline: string, headlineTone: ChipTone = 'neutral'
@@ -425,4 +427,74 @@ export function historyItem(activity: HistoryActivity, now = Date.now()): { time
 /** The column chip summarizeLead puts first, for screens that change the column before the server answers. */
 export function columnChip(column: BoardColumn): Chip {
   return { key: 'column', label: COLUMN_LABEL[column], tone: column === 'booking_request' ? 'warn' : column === 'customer' ? 'ok' : column === 'closed' ? 'neutral' : 'accent' }
+}
+
+/** History row with its sort time (the lead page merges these with activities). */
+export type HistoryRow = { at: string; time: string; icon: HistoryIcon; text: string; quote: string | null }
+/** One `lead_calls` row with leg = 'alert'. */
+export type AlertLeg = {
+  staff_name?: string | null; status?: string | null; result?: string | null
+  answered_at?: string | null; ended_at?: string | null; created_at: string
+}
+// Pressing 1 or 2 (or losing the race) means the phone answered; who took it or passed is an activity row.
+const LEG_RESULT: Record<string, string> = { answered: 'answered', claimed: 'answered', passed: 'answered', lost_race: 'answered',
+  busy: 'busy', no_answer: 'no answer', failed: 'failed', canceled: 'stopped' }
+
+/**
+ * Automatic alert-call facts for History (PLAN.md 7.2b, 7.2c): "Alert to Caelan" when the leg
+ * starts, then "Caelan's phone: no answer" once the leg's result is known. Took it / passed come
+ * from the 'alert' activities, so they are not repeated here.
+ */
+export function alertLegHistory(leg: AlertLeg, now = Date.now()): HistoryRow[] {
+  const name = leg.staff_name?.trim() || null
+  const rows: HistoryRow[] = [{ at: leg.created_at, time: clockLabel(leg.created_at, now), icon: 'alert', text: `Alert to ${name ?? 'staff'}`, quote: null }]
+  const word = LEG_RESULT[leg.result ?? ''] ?? (leg.answered_at ? 'answered' : null)
+  if (word) {
+    // An answer comes before the keypress activity, so without answered_at fall back to the ring start.
+    const at = word === 'answered' ? leg.answered_at ?? leg.created_at : leg.ended_at ?? leg.answered_at ?? leg.created_at
+    rows.push({ at, time: clockLabel(at, now), icon: 'phone', text: `${name ? `${name}'s` : 'Staff'} phone: ${word}`, quote: null })
+  }
+  return rows
+}
+
+/** "$45/visit · every 2 wks · Oct 28"; one-time prices read "$120 total · Oct 28". */
+export function priceLine(price: Price): string {
+  return [price.recurring ? `${money(price.cents)}/visit` : `${money(price.cents)} total`,
+    price.recurring && price.frequency ? FREQUENCY_LABEL[price.frequency] : null, dayLabel(price.at)].filter(Boolean).join(' · ')
+}
+
+export type PriceRow = { key: 'website' | 'phone' | 'quote' | 'accepted' | 'booking'; label: string; value: string; price: Price }
+
+/**
+ * Every price we know for the lead (PLAN.md 4.1f, S10), so the website price stays visible after a
+ * phone price or quote replaces it as the headline. `headline` is leadPrice's pick; `others` are the
+ * rest as label → value rows, newest first.
+ */
+export function allPrices(lead: SummaryLead, bookings: SummaryBooking[] = []): { headline: Price | null; others: PriceRow[] } {
+  const rows: Omit<PriceRow, 'value'>[] = []
+  if (lead.website_price_cents) {
+    rows.push({ key: 'website', label: 'Website', price: makePrice('website', lead.website_price_at ?? lead.created_at, lead.website_price_cents,
+      normalizeFrequency(lead.website_frequency), lead.website_first_visit_cents) })
+  }
+  if (lead.phone_price_cents) {
+    rows.push({ key: 'phone', label: 'Phone', price: makePrice('phone', lead.phone_price_at ?? null, lead.phone_price_cents, normalizeFrequency(lead.phone_frequency)) })
+  }
+  const accepted = lead.quote_status === 'accepted' && lead.accepted_quote_snapshot
+    ? draftPrice(lead.accepted_quote_snapshot, lead.quote_emailed_at ? 'emailed' : 'phone', lead.quote_accepted_at ?? null) : null
+  if (accepted) rows.push({ key: 'accepted', label: 'Accepted', price: accepted })
+  else if (lead.quote_status !== 'accepted' && lead.quote_draft) {
+    const saved = typeof lead.quote_saved_at === 'string' ? lead.quote_saved_at : null
+    const draft = draftPrice(lead.quote_draft, lead.quote_emailed_at ? 'emailed' : 'phone', lead.quote_emailed_at ?? lead.quote_confirmed_at ?? saved)
+    if (draft) rows.push({ key: 'quote', label: lead.quote_emailed_at ? 'Emailed quote' : lead.quote_confirmed_at ? 'Saved quote' : 'Draft quote', price: draft })
+  }
+  const booking = requestBookings(bookings).find(b => b.status !== 'canceled' && (b.price_per_visit ?? 0) > 0)
+  if (booking) {
+    rows.push({ key: 'booking', label: 'Online booking', price: makePrice(lead.quote_emailed_at && time(booking.created_at) >= time(lead.quote_emailed_at) ? 'emailed' : 'website',
+      booking.created_at ?? null, booking.price_per_visit! * 100, normalizeFrequency(booking.frequency) ?? 'onetime',
+      booking.first_visit_price != null ? booking.first_visit_price * 100 : null) })
+  }
+  const headline = leadPrice(lead, bookings)
+  const index = headline ? rows.findIndex(row => row.price.source === headline.source && row.price.at === headline.at && row.price.cents === headline.cents) : -1
+  const others = rows.filter((_, i) => i !== index).sort((a, b) => time(b.price.at) - time(a.price.at))
+  return { headline, others: others.map(row => ({ ...row, value: priceLine(row.price) })) }
 }

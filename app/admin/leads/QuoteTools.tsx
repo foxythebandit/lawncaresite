@@ -7,6 +7,7 @@ import Icon from '../icons'
 import { useRouter } from 'next/navigation'
 import { addressForLookup } from '@/lib/address-text'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
+import { tracedShapes } from './TracingMap'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
 import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
 import { formatMoney } from '@/lib/crm-jobs'
@@ -23,6 +24,8 @@ export type QuoteLead = {
   sq_ft: number | null; services: string[] | null; frequency: string | null
   updated_at: string; quote_saved_at: string | null; quote_confirmed_at: string | null
   quote_status: QuoteStatus; quote_draft: QuoteDraft | null; answers: unknown
+  /** The customer's website tracing; seeds the staff map when there is no saved quote yet. */
+  lawn_tracing?: unknown
 }
 export type QuoteActivity = { outcome: string | null; occurred_at: string }
 export type QuoteBooking = { id: string; status: string; created_at: string; confirmed_at: string | null; completed_at: string | null; payment_recorded_at: string | null; amount_charged: number | null; payment_method: string | null; customer_id?: string | null; preferred_date?: string | null; confirmed_date?: string | null; agreement_id?: string | null; accepted_quote_snapshot?: unknown; creation_operation_id?: string | null }
@@ -296,7 +299,7 @@ function ContactAndNote() {
   </>
 }
 
-/** The staff map quote builder (full width below the blocks). */
+/** The staff map quote builder (desktop: right column under the map; phone: after Details). */
 export function QuoteMap() {
   const { lead, version, setVersion, draft, setDraft, setReviewed, quoteStatus, setQuoteStatus, propertyChanged, addressNeedsReview } = useQuote()
   const router = useRouter()
@@ -314,6 +317,7 @@ export function QuoteMap() {
       {quoteStatus === 'accepted' && <p className="crm-hint">Cancel acceptance first.</p>}
     </div> : <MapQuoteBuilder key={propertyReset ? `reset-${resetPropertyAddress}` : 'saved-property'} staffQuote={{ id: lead.id, address: lead.address, lookupAddress, sq_ft: propertyReset ? null : lead.sq_ft, services: lead.services ?? [], frequency: lead.frequency,
       draft: propertyReset ? null : draft, updated_at: version, quote_status: quoteStatus, addressNeedsReview: addressNeedsReview || propertyChanged,
-      onSaved: (updatedAt, wasReviewed, savedDraft) => { setVersion(updatedAt); setDraft(savedDraft); setReviewed(wasReviewed); setQuoteStatus('draft'); router.refresh() } }} />}
+      onSaved: (updatedAt, wasReviewed, savedDraft) => { setVersion(updatedAt); setDraft(savedDraft); setReviewed(wasReviewed); setQuoteStatus('draft'); router.refresh() } }}
+      staffTracing={propertyReset || propertyChanged ? undefined : tracedShapes(lead.lawn_tracing)} />}
   </div>
 }

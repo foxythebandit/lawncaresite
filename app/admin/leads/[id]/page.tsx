@@ -4,11 +4,12 @@ import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { leadToken } from '@/lib/intake'
 import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
-import { PRICE_SOURCE_LABEL, ago, dayLabel, historyItem, money, phoneDisplay, requestBookings, summarizeLead,
+import { ago, alertLegHistory, allPrices, dayLabel, historyItem, money, phoneDisplay, requestBookings, summarizeLead,
   type HistoryIcon, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
 import { humanize, serviceLabels } from '@/lib/lead-labels'
 import { signedMapUrl } from '@/lib/map-screenshot'
-import { staffByPhone } from '@/lib/staff-directory'
+import { callerIdFor, connectMode } from '@/lib/phone/flow'
+import { staffByPhone, staffPeople } from '@/lib/staff-directory'
 import { processLeadAlert } from '../quote-actions'
 import { CopyText, LeadChips, LeadLive, LogCallButton, RecordingButton, TextLink } from '../LeadLive'
 import { QuoteMap, QuotePanel, QuoteProvider, type QuoteBooking, type QuoteLead } from '../QuoteTools'
@@ -19,7 +20,8 @@ export const dynamic = 'force-dynamic'
 
 type Row = { label: string; value: React.ReactNode }
 type Alert = { id: string; recipient: string; channel: string; state: string; provider_status: string | null; error_code: string | null; attempts: number; provider_sid: string | null }
-type Call = { id: string; leg: string; staff_name: string | null; staff_phone: string; caller_id: string | null; result: string | null; status: string; duration_seconds: number | null; recording_sid: string | null; created_at: string }
+type Call = { id: string; leg: string; staff_name: string | null; staff_phone: string; caller_id: string | null; result: string | null; status: string; duration_seconds: number | null; recording_sid: string | null; answered_at: string | null; ended_at: string | null; created_at: string }
+type Customer = { id: string; name: string | null; phone: string | null }
 
 const ICON: Record<HistoryIcon, IconName> = { in: 'inbox', phone: 'phone', alert: 'bell', call: 'note', quote: 'tag', board: 'columns', note: 'note', booking: 'calendar' }
 const asObject = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -65,38 +67,49 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const { data: lead } = await db.from('leads').select('*').eq('id', id).single()
   if (!lead) notFound()
   const phoneDigits = String(lead.phone ?? '').replace(/\D/g, '').slice(-10)
-  const [{ data: activities }, { data: events }, { data: bookings }, { data: customers }, { data: calls }] = await Promise.all([
+  // customers.phone is stored in mixed formats: match the ten digits in order on the server, then exactly below.
+  const phonePattern = phoneDigits.length === 10 ? `%${phoneDigits.split('').join('%')}%` : null
+  const customerFields = 'id,name,phone'
+  const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }] = await Promise.all([
     db.from('lead_activities').select('id,kind,outcome,body,actor_email,occurred_at,data').eq('lead_id', id).order('occurred_at').limit(200),
     db.from('intake_events').select('id,source,submission_id,booking_id,created_at,staff_alerts(*)').eq('lead_id', id).order('created_at'),
     db.from('bookings').select('*').eq('lead_id', id).order('created_at'),
-    db.from('customers').select('id,name,phone'),
-    db.from('lead_calls').select('id,leg,staff_name,staff_phone,caller_id,result,status,duration_seconds,recording_sid,created_at').eq('lead_id', id).order('created_at'),
+    phonePattern ? db.from('customers').select(customerFields).ilike('phone', phonePattern).limit(25) : { data: [] as Customer[] },
+    lead.customer_id ? db.from('customers').select(customerFields).eq('id', lead.customer_id).maybeSingle() : { data: null as Customer | null },
+    db.from('lead_calls').select('id,leg,staff_name,staff_phone,caller_id,result,status,duration_seconds,recording_sid,answered_at,ended_at,created_at').eq('lead_id', id).order('created_at'),
   ])
   // Same-phone customers are suggestions only; staff confirms before linking.
-  const customerMatches = phoneDigits.length === 10 ? (customers ?? []).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits) : []
-  const linkedCustomer = lead.customer_id ? (customers ?? []).find(c => c.id === lead.customer_id) ?? null : null
+  const customerMatches = ((phoneCustomers ?? []) as Customer[]).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits)
   const existing = linkedCustomer ?? customerMatches[0] ?? null
   const quoteUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
   // One request timestamp for every relative label on the page.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
-  const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: !!existing, now })
+  const addressChanged = (activities ?? []).some(a => a.outcome === 'contact_address_changed')
+  const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: !!existing, addressChanged, now })
   const answers = asObject(lead.answers)
   const own = requestBookings((bookings ?? []) as SummaryBooking[])
   const live = (own.find(b => b.status !== 'canceled') ?? own[0]) as (SummaryBooking & { lawn_size_bucket?: string | null; map_screenshot_url?: string | null }) | undefined
   const mapUrl = await signedMapUrl(lead.map_screenshot_url ?? (bookings ?? []).map(b => b.map_screenshot_url).filter(Boolean).pop())
   const shapes = tracedShapes(lead.lawn_tracing, lead.quote_draft?.sections)
   const price = s.price
+  const otherPrices = allPrices(lead as SummaryLead, (bookings ?? []) as SummaryBooking[]).others
   const addonKeys = Object.keys(asObject(live?.addon_interest ?? answers.addon_interest))
-  const addressChanged = (activities ?? []).some(a => a.outcome === 'contact_address_changed')
-  const addressChip = s.chips.find(c => c.key === 'address')
+  const chip = (key: string) => s.chips.find(c => c.key === key)
+  const chipPill = (key: string) => { const c = chip(key); return c ? <> <Pill tone={c.tone}>{c.label}</Pill></> : null }
+  // R14: a cell missing from TWILIO_VERIFIED_CALLER_IDS shows the alert line to the customer.
+  const alertLine = phoneDisplay(process.env.TWILIO_FROM_NUMBER) || 'the alert line'
+  const unverified = connectMode() === 'twilio' ? staffPeople().filter(person => callerIdFor(person.phone) !== person.phone) : []
 
-  // History: came in, later intake (online booking), every activity; time · icon · 2–3 words.
+  // History: came in, later intake (online booking), alert legs, every activity; time · icon · 2–3 words.
   const callById = new Map((calls ?? []).map(call => [call.id, call as Call]))
+  const legRows = ((calls ?? []) as Call[]).filter(call => call.leg === 'alert').flatMap(call =>
+    alertLegHistory(call, now).map((row, i) => ({ key: `${call.id}-${i}`, ...row, recording: null })))
   const history = [
     { key: 'in', at: lead.created_at, time: historyItem({ kind: 'note', occurred_at: lead.created_at }, now).time, icon: 'in' as HistoryIcon, text: 'Came in', quote: null as string | null, recording: null as string | null },
     ...(events ?? []).slice(1).map(event => ({ key: event.id, at: event.created_at, time: historyItem({ kind: 'note', occurred_at: event.created_at }, now).time,
       icon: 'booking' as HistoryIcon, text: event.booking_id ? 'Booked online' : 'Came in again', quote: null, recording: null })),
+    ...legRows,
     ...(activities ?? []).map(activity => {
       const item = historyItem(activity, now)
       const call = callById.get(String(asObject(activity.data).call_id ?? ''))
@@ -141,6 +154,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             <LogCallButton className="crm-button crm-desktop-only" />
           </div>
         </div>
+        {unverified.length > 0 && <div className="crm-r14" role="note">{unverified.map(person =>
+          <Pill key={person.phone} tone="warn">{person.name === person.phone ? phoneDisplay(person.phone) : `${person.name}'s`} calls show {alertLine}</Pill>)}</div>}
         <LeadChips chips={s.chips} />
         {lead.needs_call_log_at && <div className="crm-logcall-banner" role="status">
           <span><Icon name="note" size={16} />Log this call · {historyItem({ kind: 'note', occurred_at: lead.needs_call_log_at }, now).time}</span>
@@ -149,13 +164,14 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
         <div className="crm-lead2-grid">
           <div className="crm-lead2-main">
-            <Block title="Price" className="crm-o1" aside={price ? `${price.source === 'website' ? 'website' : price.source === 'phone' ? 'phone' : 'emailed'}${dayLabel(price.at) ? ` · ${dayLabel(price.at)}` : ''}` : null}>
+            <Block title="Price" className="crm-o1" aside={price ? dayLabel(price.at) : null}>
               <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>
               <Rows rows={[
                 ...(price?.firstVisitCents != null ? [{ label: '1st visit', value: <>{money(price.firstVisitCents)} {price.firstVisitPct && <Pill tone="ok">−{price.firstVisitPct}%</Pill>}</> }] : []),
                 ...(price?.planDiscountPct ? [{ label: 'Plan disc.', value: `−${price.planDiscountPct}% ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` }] : []),
-                { label: 'Source', value: price ? <Pill>{PRICE_SOURCE_LABEL[price.source]}</Pill> : null },
-                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={s.booking === 'booked' ? 'ok' : s.booking === 'canceled' ? 'bad' : s.booking === 'requested' ? 'warn' : 'neutral'}>{s.bookingLabel}</Pill></> },
+                { label: 'Source', value: chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
+                ...otherPrices.map(row => ({ label: row.label, value: row.value })),
+                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
                 ...(lead.first_visit_on ? [{ label: 'First visit', value: dayLabel(lead.first_visit_on, true) }] : []),
                 ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: money(live!.overgrowth_fee! * 100) }] : []),
               ]} />
@@ -163,7 +179,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
             <Block title="Property" className="crm-o2" aside={directions && <a href={directions} target="_blank" rel="noopener noreferrer">Directions ↗</a>}>
               <Rows rows={[
-                { label: 'Address', value: <>{lead.address ?? null}{addressChip && <> <Pill tone="warn">{addressChip.label}</Pill></>}{addressChanged && <> <Pill tone="warn">Address changed</Pill></>}</> },
+                { label: 'Address', value: <>{lead.address ?? null}{chipPill('address')}{chipPill('address_changed')}</> },
                 { label: shapes.length ? 'Traced' : 'Lawn', value: s.tracedSqFt ? `${s.tracedSqFt.toLocaleString('en-US')} sq ft` : null },
               ]} />
               {map(false) && <div className="crm-lead2-thumb">{map(false)}</div>}
@@ -171,7 +187,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
             <Block title="Request" className="crm-o3">
               <Rows rows={[
-                { label: 'Services', value: <>{s.services.join(', ') || null}{answers.service_unmapped === true && <> <Pill tone="warn">Service unclear</Pill></>}</> },
+                { label: 'Services', value: <>{s.services.join(', ') || null}{chipPill('service_unclear')}</> },
                 { label: 'Frequency', value: normalizeFrequency(lead.frequency) ? FREQUENCY_LABEL[normalizeFrequency(lead.frequency)!] : lead.frequency },
                 { label: 'Timing', value: s.wanted.label },
                 ...(addonKeys.length ? [{ label: 'Add-ons', value: serviceLabels(addonKeys).join(', ') }] : []),
@@ -247,6 +263,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             {map(true) && <div className="crm-lead2-bigmap">{map(true)}
               <p className="crm-block-head"><span>{lead.address ?? '—'}</span><span>{s.tracedSqFt ? `${s.tracedSqFt.toLocaleString('en-US')} sq ft` : '—'}</span></p></div>}
             <div className="crm-o7"><QuotePanel /></div>
+            <div className="crm-o9"><QuoteMap /></div>
           </aside>
         </div>
 
@@ -255,7 +272,6 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <LogCallButton className="crm-button crm-button-lg" />
         </div>
       </div>
-      <QuoteMap />
     </QuoteProvider>
   </LeadLive>
 }
