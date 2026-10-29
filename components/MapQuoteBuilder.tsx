@@ -268,9 +268,22 @@ const CheckIcon = () => (
 )
 
 /* ── Component ────────────────────────────────────────── */
-export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuote }) {
+export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
+  staffQuote?: StaffQuote
+  /** Staff mode only: the customer's website tracing, used when there is no saved quote yet. */
+  staffTracing?: { name?: string; sqFt?: number; coords: [number, number][] }[]
+}) {
   const staffMode = !!staffQuote
   const draft = staffQuote?.draft
+  // The traced lawn seeds the staff quote so "Calculated" has a price before staff redraw anything.
+  const [seed] = useState(() => {
+    const sections: Section[] = staffQuote && !draft ? (staffTracing ?? []).filter(shape => (shape.sqFt ?? 0) > 0)
+      .map((shape, i) => ({ id: `traced-${i}`, name: shape.name || `Lawn ${i + 1}`, sqFt: Math.round(shape.sqFt!), coords: shape.coords })) : []
+    const points = sections.flatMap(section => section.coords ?? [])
+    const lngs = points.map(p => p[0]), lats = points.map(p => p[1])
+    const center = points.length ? { lng: (Math.min(...lngs) + Math.max(...lngs)) / 2, lat: (Math.min(...lats) + Math.max(...lats)) / 2 } : null
+    return { sections, center }
+  })
   const contactAddressAtReview = useRef(draft?.contactAddressAtReview ?? staffQuote?.address ?? null)
   const requestedServices = (staffQuote?.services ?? []).map(s => s.toLowerCase().replace(/[^a-z]/g, ''))
   const requestedFrequency = staffQuote?.frequency?.toLowerCase().replace(/[^a-z]/g, '') as Frequency | undefined
@@ -283,8 +296,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [saving, setSaving] = useState(false)
   const [overridePrice, setOverridePrice] = useState<number | null>(() => draft?.overridePrice ?? null)
   const [staffNotes, setStaffNotes] = useState(() => draft?.notes ?? '')
-  const [includeMowing, setIncludeMowing] = useState(() => draft?.includeMowing ?? (!!draft?.sections.length || requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
-  const [showStaffMap, setShowStaffMap] = useState(() => !staffQuote || !!draft?.sections.length || !!(draft?.includeMowing ?? requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
+  const [includeMowing, setIncludeMowing] = useState(() => draft?.includeMowing ?? (!!draft?.sections.length || seed.sections.length > 0 || requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
+  const [showStaffMap, setShowStaffMap] = useState(() => !staffQuote || !!draft?.sections.length || seed.sections.length > 0 || !!(draft?.includeMowing ?? requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
   const [manualLines, setManualLines] = useState<ManualPriceLine[]>(() => draft?.manualLines ?? (staffQuote?.services ?? [])
     .filter(service => !/mow|lawn/i.test(service)).map((service, index) => ({ id: `requested-${index}`, service, amountCents: 0 })))
   const [discountCents, setDiscountCents] = useState(() => draft?.discountCents ?? 0)
@@ -337,7 +350,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   // The suggestion the visitor picked — reused on search so we don't geocode it again
   const pickedRef = useRef<GeoResult | null>(null)
   const [activeSug,   setActiveSug]   = useState(-1)
-  const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
+  const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (seed.sections.length ? seed.sections : staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
   const sectionsCountRef = useRef(sections.length)
   useEffect(() => { sectionsCountRef.current = sections.length }, [sections])
   const [lawnSqFt, setLawnSqFt] = useState<number | null>(null)
@@ -962,12 +975,18 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
         setPtCount(draft.unfinishedPoints.length)
         updateDrawSource()
       }
+    } else if (!draft && seed.center) {
+      // Customer tracing, no saved quote: open on their shapes, same confirmation rule as a saved draft.
+      mapRef.current?.jumpTo({ center: [seed.center.lng, seed.center.lat], zoom: 18 })
+      setJobLatLng(seed.center)
+      setCandidateLabel(staffQuote.address ?? '')
+      setStep(staffQuote.addressNeedsReview ? 'confirming' : 'done')
     } else if ((draft?.address || staffQuote.address) && !staffQuote.addressNeedsReview) {
       void handleSearch()
     }
     })
     return () => cancelAnimationFrame(frame)
-  }, [staffQuote, draft, mapReady, address, handleSearch, startDraw, updateDrawSource])
+  }, [staffQuote, draft, seed, mapReady, address, handleSearch, startDraw, updateDrawSource])
 
   /* ─── Cancel current trace (keep address/map position) ── */
   const cancelTrace = useCallback(() => {

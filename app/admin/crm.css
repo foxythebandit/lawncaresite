@@ -900,6 +900,7 @@
 .crm-bcard-move { position: absolute; top: 5px; right: 5px; width: 30px; height: 28px; border: 1px solid var(--c-border); border-radius: 7px; background: var(--c-surface); color: var(--c-text-2); display: inline-flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s, background .12s; }
 .crm-bcard:hover .crm-bcard-move, .crm-bcard:focus-within .crm-bcard-move { opacity: 1; }
 .crm-bcard-move:hover { background: var(--c-subtle); color: var(--c-text); }
+.crm-bcard-move::after { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
 .crm-bcard-ghost { position: fixed; z-index: 90; margin: 0; pointer-events: none; box-shadow: var(--shadow-pop); border-color: var(--c-accent); opacity: .96; }
 .crm-dragging, .crm-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 .crm-bcard-link[data-nav-pending] { background: var(--c-brand-tint); }
@@ -913,7 +914,7 @@
 .crm-board-list .crm-bcard:hover { background: var(--c-hover); }
 .crm-bcard-row .crm-bcard-link { grid-template-columns: minmax(150px, 1.1fr) 132px minmax(0, 1.6fr) minmax(0, 1.4fr) 64px; align-items: center; column-gap: 16px; padding: 10px 6px 10px 18px; }
 .crm-bcard-row .crm-bcard-top { grid-column: 1; }
-.crm-bcard-row .crm-bcard-move { position: static; align-self: center; flex-shrink: 0; margin-right: 8px; }
+.crm-bcard-row .crm-bcard-move { position: relative; align-self: center; flex-shrink: 0; margin-right: 8px; }
 .crm-bcard-row .crm-chip-col { grid-column: 2; justify-self: start; }
 .crm-bcard-row .crm-bcard-headline { grid-column: 3; }
 .crm-bcard-row .crm-bcard-meta { grid-column: 4; }
@@ -980,6 +981,7 @@
   .crm-board-col h2 { display: none; }
   .crm-board-cards { padding: 0; gap: 8px; max-height: none; overflow: visible; }
   .crm-bcard-link { padding: 11px 4px 11px 13px; }
+  .crm-bcard-move::after { display: none; }
   .crm-bcard-move { position: static; flex-shrink: 0; width: 44px; height: auto; margin: 0; border: 0; background: none; color: var(--c-text-3); opacity: 1; border-radius: 0 10px 10px 0; }
   .crm-bcard-link { padding-right: 4px; }
   .crm-bcard-row .crm-bcard-link { grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; padding: 11px 4px 11px 14px; }
@@ -1004,7 +1006,7 @@
 /* ── Lead page v2 (PLAN.md 4.1c–4.1f) ──────────────────── */
 .crm-lead2 { padding-bottom: 8px; }
 .crm-lead2-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--c-text-3); font-size: 12.5px; }
-.crm-lead2-top .crm-back { margin: 0; min-height: 32px; }
+.crm-lead2-top .crm-back { margin: -6px 0; min-height: 44px; min-width: 44px; }
 .crm-lead2-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
 .crm-lead2-who { min-width: 0; }
 .crm-lead2 h1 { font-size: 32px; overflow-wrap: anywhere; }
@@ -1020,14 +1022,21 @@
 .crm-pill-bad { background: var(--c-red-bg); color: var(--c-red); }
 .crm-logcall-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 0; padding: 8px 8px 8px 14px; border: 1px solid #f1d3a4; border-radius: var(--r-control); background: var(--c-amber-bg); color: #6f4208; font-size: 13.5px; font-weight: 600; }
 .crm-logcall-banner > span { display: inline-flex; align-items: center; gap: 8px; }
-.crm-lead2-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 16px 24px; align-items: start; margin-top: 18px; }
+.crm-lead2-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px 24px; align-items: start; margin-top: 18px; }
 .crm-lead2-main, .crm-lead2-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.crm-lead2-side { position: sticky; top: 16px; }
+/* Quote tools sit in the right column under the map: the builder stacks its steps above its map there. */
+.crm-lead2-side .crm-quote-wrap { max-width: none; margin: 0; padding: 0; }
+@media (min-width: 861px) {
+  .crm-lead2-side .crm-staff-map .mapq-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; padding-bottom: 22px; }
+  .crm-lead2-side .crm-staff-map .mapq-map-wrap { position: static; }
+  .crm-lead2-side .crm-staff-map .mapq-map-border { height: 420px; }
+}
+.crm-r14 { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
 .crm-block { min-width: 0; padding: 14px 16px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
 .crm-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font: 600 11.5px/1.3 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--c-text-3); }
 .crm-block-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .crm-block-aside { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--c-text-2); white-space: nowrap; }
-.crm-block-aside a { color: var(--c-brand); text-decoration: none; display: inline-flex; align-items: center; min-height: 32px; }
+.crm-block-aside a { color: var(--c-brand); text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; margin: -12px 0; }
 .crm-bignum { margin: 0 0 8px; font-size: 32px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; color: var(--c-text); }
 .crm-bignum small { margin-left: 6px; font-size: 13.5px; font-weight: 500; letter-spacing: 0; color: var(--c-text-2); }
 .crm-kv { margin: 0; font-size: 13.5px; }
@@ -1049,6 +1058,7 @@
 .crm-tracing-map img { position: absolute; display: block; max-width: none; user-select: none; }
 .crm-tracing-map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .crm-lead2-thumb { margin-top: 10px; }
+@media (min-width: 861px) { .crm-lead2-thumb { display: none; } }
 .crm-map-shot img { display: block; width: 100%; height: auto; border-radius: var(--r-control); }
 .crm-lead2-bigmap { padding: 8px 8px 2px; background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
 .crm-lead2-bigmap .crm-block-head { margin: 8px 6px 4px; }
@@ -1069,6 +1079,11 @@
 .crm-alert-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--c-border); font-size: 13px; }
 .crm-alert-line:first-of-type { border-top: 0; }
 .crm-alert-line form { margin: 0; }
+/* Tap targets ≥ 44 px (quality bar 6.2) without changing how the small controls look. */
+.crm-alert-line .crm-button, .crm-copy, .crm-recording { position: relative; }
+.crm-alert-line .crm-button::after, .crm-recording::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.crm-copy::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 44px; min-width: 44px; transform: translateY(-50%); }
+.crm-history-text a { display: inline-flex; align-items: center; min-height: 44px; margin: -12px 0; }
 .crm-sticky-actions { display: none; }
 
 /* Log call sheet */
@@ -1102,7 +1117,7 @@
   .crm-lead2-grid { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-top: 14px; }
   .crm-lead2-main, .crm-lead2-side { display: contents; }
   .crm-lead2-bigmap { display: none; }
-  .crm-o1 { order: 1; } .crm-o2 { order: 2; } .crm-o3 { order: 3; } .crm-o4 { order: 4; } .crm-o5 { order: 5; } .crm-o6 { order: 6; } .crm-o7 { order: 7; } .crm-o8 { order: 8; }
+  .crm-o1 { order: 1; } .crm-o2 { order: 2; } .crm-o3 { order: 3; } .crm-o4 { order: 4; } .crm-o5 { order: 5; } .crm-o6 { order: 6; } .crm-o7 { order: 7; } .crm-o8 { order: 8; } .crm-o9 { order: 9; }
   .crm-block { padding: 12px 14px; }
   .crm-kv > div { grid-template-columns: 88px minmax(0, 1fr); }
   .crm-sticky-actions { position: fixed; left: 0; right: 0; z-index: 55; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 12px; background: rgba(251, 251, 249, .94); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); border-top: 1px solid var(--c-border); }
