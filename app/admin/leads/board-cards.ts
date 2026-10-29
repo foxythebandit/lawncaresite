@@ -3,11 +3,12 @@
  * Every word on a card comes from summarizeLead, so card, lead page and alert text agree.
  */
 import { BOARD_COLUMNS, type BoardColumn } from '@/lib/lead-board'
-import { ago, money, summarizeLead, type ChipTone, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
+import { ago, money, summarizeLead, type LeadSummary, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
 
 export type BoardCard = {
   id: string; href: string; column: BoardColumn
-  name: string; ago: string; headline: string; tone: ChipTone; meta: string; value: string | null
+  name: string; ago: string; value: string | null
+  card: LeadSummary['card']
   createdAt: string; checkBackOn: string | null
   /** New column only: not taken from the alert, or saw the website price and didn't book. */
   warm: boolean
@@ -18,7 +19,7 @@ export function boardCard(lead: SummaryLead & { estimated_value?: unknown }, boo
   const value = Number(lead.estimated_value)
   return {
     id: lead.id, href: `/admin/leads/${lead.id}`, column: s.column,
-    name: s.name, ago: ago(lead.created_at, now), headline: s.headline, tone: s.headlineTone, meta: s.meta,
+    name: s.name, ago: ago(lead.created_at, now), card: s.card,
     value: lead.estimated_value != null && Number.isFinite(value) && value > 0 ? money(Math.round(value * 100)) : null,
     createdAt: lead.created_at, checkBackOn: lead.check_back_on ?? null,
     warm: (!!lead.not_taken_at && !lead.taken_by) || (s.price?.source === 'website' && s.booking === 'not_booked'),

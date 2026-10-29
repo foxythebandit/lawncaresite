@@ -33,7 +33,7 @@ function startDrag(d: Drag, container: HTMLElement | null) {
   if (d.touch) navigator.vibrate?.(10)
 }
 
-export default function Board({ cards, initialView, initialColumn }: { cards: BoardCard[]; initialView: 'board' | 'list'; initialColumn: BoardColumn }) {
+export default function Board({ cards, initialView, initialColumn, children }: { cards: BoardCard[]; initialView: 'board' | 'list'; initialColumn: BoardColumn; children?: React.ReactNode }) {
   const router = useRouter()
   const [view, setView] = useState(initialView)
   const [selected, setSelected] = useState(initialColumn)
@@ -178,9 +178,12 @@ export default function Board({ cards, initialView, initialColumn }: { cards: Bo
       onClick={event => { if (suppressClick.current) event.preventDefault() }}>
       <span className="crm-bcard-top"><strong>{card.name}</strong><span className="crm-bcard-ago">{card.ago}</span></span>
       {row && <span className={`crm-chip crm-chip-col crm-chip-${card.column}`}>{COLUMN_LABEL[card.column]}</span>}
-      <span className={`crm-bcard-headline crm-tone-${card.tone}`}>{card.headline}</span>
-      <span className="crm-bcard-meta">{card.meta || '—'}</span>
-      {card.value && <span className="crm-bcard-value">{card.value}</span>}
+      <span className="crm-bcard-line">
+        {card.card.amount ? <span className="crm-bcard-price">{card.card.amount}<small>{card.card.unit}</small></span>
+          : <span className="crm-bcard-price is-none">{card.value ? <>{card.value}<small>estimate</small></> : 'No price'}</span>}
+        {card.card.status && <span className={`crm-pill crm-pill-${card.card.status.tone}`}>{card.card.status.label}</span>}
+      </span>
+      <span className="crm-bcard-meta">{card.card.detail || '—'}</span>
     </Link>
     <button type="button" className="crm-bcard-move" aria-label={`Move ${card.name}`} aria-haspopup="dialog"
       onClick={() => setPrompt({ card, step: 'menu' })}><Icon name="more" size={18} /></button>
@@ -196,6 +199,7 @@ export default function Board({ cards, initialView, initialColumn }: { cards: Bo
           onClick={() => { setView('list'); remember({ view: 'list' }) }}><Icon name="list" size={15} />List</button>
       </div>
     </div>
+    {children}
 
     <div className="crm-board-chips" role="tablist" aria-label="Columns">
       {BOARD_COLUMNS.map(column => <button key={column} type="button" role="tab" data-drop={column} aria-selected={selected === column}

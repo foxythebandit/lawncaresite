@@ -4,6 +4,7 @@ import { isColumn } from '@/lib/lead-board'
 import type { SummaryBooking, SummaryLead } from '@/lib/lead-summary'
 import { boardCard, groupBoard } from './board-cards'
 import Board from './Board'
+import CallerIdNote from './CallerIdNote'
 import LeadWarmup from './LeadWarmup'
 
 export const dynamic = 'force-dynamic'
@@ -42,7 +43,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     return { href: card.href, address: lead.address ?? null, jobLatLng: lead.quote_draft?.jobLatLng ?? null, needsReview: answers.address_needs_review === true }
   })
   return <div className="crm-page crm-board-page">
-    <Board cards={cards} initialView={view === 'list' ? 'list' : 'board'} initialColumn={isColumn(col) ? col : 'new'} />
+    <Board cards={cards} initialView={view === 'list' ? 'list' : 'board'} initialColumn={isColumn(col) ? col : 'new'}><CallerIdNote /></Board>
     <LeadWarmup leads={top} />
   </div>
 }

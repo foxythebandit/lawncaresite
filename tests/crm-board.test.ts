@@ -7,7 +7,7 @@ import { websitePrice } from '@/lib/website-intake'
 
 const now = Date.parse('2026-10-28T20:00:00Z')
 const card = (id: string, extra: Partial<BoardCard> = {}): BoardCard => ({
-  id, href: `/admin/leads/${id}`, column: 'new', name: id, ago: '1h', headline: '', tone: 'neutral', meta: '', value: null,
+  id, href: `/admin/leads/${id}`, column: 'new', name: id, ago: '1h', value: null, card: { amount: null, unit: null, status: null, detail: '' },
   createdAt: '2026-10-28T10:00:00Z', checkBackOn: null, warm: false, ...extra,
 })
 
@@ -36,7 +36,7 @@ test('cards use summarizeLead for every word, and warm follows the website price
     website_price_cents: 4500, website_first_visit_cents: 3200, website_frequency: 'biweekly', estimated_value: 120 }
   const c = boardCard(lead, [], now)
   const s = summarizeLead(lead, [], { now })
-  assert.deepEqual([c.headline, c.meta, c.tone, c.ago, c.value, c.warm], [s.headline, s.meta, s.headlineTone, '1h', '$120', true])
+  assert.deepEqual([c.card, c.ago, c.value, c.warm], [s.card, '1h', '$120', true])
   assert.equal(boardCard({ ...lead, website_price_cents: null }, [], now).warm, false)
   assert.equal(boardCard({ ...lead, website_price_cents: null, not_taken_at: '2026-10-28T19:05:00Z' }, [], now).warm, true)
   const groups = groupBoard([c, boardCard({ ...lead, id: 'l2', board_column: 'closed', closed_reason: 'price' }, [], now)])

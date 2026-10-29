@@ -155,9 +155,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             <LogCallButton className="crm-button crm-desktop-only" />
           </div>
         </div>
-        {unverified.length > 0 && <div className="crm-r14" role="note">{unverified.map(person =>
-          <Pill key={person.phone} tone="warn">{person.name === person.phone ? phoneDisplay(person.phone) : `${person.name}'s`} calls show {alertLine}</Pill>)}</div>}
-        <LeadChips chips={s.chips} />
+        {/* Booking and price-source chips live in the Price block's rows, so the header keeps only status. */}
+        <LeadChips chips={s.chips.filter(c => c.key !== 'booking' && c.key !== 'price')} />
         {lead.needs_call_log_at && <div className="crm-logcall-banner" role="status">
           <span><Icon name="note" size={16} />Log this call · {historyItem({ kind: 'note', occurred_at: lead.needs_call_log_at }, now).time}</span>
           <LogCallButton className="crm-button crm-button-sm crm-button-primary">Log call</LogCallButton>
@@ -168,12 +167,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             <Block title="Price" className="crm-o1" aside={price ? dayLabel(price.at) : null}>
               <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>
               <Rows rows={[
-                ...(price?.firstVisitCents != null ? [{ label: '1st visit', value: <>{money(price.firstVisitCents)} {price.firstVisitPct && <Pill tone="ok">−{price.firstVisitPct}%</Pill>}</> }] : []),
-                ...(price?.planDiscountPct ? [{ label: 'Plan disc.', value: `−${price.planDiscountPct}% ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` }] : []),
+                ...(price?.firstVisitCents != null ? [{ label: 'First visit', value: <>{money(price.firstVisitCents)} {price.firstVisitPct && <Pill tone="ok">{price.firstVisitPct}% off</Pill>}</> }] : []),
+                ...(price?.planDiscountPct ? [{ label: 'Plan discount', value: <span className="crm-muted">{price.planDiscountPct}% off · {price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}</span> }] : []),
                 { label: 'Source', value: chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
                 ...otherPrices.map(row => ({ label: row.label, value: row.value })),
                 { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
-                ...(lead.first_visit_on ? [{ label: 'First visit', value: dayLabel(lead.first_visit_on, true) }] : []),
+                ...(lead.first_visit_on ? [{ label: 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),
                 ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: money(live!.overgrowth_fee! * 100) }] : []),
               ]} />
             </Block>
@@ -241,6 +240,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               <Rows rows={[...clickIds, ...rawUtm, ...touchRows(firstTouch).map(r => ({ ...r, label: `first · ${r.label}` })), ...touchRows(latestTouch).map(r => ({ ...r, label: `latest · ${r.label}` }))]} />
               {!clickIds.length && !rawUtm.length && !Object.keys(firstTouch).length && <p className="crm-muted">—</p>}
               <h3>Alerts</h3>
+              {unverified.map(person => <div key={person.phone} className="crm-alert-line">
+                <span>Caller ID not verified · {person.name === person.phone ? phoneDisplay(person.phone) : person.name} · customers see {alertLine}</span></div>)}
               {alerts.map(({ alert, event }) => <div key={alert.id} className="crm-alert-line">
                 <span>{alertWords(alert)}</span>
                 {alert.provider_sid ? <form action={processLeadAlert.bind(null, lead.id, alert.id, event.id, 'refresh')}><button className="crm-button crm-button-sm">Check</button></form>

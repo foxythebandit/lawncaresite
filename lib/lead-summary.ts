@@ -57,6 +57,8 @@ export type LeadSummary = {
   headlineTone: ChipTone
   /** Card line 2: request · place · source. */
   meta: string
+  /** Board card, structured (Caelan, 28 Oct: name, price, one status chip, age; the rest on the lead page). */
+  card: { amount: string | null; unit: string | null; status: Chip | null; detail: string }
   name: string; phoneDisplay: string; city: string | null
   services: string[]; frequencyLabel: string | null
   wanted: { date: string | null; window: string | null; label: string | null }
@@ -258,6 +260,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   const notes = [live?.customer_notes, answers.notes, answers.project_description].find((v): v is string => typeof v === 'string' && !!v.trim())?.trim() ?? null
   const city = cityOf(lead.address)
 
+  const due = !!lead.check_back_on && lead.check_back_on <= new Date(options.now ?? Date.now()).toLocaleDateString('en-CA', { timeZone: TZ })
   const chips: Chip[] = [
     columnChip(column),
     { key: 'booking', label: BOOKING_LABEL[booking], tone: booking === 'booked' ? 'ok' : booking === 'canceled' ? 'bad' : booking === 'requested' ? 'warn' : 'neutral' },
@@ -266,11 +269,10 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   if (column === 'quoted' && isQuotedReason(lead.quoted_reason)) chips.push({ key: 'reason', label: QUOTED_REASON_LABEL[lead.quoted_reason], tone: 'warn' })
   if (column === 'closed' && isClosedReason(lead.closed_reason)) chips.push({ key: 'reason', label: CLOSED_REASON_LABEL[lead.closed_reason], tone: 'neutral' })
   if (lead.check_back_on && ['quoted', 'booking_request', 'in_talks'].includes(column)) {
-    const due = lead.check_back_on <= new Date(options.now ?? Date.now()).toLocaleDateString('en-CA', { timeZone: TZ })
     chips.push({ key: 'check_back', label: `Check back ${dayLabel(lead.check_back_on)}`, tone: due ? 'bad' : 'neutral' })
   }
   if (lead.taken_by) chips.push({ key: 'taken', label: `Taken by ${lead.taken_by}`, tone: 'neutral' })
-  else if (lead.not_taken_at && column === 'new') chips.push({ key: 'not_taken', label: 'Not taken', tone: 'bad' })
+  else if (lead.not_taken_at && column === 'new') chips.push({ key: 'not_taken', label: 'Missed alert', tone: 'bad' })
   if (lead.needs_call_log_at) chips.push({ key: 'log_call', label: 'Log this call', tone: 'warn' })
   if (options.existingCustomer) chips.push({ key: 'existing', label: 'Existing customer', tone: 'ok' })
   if (answers.address_missing === true || !lead.address) chips.push({ key: 'address', label: 'No address', tone: 'warn' })
@@ -305,12 +307,29 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   } else {
     headline = `No price${want1 ? ` · wants ${want1}` : ''}`
   }
+  const status = (label: string, tone: ChipTone): Chip => ({ key: 'status', label, tone })
+  // The card's one chip: the headline's status words without the price, which the card shows on its own.
+  const cardStatus = column === 'booking_request' && live ? status(`Wants ${want.label ?? 'date TBD'}`, 'warn')
+    : column === 'customer' || column === 'closed' ? status(column === 'closed' && lead.closed_reason !== 'bad_number' && isClosedReason(lead.closed_reason)
+      ? CLOSED_REASON_LABEL[lead.closed_reason] : headline, column === 'closed' ? 'neutral' : headlineTone)
+    : column === 'quoted' && isQuotedReason(lead.quoted_reason) ? status([QUOTED_REASON_LABEL[lead.quoted_reason], dayLabel(lead.check_back_on)].filter(Boolean).join(' · '), due ? 'bad' : 'warn')
+    : column === 'new' && lead.not_taken_at && !lead.taken_by ? status('Missed alert', 'bad')
+    : column === 'in_talks' && attempts > 0 ? status(`No answer ×${attempts}`, 'neutral')
+    : price?.source === 'website' && booking === 'not_booked' ? status('Didn\'t book', 'warn')
+    : price ? status(PRICE_SOURCE_LABEL[price.source], 'neutral')
+    : null
+  const card = {
+    amount: price ? money(price.cents) : null,
+    unit: price ? `${price.recurring ? '/visit' : 'total'} · ${price.source === 'website' ? 'website' : price.source === 'phone' ? 'phone' : 'emailed'}` : null,
+    status: cardStatus,
+    detail: [services.join(', ') || null, city ?? (lead.address ? null : 'No address')].filter(Boolean).join(' · '),
+  }
   const sourceShort = source.detail && source.channel === 'Facebook ad' ? `${source.channel} · ${source.detail.split(' · ')[0]}` : source.channel
   const meta = [services[0] ?? null, city ?? (lead.address ? null : 'no address yet'), source.conviflo && source.channel !== 'ConviFlo form' ? 'ConviFlo' : null, sourceShort]
     .filter(Boolean).join(' · ')
 
   return {
-    column, columnLabel: COLUMN_LABEL[column], booking, bookingLabel: BOOKING_LABEL[booking], price, chips, headline, headlineTone, meta,
+    column, columnLabel: COLUMN_LABEL[column], booking, bookingLabel: BOOKING_LABEL[booking], price, chips, headline, headlineTone, meta, card,
     name: nameOf(lead), phoneDisplay: phoneDisplay(lead.phone), city, services,
     frequencyLabel: freq ? FREQUENCY_LABEL[freq] : null, wanted: want, source, tracedSqFt: traced(lead), notes,
     answers: readableAnswers(lead.answers), link: options.baseUrl && lead.short_code ? leadLink(options.baseUrl, lead.short_code) : null,
