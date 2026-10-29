@@ -14,6 +14,7 @@ import { formatMoney } from '@/lib/crm-jobs'
 import { addLeadNote, bookLeadVisit, cancelLeadBooking, emailLeadQuote, previewLeadBookingCancellation, setLeadQuoteDecision, updateLeadContact } from './quote-actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import type { QuoteStatus } from '@/lib/crm-contracts'
+import { uuid } from '@/lib/uuid'
 
 /**
  * The existing quote tools (price, Book visit, Email quote, Text price, Customer said no, Reopen,
@@ -156,7 +157,7 @@ export function QuotePanel() {
   }
   function confirmCancellation() {
     if (!cancellationPreview) return
-    cancelOps.current ??= { jobOperationId: crypto.randomUUID(), planOperationId: crypto.randomUUID() }
+    cancelOps.current ??= { jobOperationId: uuid(), planOperationId: uuid() }
     const ops = cancelOps.current
     run(() => cancelLeadBooking(lead.id, { ...ops, bookingId: cancellationPreview.bookingId,
       agreementUpdatedAt: cancellationPreview.agreementUpdatedAt,
@@ -169,7 +170,7 @@ export function QuotePanel() {
       const key = `qg_book_visit_${lead.id}`
       try { const saved = sessionStorage.getItem(key); if (saved) bookingOps.current = JSON.parse(saved) } catch { /* private browsing */ }
       if (!bookingOps.current) {
-        bookingOps.current = { bookingOperationId: crypto.randomUUID(), linkOperationId: crypto.randomUUID(), planOperationId: crypto.randomUUID() }
+        bookingOps.current = { bookingOperationId: uuid(), linkOperationId: uuid(), planOperationId: uuid() }
         try { sessionStorage.setItem(key, JSON.stringify(bookingOps.current)) } catch { /* keep in memory */ }
       }
     }

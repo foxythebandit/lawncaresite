@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatMoney } from '@/lib/crm-jobs'
+import { uuid } from '@/lib/uuid'
 
 export interface ManualPriceLine {
   id: string
@@ -99,7 +100,7 @@ export default function QuotePriceEditor({
         <button type="button" className="crm-price-remove" aria-label={`Remove ${line.service || 'service'}`} onClick={() => onLinesChange(lines.filter(item => item.id !== line.id))}>×</button>
       </div>)}
     </div>
-    <button type="button" className="crm-price-add" onClick={() => onLinesChange([...lines, { id: crypto.randomUUID(), service: '', amountCents: 0 }])}>+ Add service</button>
+    <button type="button" className="crm-price-add" onClick={() => onLinesChange([...lines, { id: uuid(), service: '', amountCents: 0 }])}>+ Add service</button>
     <label className="crm-field crm-discount-field">Discount ($)
       <MoneyInput cents={discountCents} label="Discount amount" onChange={onDiscountChange} />
     </label>

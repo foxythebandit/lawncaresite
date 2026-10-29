@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation'
 import { addCustomerJob, startCustomerPlan } from '../../actions'
 import type { JobLine } from '@/lib/crm-jobs'
 import Icon from '../../icons'
+import { uuid } from '@/lib/uuid'
 
 type Property = { id: string; address: string; hasActivePlan: boolean }
 type Line = { key: string; description: string; amount: string }
 
-const blankLine = (): Line => ({ key: crypto.randomUUID(), description: '', amount: '' })
+const blankLine = (): Line => ({ key: uuid(), description: '', amount: '' })
 
 /** Where all later work for an existing customer starts: extra one-off jobs and mowing plans. */
 export default function CustomerActions({ customerId, properties }: { customerId: string; properties: Property[] }) {
@@ -34,7 +35,7 @@ export default function CustomerActions({ customerId, properties }: { customerId
   const [planDate, setPlanDate] = useState('')
 
   function op(name: string) {
-    if (!ops.current[name]) ops.current[name] = crypto.randomUUID()
+    if (!ops.current[name]) ops.current[name] = uuid()
     return ops.current[name]
   }
   function finish(result: { success: boolean; error?: string }, done: string, resetOnError: string[] = []) {

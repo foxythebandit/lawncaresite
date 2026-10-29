@@ -8,6 +8,7 @@ import { formatMoney, jobPrice, jobStatusLabel, type JobLine } from '@/lib/crm-j
 import { formatAttributionLabel } from '@/lib/attribution'
 import ReminderButtons from './ReminderButtons'
 import Icon from './icons'
+import { uuid } from '@/lib/uuid'
 
 export type Booking = {
   id: string; updated_at: string; name: string; phone: string; email: string | null
@@ -101,7 +102,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
   const source = formatAttributionLabel(booking)
 
   function opId(key: string) {
-    if (!operation.current || operation.current.key !== key) operation.current = { key, id: crypto.randomUUID() }
+    if (!operation.current || operation.current.key !== key) operation.current = { key, id: uuid() }
     return operation.current.id
   }
   function run(key: string, action: (id: string) => Promise<{ success: boolean; error?: string; data?: Record<string, unknown> }>, success: string) {

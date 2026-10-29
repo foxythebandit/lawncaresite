@@ -7,6 +7,7 @@ import { logCall, type CallDetail } from './board-actions'
 import LogCallForm, { type LogCallDraft } from './LogCallForm'
 import Sheet from './Sheet'
 import Icon from '../icons'
+import { uuid } from '@/lib/uuid'
 
 type Live = { column: BoardColumn; openLogCall: () => void }
 const LiveContext = createContext<Live | null>(null)
@@ -35,7 +36,7 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
   function save(outcome: CallOutcome, detail: CallDetail, form: LogCallDraft) {
     // Same content as a failed attempt reuses its operation ID, so a lost response never logs twice.
     const key = JSON.stringify([outcome, detail])
-    if (operation.current?.key !== key) operation.current = { key, id: crypto.randomUUID() }
+    if (operation.current?.key !== key) operation.current = { key, id: uuid() }
     const operationId = operation.current.id
     const to = CALL_OUTCOME[outcome].to
     setOpen(false); setDraft(form)
