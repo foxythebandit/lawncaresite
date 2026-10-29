@@ -8,14 +8,16 @@ type Job = {
 type Payment = { amount: number | string; paid_on: string; method: string }
 
 export default function CompletedJobRow({ job, payments }: { job: Job; payments: Payment[] }) {
-  const paid = payments.reduce((sum, payment) => sum + Number(payment.amount), 0)
+  // Amounts recorded before dated payments existed count as paid, like "Paid all time" (UX audit Q9).
+  const older = job.amount_charged != null ? Number(job.amount_charged) : 0
+  const paid = payments.reduce((sum, payment) => sum + Number(payment.amount), 0) + older
   const price = jobPrice(job)
-  const status = payments.length ? (paid >= price ? 'Paid in full' : 'Partly paid') : job.amount_charged != null ? 'Older record' : 'Unpaid'
+  const status = paid > 0 ? (paid >= price ? 'Paid in full' : 'Partly paid') : 'Unpaid'
   return <tr>
     <td>{new Date(job.completed_at.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
     <td><a href={`/admin/jobs?search=${encodeURIComponent(job.name)}`}>{job.name}</a><br /><small>{status}</small></td>
     <td>{job.address}</td>
     <td>{formatMoney(price)}</td>
-    <td>{payments.length ? formatMoney(paid) : '—'}{job.amount_charged != null && <><br /><small>{formatMoney(job.amount_charged)} older record{job.payment_method ? ` · ${job.payment_method}` : ''}</small></>}</td>
+    <td>{payments.length || job.amount_charged != null ? formatMoney(paid) : '—'}{job.amount_charged != null && <><br /><small>{payments.length ? `incl. ${formatMoney(older)} ` : ''}older record{job.payment_method ? ` · ${job.payment_method}` : ''}</small></>}</td>
   </tr>
 }

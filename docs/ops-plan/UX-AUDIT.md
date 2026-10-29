@@ -69,7 +69,7 @@ No database, API, route or permission changes. Shared logic: `lib/lead-summary.t
 
 ## 4. Yes/no for Caelan
 
-Each one changes layout, navigation or a PLAN.md decision, so it waits for your answer. My lean is in brackets.
+Each one changes layout, navigation or a PLAN.md decision, so it waited for your answer. **Answered 29 Oct: yes on Q1–4, 6–9, 11; no on Q5 and Q10.** What was built is in §4a.
 
 | # | Question | Lean |
 |---|---|---|
@@ -84,6 +84,34 @@ Each one changes layout, navigation or a PLAN.md decision, so it waits for your 
 | Q9 | **Revenue**: count "older record" payments in "Paid all time" (today it says $0 with $406 in a footnote)? | yes |
 | Q10 | Ask "Move to Customer? No visit is scheduled" when a card is moved to Customer by hand? | no: S1 says moves are quick; Closed already asks |
 | Q11 | **Today, no jobs**: show the next scheduled visit and today's check-backs from Leads? | yes |
+
+## 4a. Built after the answers (29 Oct)
+
+| # | What changed |
+|---|---|
+| Q1 | Booking request lead: date + time + **Confirm & email customer** inside the Price card (same action as Jobs). The "Schedule in Jobs →" link is gone. |
+| Q2 | Header main button per column: Booking request → **Schedule visit** · Quoted → **Call back · date** · Closed → **Reopen** (to In talks) · Customer → **Open customer**. New and In talks keep Call. Call stays in the phone bar and on desktop. |
+| Q3 | **One Price card**: price, steps (below), source, other prices, booking, quote actions (Book visit, Text price, Email quote, Said no), Visits. Saved-quote status is a "Quote · Draft" chip in the card header. The calculator and staff map open from **Edit price** (Add price when there is none). Edit contact is a pencil by the name; Add note sits in the History header. The separate "Saved quote" card is gone (its total is the "Draft/Saved quote" price row). |
+| Q4 | Calculator and map start closed for every column (Q3), so Customer and Closed too. A changed contact address still shows its review panel. |
+| Q6 | Search box on Leads (name, address words, or 3+ phone digits). While searching, matches show as one list across columns. |
+| Q7 | Staff frequency words everywhere: **Weekly · Every 2 weeks · Monthly · One time**, including the calculator dropdown ("Every 2 weeks · 10% off") and staff texts. Customer-facing quote pages and emails still say "Bi-weekly" (not changed). |
+| Q8 | Jobs list: **Upcoming** (undated requests first, then soonest) and **Past** (newest first). Status filters still apply. |
+| Q9 | Revenue "Paid all time" includes payments recorded before dates existed; the note says so and that they aren't in the monthly chart. Completed rows show the paid amount with "older record · method". |
+| Q11 | Today with no jobs: **Next visit** and **Call back today** (due and overdue check-backs). Today's date is now Austin's, not UTC. |
+
+**Price, Leads and Jobs (Caelan's note A).** One helper, `priceSteps()` in `lib/lead-summary.ts`, and one component, `app/admin/PriceSteps.tsx`, on the lead Price card and the Jobs card:
+
+| Row | Example |
+|---|---|
+| Full price | $117 /visit |
+| Every 2 weeks −10% | $105 /visit |
+| First visit −30% | $74 |
+
+Monthly has no full-price row (0% plan discount); one-time reads "One time $120 total". Prices are stored after the plan discount, so "Full price" is worked back from it to the whole dollar. Jobs gets the same numbers through `bookingPrice()`. Plan visits after the first don't show the first-visit row. The board card keeps "$105 /visit", the same number as the plan row.
+
+**Lawn map (note B).** Prod's lead page has no lawn map at all (main has no `TracingMap`), and Jobs shows the website's saved map image. Now both use `app/admin/LawnMap.tsx`: the saved map image when there is one (what the customer drew), else the tracing drawn on satellite tiles. Jobs fetches the lead's tracing for visits without an image, so local demo jobs show the lawn too.
+
+**Open question (billing, not changed).** A visit booked by phone (Log call → Booked) is saved with job total = the full per-visit price ($105), while its first-visit price is $74; a website booking has no job total, so Jobs charges $74. So the Jobs row and "Confirm & email" total say $105 while the price steps say "First visit −30% $74". Should a phone-booked first visit charge the first-visit price? The demo seed copies the phone behavior for every booking.
 
 ## 5. Before / after
 

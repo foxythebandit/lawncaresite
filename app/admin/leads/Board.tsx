@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useOptimistic, useRef, useState, useTransition } from 'react'
 import { BOARD_COLUMNS, CLOSED_REASONS, CLOSED_REASON_LABEL, COLUMN_LABEL, QUOTED_REASONS, QUOTED_REASON_LABEL,
   type BoardColumn, type ClosedReason, type QuotedReason } from '@/lib/lead-board'
-import { groupBoard, sortColumn, type BoardCard } from './board-cards'
+import { groupBoard, matchesSearch, sortColumn, type BoardCard } from './board-cards'
 import { moveLead } from './board-actions'
 import Sheet from './Sheet'
 import { CheckBack, Choices } from './pickers'
@@ -51,7 +51,10 @@ export default function Board({ cards, initialView, initialColumn, children }: {
   const suppressClick = useRef(false)
   const refocus = useRef<{ id: string; column: BoardColumn } | null>(null)
   const prefetched = useRef(new Set<string>())
-  const groups = groupBoard(shown)
+  const [query, setQuery] = useState('')
+  const groups = groupBoard(shown.filter(card => matchesSearch(card, query)))
+  // Matches can sit in any column, so a search shows one list.
+  const listed = view === 'list' || !!query.trim()
 
   function remember(next: { view?: 'board' | 'list'; col?: BoardColumn }) {
     const url = new URL(location.href)
@@ -189,7 +192,7 @@ export default function Board({ cards, initialView, initialColumn, children }: {
       onClick={() => setPrompt({ card, step: 'menu' })}><Icon name="more" size={18} /></button>
   </div>
 
-  return <div className="crm-board" ref={boardRef} data-view={view}>
+  return <div className="crm-board" ref={boardRef} data-view={listed ? 'list' : 'board'}>
     <div className="crm-page-heading crm-board-heading">
       <h1>Leads</h1>
       <div className="admin-view-toggle crm-board-toggle" role="group" aria-label="Board view">
@@ -200,18 +203,21 @@ export default function Board({ cards, initialView, initialColumn, children }: {
       </div>
     </div>
     {children}
+    <label className="admin-search crm-board-search"><Icon name="search" size={15} />
+      <input type="search" className="admin-search-input" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search name, phone, address" aria-label="Search leads" />
+    </label>
 
     <div className="crm-board-chips" role="tablist" aria-label="Columns">
-      {BOARD_COLUMNS.map(column => <button key={column} type="button" role="tab" data-drop={column} aria-selected={view !== 'list' && selected === column}
+      {BOARD_COLUMNS.map(column => <button key={column} type="button" role="tab" data-drop={column} aria-selected={!listed && selected === column}
         className={`crm-board-chip${column === 'booking_request' ? ' is-hot' : ''}${column === 'booking_request' && groups[column].length ? ' has-cards' : ''}`}
         onClick={event => { setSelected(column); remember({ col: column }); event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }}>
         {COLUMN_LABEL[column]} <strong>{groups[column].length}</strong>
       </button>)}
     </div>
 
-    {view === 'list' ? <div className="crm-board-list" aria-label="All leads">
+    {listed ? <div className="crm-board-list" aria-label="All leads">
       {BOARD_COLUMNS.flatMap(column => sortColumn(column, groups[column])).map(card => cardView(card, true))}
-      {!shown.length && <p className="crm-board-empty">—</p>}
+      {!BOARD_COLUMNS.some(column => groups[column].length) && <p className="crm-board-empty">{query ? 'No matches' : '—'}</p>}
     </div> : <div className="crm-board-cols">
       {BOARD_COLUMNS.map(column => <section key={column} className={`crm-board-col${column === 'booking_request' ? ' is-hot' : ''}`}
         data-drop={column} data-selected={selected === column || undefined} aria-label={COLUMN_LABEL[column]}>

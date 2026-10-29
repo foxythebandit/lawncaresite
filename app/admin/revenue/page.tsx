@@ -65,7 +65,7 @@ export default async function RevenuePage() {
 
       <div className="admin-stats">
         <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">{formatMoneyWhole(totalPaid)}</span>
+          <span className="admin-stat-val admin-stat-money">{formatMoneyWhole(totalPaid + legacyRecorded)}</span>
           <span className="admin-stat-label">Paid all time</span>
         </div>
         <div className="admin-stat">
@@ -81,7 +81,7 @@ export default async function RevenuePage() {
           <span className="admin-stat-label">Completed jobs</span>
         </div>
       </div>
-      {legacyRecorded > 0 && <p className="admin-revenue-sub">Plus {formatMoney(legacyRecorded)} recorded on older jobs and extra charges before dated payments existed. Those amounts aren’t in the totals or chart above.</p>}
+      {legacyRecorded > 0 && <p className="admin-revenue-sub">Paid all time includes {formatMoney(legacyRecorded)} recorded on older jobs and extra charges before payments had dates, so it isn’t in the monthly chart.</p>}
 
       <div className="admin-revenue-stack">
         <section className="admin-revenue-card">

@@ -8,13 +8,15 @@ import { useRouter } from 'next/navigation'
 import { addressForLookup } from '@/lib/address-text'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { tracedShapes } from './TracingMap'
-import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
+import type { QuoteDraft } from '@/lib/quote-draft'
 import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
 import { formatMoney } from '@/lib/crm-jobs'
 import { addLeadNote, bookLeadVisit, cancelLeadBooking, emailLeadQuote, previewLeadBookingCancellation, setLeadQuoteDecision, updateLeadContact } from './quote-actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import type { QuoteStatus } from '@/lib/crm-contracts'
 import { uuid } from '@/lib/uuid'
+import Sheet from './Sheet'
+import { FREQUENCY_LABEL } from '@/lib/lead-board'
 
 /**
  * The existing quote tools (price, Book visit, Email quote, Text price, Customer said no, Reopen,
@@ -39,6 +41,8 @@ type QuoteState = {
   reviewed: boolean; setReviewed: (v: boolean) => void; quoteStatus: QuoteStatus; setQuoteStatus: (s: QuoteStatus) => void
   propertyChanged: boolean; addressNeedsReview: boolean
   feedback: string; setFeedback: (text: string) => void
+  /** The price calculator and staff map stay closed until "Edit price" (UX audit Q3, Q4). */
+  calcOpen: boolean; setCalcOpen: (open: boolean) => void
 }
 const Quote = createContext<QuoteState | null>(null)
 const useQuote = () => useContext(Quote)!
@@ -55,6 +59,7 @@ export function QuoteProvider({ lead, activities, bookings, customerMatches = []
   const [reviewed, setReviewed] = useState(!!lead.quote_confirmed_at)
   const [quoteStatus, setQuoteStatus] = useState(lead.quote_status)
   const [feedback, setFeedback] = useState('')
+  const [calcOpen, setCalcOpen] = useState(false)
   // A Log call or board move refreshes this page with a newer updated_at. Adopt it when the quote
   // on screen is still the server's, so the next quote save isn't refused as a conflict.
   const [seenVersion, setSeenVersion] = useState(lead.updated_at)
@@ -69,7 +74,7 @@ export function QuoteProvider({ lead, activities, bookings, customerMatches = []
     && (lead.answers as { address_needs_review?: unknown }).address_needs_review === true
   const feedbackIsError = feedback.startsWith('Could') || feedback.includes('changed') || feedback.includes('failed') || feedback.startsWith('Enter') || feedback.startsWith('The ')
   return <Quote.Provider value={{ lead, activities, bookings, customerMatches, quoteUrl, version, setVersion, draft, setDraft, reviewed, setReviewed,
-    quoteStatus, setQuoteStatus, propertyChanged, addressNeedsReview, feedback, setFeedback }}>
+    quoteStatus, setQuoteStatus, propertyChanged, addressNeedsReview, feedback, setFeedback, calcOpen, setCalcOpen }}>
     {children}
     {feedback && <div className={`crm-toast${feedbackIsError ? ' crm-toast-error' : ''}`} role={feedbackIsError ? 'alert' : 'status'}>
       <span>{feedback}</span>
@@ -95,9 +100,38 @@ function useRun() {
   return { run, pending, startTransition, router }
 }
 
-/** Quote status + the actions that depend on it (desktop right column, phone after Log call). */
+/** Where the saved quote stands: drives the Price card's status chip and which quote actions show. */
+function useQuoteState() {
+  const { bookings, draft, reviewed, quoteStatus } = useQuote()
+  const booking = latestQuoteBooking(bookings)
+  const quoteState = booking && quoteStatus === 'canceled' ? 'canceled'
+    : booking && booking.status !== 'canceled' && quoteStatus === 'accepted' ? 'booked'
+    : quoteStatus === 'accepted' ? 'accepted' : quoteStatus === 'declined' ? 'declined'
+      : reviewed && draft ? 'quoted' : draft ? 'draft' : 'none'
+  return { booking, quoteState }
+}
+
+/** Saved-quote status for the Price card header ("Quote · Draft"). */
+export function QuoteStatusChip() {
+  const { quoteState } = useQuoteState()
+  if (quoteState === 'none') return null
+  const label = { booked: 'Booked', canceled: 'Canceled', accepted: 'Accepted', declined: 'Said no', quoted: 'Quoted', draft: 'Draft' }[quoteState]
+  const tone = { booked: 'booked', canceled: 'lost', accepted: 'booked', declined: 'lost', quoted: 'quoted', draft: 'new' }[quoteState]
+  return <span className={`crm-chip crm-chip-${tone}`}>Quote · {label}</span>
+}
+
+/** Opens the price calculator and its map, and brings it into view. */
+export function EditPriceButton({ hasPrice }: { hasPrice: boolean }) {
+  const { calcOpen, setCalcOpen } = useQuote()
+  return <button type="button" className="crm-button crm-button-sm" aria-expanded={calcOpen} aria-controls="price-calculator" onClick={() => {
+    setCalcOpen(!calcOpen)
+    if (!calcOpen) requestAnimationFrame(() => document.getElementById('price-calculator')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }}><Icon name="ruler" size={15} />{calcOpen ? 'Hide calculator' : hasPrice ? 'Edit price' : 'Add price'}</button>
+}
+
+/** Quote actions inside the Price card: book, text or email the price, said no, visits. */
 export function QuotePanel() {
-  const { lead, bookings, customerMatches, quoteUrl, version, setVersion, draft, reviewed, quoteStatus, setQuoteStatus, propertyChanged, setFeedback } = useQuote()
+  const { lead, bookings, customerMatches, quoteUrl, version, setVersion, draft, setQuoteStatus, propertyChanged, setFeedback } = useQuote()
   const { run, pending, startTransition, router } = useRun()
   const [emailOpen, setEmailOpen] = useState(false)
   const [emailTo, setEmailTo] = useState(lead.email ?? '')
@@ -139,9 +173,9 @@ export function QuotePanel() {
     return `sms:${lead.phone}${iOS ? '&' : '?'}body=${encodeURIComponent(body)}`
   }
   const planFreq = draft && draft.includeMowing !== false && draft.freq !== 'onetime' && (draft.overridePrice ?? draft.calculatedPrice) > 0
-    ? { weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly' }[draft.freq] : undefined
+    ? FREQUENCY_LABEL[draft.freq] : undefined
   const planPrice = draft ? (draft.overridePrice ?? draft.calculatedPrice) : 0
-  const booking = latestQuoteBooking(bookings)
+  const { booking, quoteState } = useQuoteState()
   const bookedCustomerId = bookings.find(b => b.customer_id)?.customer_id ?? null
   const firstVisitOpen = !!booking && ['pending', 'confirmed'].includes(booking.status)
   const cancelOps = useRef<{ jobOperationId: string; planOperationId: string } | null>(null)
@@ -190,17 +224,7 @@ export function QuotePanel() {
     })
   }
 
-  const quoteState = booking && quoteStatus === 'canceled' ? 'canceled'
-    : booking && booking.status !== 'canceled' && quoteStatus === 'accepted' ? 'booked'
-    : quoteStatus === 'accepted' ? 'accepted' : quoteStatus === 'declined' ? 'declined'
-      : reviewed && draft ? 'quoted' : draft ? 'draft' : 'none'
-  const quoteLabel = { booked: 'Booked', canceled: 'Canceled', accepted: 'Accepted', declined: 'Said no', quoted: 'Quoted', draft: 'Draft', none: 'None yet' }[quoteState]
-  const tone = { booked: 'booked', canceled: 'lost', accepted: 'booked', declined: 'lost', quoted: 'quoted', draft: 'new', none: 'lost' }[quoteState]
-
-  return <section className="crm-block crm-quote-panel" aria-label="Quote">
-    <p className="crm-block-head"><span>Saved quote</span><span className={`crm-chip crm-chip-${tone}`}>{quoteLabel}</span></p>
-    {draft ? <p className="crm-quote-total">{formatMoney(quoteTotalCents(draft) / 100)}<small>{draft.includeMowing !== false && draft.freq !== 'onetime' ? '/ visit' : 'total'}</small></p>
-      : <p className="crm-quote-total">—</p>}
+  return <div className="crm-quote-panel" aria-label="Quote">
     {draft && quoteState === 'draft' && !emailOpen && <div className="crm-action-row">
       <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />Text price</a>
       <button type="button" className="crm-button" onClick={openEmail}><Icon name="mail" size={15} />Email quote</button>
@@ -275,40 +299,55 @@ export function QuotePanel() {
         {b.completed_at && ` · completed ${dateText(b.completed_at)}`}
         {b.payment_recorded_at && ` · paid ${dateText(b.payment_recorded_at)}: $${b.amount_charged ?? 0} (${b.payment_method})`}</p>)}
     </details>}
-    <ContactAndNote />
-  </section>
+  </div>
 }
 
-function ContactAndNote() {
+/** Pencil by the lead's name: edit name, phone, address, email in a sheet. */
+export function EditContactButton() {
   const { lead, version } = useQuote()
   const { run, pending } = useRun()
-  const [note, setNote] = useState('')
+  const [open, setOpen] = useState(false)
   return <>
-    <details className="crm-details"><summary>Edit contact</summary>
-      <form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); form.set('updated_at', version); run(() => updateLeadContact(lead.id, form)) }}>
+    <button type="button" className="crm-icon-button" aria-label="Edit contact" onClick={() => setOpen(true)}><Icon name="pencil" size={16} /></button>
+    <Sheet open={open} onClose={() => setOpen(false)} title="Edit contact">
+      <form onSubmit={event => { event.preventDefault(); const form = new FormData(event.currentTarget); form.set('updated_at', version); run(() => updateLeadContact(lead.id, form), () => setOpen(false)) }}>
         <label className="crm-field">Name<input name="name" defaultValue={lead.name ?? ''} required maxLength={150} /></label>
         <label className="crm-field">Phone<input name="phone" type="tel" defaultValue={lead.phone} required maxLength={30} /></label>
         <label className="crm-field">Property address<input name="address" defaultValue={lead.address ?? ''} required maxLength={500} /></label>
         <label className="crm-field">Email<input name="email" type="email" defaultValue={lead.email ?? ''} maxLength={254} /></label>
-        <button type="submit" className="crm-button" disabled={pending}>Save contact</button>
+        <div className="crm-dialog-actions"><button type="submit" className="crm-button crm-button-primary crm-button-lg" disabled={pending}>Save contact</button></div>
       </form>
-    </details>
-    <details className="crm-details"><summary>Add note</summary>
-      <label className="crm-field">Note<textarea value={note} maxLength={2000} onChange={event => setNote(event.target.value)} /></label>
-      <button type="button" className="crm-button" disabled={pending || !note.trim()} onClick={() => run(() => addLeadNote(lead.id, version, note), () => setNote(''))}>Add note</button>
-    </details>
+    </Sheet>
+  </>
+}
+
+/** "Add note" in the History header. */
+export function AddNoteButton() {
+  const { lead, version } = useQuote()
+  const { run, pending } = useRun()
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState('')
+  return <>
+    <button type="button" className="crm-button crm-button-sm" onClick={() => setOpen(true)}><Icon name="pencil" size={15} />Add note</button>
+    <Sheet open={open} onClose={() => setOpen(false)} title="Add note">
+      <label className="crm-field">Note<textarea value={note} maxLength={2000} rows={4} onChange={event => setNote(event.target.value)} /></label>
+      <div className="crm-dialog-actions"><button type="button" className="crm-button crm-button-primary crm-button-lg" disabled={pending || !note.trim()}
+        onClick={() => run(() => addLeadNote(lead.id, version, note), () => { setNote(''); setOpen(false) })}>Add note</button></div>
+    </Sheet>
   </>
 }
 
 /** The staff map quote builder (desktop: right column under the map; phone: after Details). */
 export function QuoteMap() {
-  const { lead, version, setVersion, draft, setDraft, setReviewed, quoteStatus, setQuoteStatus, propertyChanged, addressNeedsReview } = useQuote()
+  const { lead, version, setVersion, draft, setDraft, setReviewed, quoteStatus, setQuoteStatus, propertyChanged, addressNeedsReview, calcOpen } = useQuote()
   const router = useRouter()
   const [resetPropertyAddress, setResetPropertyAddress] = useState<string | null>(null)
   const propertyReset = resetPropertyAddress !== null && resetPropertyAddress === lead.address
   const answers = lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers) ? lead.answers as { postcode?: unknown; property_address?: unknown } : {}
   const lookupAddress = addressForLookup(lead.address ?? '', answers.property_address, answers.postcode)
-  return <div className="crm-quote-wrap">
+  // A changed contact address is a review flag: it shows even with the calculator closed.
+  if (!calcOpen && !(propertyChanged && !propertyReset)) return null
+  return <div className="crm-quote-wrap" id="price-calculator">
     {propertyChanged && !propertyReset ? <div className="crm-panel" id="map-quote">
       <h2>Contact address changed</h2>
       <p>The saved measurement and price belong to the old property. Accepted quotes and jobs stay in history.</p>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { alertText, historyItem, priceShort, spokenPrompt, staffText, summarizeLead, type SummaryLead } from '../lib/lead-summary'
+import { alertText, bookingPrice, historyItem, priceShort, priceSteps, spokenPrompt, staffText, summarizeLead, type SummaryLead } from '../lib/lead-summary'
 
 const base = 'https://quietgreen.co'
 const jane: SummaryLead = {
@@ -15,7 +15,7 @@ test('new website lead alert matches the approved wording (PLAN.md 7.6)', () => 
   assert.equal(alertText(jane, [], base, 'new'), [
     'NEW LEAD · Jane Smith',
     'Not booked · saw $45/visit, 1st $32',
-    'Mowing, Edging · every 2 wks',
+    'Mowing, Edging · Every 2 weeks',
     '6,200 sq ft traced',
     '1234 Oak St, Round Rock',
     '(512) 555-0142',
@@ -32,7 +32,7 @@ test('booking request alert leads with the wanted day and the first-visit discou
   }], base, 'booking')
   assert.equal(text, [
     'BOOKING REQUEST · Jane Smith',
-    'Wants Tue Nov 3 · morning · every 2 wks',
+    'Wants Tue Nov 3 · morning · Every 2 weeks',
     '$45/visit · 1st $32 (−30%)',
     'Add-ons: hedge trimming',
     '"Gate code 4411, dog in yard"',
@@ -83,6 +83,18 @@ test('card, page and text read the same price', () => {
   assert.deepEqual(s.chips.slice(0, 3).map(c => c.label), ['New', 'Not booked', 'Website price'])
   assert.equal(s.price?.planDiscountPct, 10)
   assert.match(alertText(jane, [], base, 'new'), /saw \$45\/visit, 1st \$32/)
+})
+
+test('lead page and Jobs show the same price steps', () => {
+  const steps = (price: ReturnType<typeof bookingPrice>) => priceSteps(price!).map(r => [r.label, r.off, r.amount, r.unit])
+  const lead = summarizeLead({ ...jane, website_price_cents: 10500, website_first_visit_cents: 7400 })
+  const job = bookingPrice({ price_per_visit: 105, first_visit_price: 74, frequency: 'Bi-weekly', created_at: '2026-10-28T19:14:00Z' })
+  const expected = [['Full price', null, '$117', '/visit'], ['Every 2 weeks', '−10%', '$105', '/visit'], ['First visit', '−30%', '$74', null]]
+  assert.deepEqual(steps(lead.price), expected)
+  assert.deepEqual(steps(job), expected)
+  assert.deepEqual(priceSteps(job!, { firstVisit: false }).map(r => r.key), ['full', 'plan'])
+  assert.deepEqual(steps(bookingPrice({ price_per_visit: 93, first_visit_price: 65, frequency: 'monthly' })), [['Monthly', null, '$93', '/visit'], ['First visit', '−30%', '$65', null]])
+  assert.deepEqual(steps(bookingPrice({ price_per_visit: 120, frequency: 'onetime' })), [['One time', null, '$120', 'total']])
 })
 
 test('a later phone price replaces the website price everywhere', () => {

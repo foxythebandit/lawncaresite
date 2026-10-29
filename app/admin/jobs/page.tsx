@@ -7,6 +7,8 @@ import Icon from '../icons'
 import { formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import { signMapUrls } from '../signed-maps'
+import { tracedShapes } from '../leads/TracingMap'
+import { adminDb } from '@/lib/supabase/admin'
 
 export default async function AdminPage({
   searchParams,
@@ -19,6 +21,10 @@ export default async function AdminPage({
   ])
   // The map bucket is private (P7): sign each screenshot on the server; unsigned ones show no image.
   const signedMaps = await signMapUrls(all.map(b => b.map_screenshot_url))
+  // Visits without a saved map image show the lead's tracing instead, like the lead page.
+  const tracedLeadIds = [...new Set(all.filter(b => b.lead_id && !signedMaps.get(b.map_screenshot_url)).map(b => b.lead_id as string))]
+  const { data: tracings } = tracedLeadIds.length ? await adminDb().from('leads').select('id,lawn_tracing').in('id', tracedLeadIds) : { data: [] }
+  const shapesByLead = new Map((tracings ?? []).map(row => [row.id as string, tracedShapes(row.lawn_tracing)]))
 
   const now = new Date()
   const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7)
@@ -71,6 +77,14 @@ export default async function AdminPage({
   }
 
   const searchSuffix = q ? `&search=${encodeURIComponent(q)}` : ''
+
+  // Upcoming (soonest first, undated requests on top) and Past (newest first), instead of by status.
+  const dateOf = (b: (typeof all)[number]) => (b.confirmed_date ?? b.preferred_date ?? b.occurrence_on ?? null) as string | null
+  const isUpcoming = (b: (typeof all)[number]) => { const d = dateOf(b); return d ? d >= chicagoDate : ['pending', 'confirmed'].includes(b.status) }
+  const groups = [
+    { key: 'upcoming', label: 'Upcoming', rows: filtered.filter(isUpcoming).sort((a, b) => (dateOf(a) ?? '').localeCompare(dateOf(b) ?? '')) },
+    { key: 'past', label: 'Past', rows: filtered.filter(b => !isUpcoming(b)).sort((a, b) => (dateOf(b) ?? b.created_at).localeCompare(dateOf(a) ?? a.created_at)) },
+  ].filter(group => group.rows.length)
 
   return (
     <div className="crm-page">
@@ -142,8 +156,10 @@ export default async function AdminPage({
                 {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
               </div>
             ) : (
-              filtered.map(b => (
-                <BookingCard key={b.id} booking={{ ...b, map_screenshot_url: signedMaps.get(b.map_screenshot_url) ?? null } as any}
+              groups.map(group => <section key={group.key} className="admin-list-group" aria-label={group.label}>
+                <h2 className="admin-list-group-head">{group.label} <span>{group.rows.length}</span></h2>
+                {group.rows.map(b => (
+                <BookingCard key={b.id} shapes={(b.lead_id && shapesByLead.get(b.lead_id)) || []} booking={{ ...b, map_screenshot_url: signedMaps.get(b.map_screenshot_url) ?? null } as any}
                   emailConfigured={Boolean(process.env.RESEND_API_KEY)}
                   historyCount={visitCounts.get(b.customer_id ?? b.id) ?? 1}
                   quotedVisit={!!b.lead_id && quotedVisitByLead.get(b.lead_id) === b.id}
@@ -159,7 +175,8 @@ export default async function AdminPage({
                     amount: String(item.amount),
                   }))}
                   payments={allPayments.filter(payment => payment.booking_id === b.id)} />
-              ))
+                ))}
+              </section>)
             )}
           </div>
 

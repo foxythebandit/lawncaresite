@@ -1,6 +1,6 @@
 import { ESRI_IMAGERY } from '@/lib/map-imagery'
 
-type Shape = { name?: string; sqFt?: number; coords: [number, number][] }
+export type Shape = { name?: string; sqFt?: number; coords: [number, number][] }
 const TILE = 256
 const COLORS = ['#52b788', '#f4a261', '#4cc9f0', '#e76f51', '#c77dff']
 

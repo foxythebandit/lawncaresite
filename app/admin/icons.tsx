@@ -28,6 +28,7 @@ const paths = {
   pause: 'M8 5h3v14H8zM13 5h3v14h-3z',
   note: 'M5 4h14v16H5zM9 9h6M9 13h6M9 17h3',
   tag: 'M3 12V4h8l10 10-8 8zM7.5 8.5h.01',
+  pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   login: 'M10 17l5-5-5-5M15 12H3M15 4h4v16h-4',
 } as const
 

@@ -20,6 +20,7 @@ import { submissionId } from '@/lib/submission-id'
 import { OFFICE_LAT, OFFICE_LNG, photonSearch, geocodeAddress, cachedGeocode, type GeoResult } from '@/lib/address-search'
 import { isPropertyConfirmed, parseManualPropertyLocation, type PropertyConfirmation } from '@/lib/property-location'
 import { ESRI_IMAGERY, MAPBOX_TOKEN } from '@/lib/map-imagery'
+import { FREQUENCY_LABEL } from '@/lib/lead-board'
 import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
 import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
 import QuotePriceEditor, { type ManualPriceLine } from '@/app/admin/leads/QuotePriceEditor'
@@ -1242,7 +1243,7 @@ export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
           <h2>Price calculator</h2>
           <p>Saving never contacts the customer.</p>
           <QuotePriceEditor lines={manualLines} onLinesChange={setManualLines} discountCents={discountCents} onDiscountChange={setDiscountCents} includeMowing={includeMowing} onIncludeMowingChange={included => { setIncludeMowing(included); if (included) setShowStaffMap(true) }} mowingPriceCents={mowingPriceCents}
-            lawn={{ sqFt: lawnSqFt, freq, freqOptions: (Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([value, f]) => ({ value, label: f.discount ? `${f.label} (−${f.discount}%)` : f.label })),
+            lawn={{ sqFt: lawnSqFt, freq, freqOptions: (Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([value, f]) => ({ value, label: `${FREQUENCY_LABEL[value]}${f.discount ? ` · ${f.discount}% off` : ''}` })),
               onFreqChange: value => setFreq(value as Frequency), calculatedCents: Math.round(ongoingPrice * 100), overridePrice, onOverrideChange: setOverridePrice }} />
           <label>Notes for this quote<textarea aria-label="Quote notes" value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} placeholder="Anything the price depends on" /></label>
           <div className="staff-quote-actions">

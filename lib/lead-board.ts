@@ -35,7 +35,8 @@ export const CALL_OUTCOME: Record<CallOutcome, { label: string; icon: string; st
 /** Mowing frequencies as stored (`weekly`) or as older rows wrote them (`Bi-weekly`). */
 export const FREQUENCIES = ['weekly', 'biweekly', 'monthly', 'onetime'] as const
 export type Frequency = typeof FREQUENCIES[number]
-export const FREQUENCY_LABEL: Record<Frequency, string> = { weekly: 'weekly', biweekly: 'every 2 wks', monthly: 'monthly', onetime: 'one time' }
+/** One set of frequency words on every staff screen (UX audit Q7). */
+export const FREQUENCY_LABEL: Record<Frequency, string> = { weekly: 'Weekly', biweekly: 'Every 2 weeks', monthly: 'Monthly', onetime: 'One time' }
 export function normalizeFrequency(value: unknown): Frequency | null {
   const key = typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
   if (key === 'weekly') return 'weekly'

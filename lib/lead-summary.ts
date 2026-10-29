@@ -516,7 +516,37 @@ export function alertLegHistory(leg: AlertLeg, now = Date.now()): HistoryRow[] {
   return rows
 }
 
-/** "$45/visit · every 2 wks · Oct 28"; one-time prices read "$120 total · Oct 28". */
+/** A visit's own price on Jobs, with the same first-visit and plan-discount math as the lead's Price block. */
+export function bookingPrice(booking: SummaryBooking): Price | null {
+  if (!((booking.price_per_visit ?? 0) > 0)) return null
+  return makePrice(booking.manual_quote ? 'phone' : 'website', booking.created_at ?? null, booking.price_per_visit! * 100,
+    normalizeFrequency(booking.frequency) ?? 'onetime', booking.first_visit_price != null ? booking.first_visit_price * 100 : null)
+}
+
+export type PriceStep = { key: 'full' | 'plan' | 'first'; label: string; off: string | null; amount: string; unit: string | null }
+
+/**
+ * The price as steps, each with its dollar result (Caelan, 29 Oct): full price per visit, the plan
+ * discount for the frequency, the first-visit discount. The lead page and Jobs both render these rows.
+ * Prices are stored after the plan discount, so the full price is worked back from it (whole dollars).
+ */
+export function priceSteps(price: Price, options: { firstVisit?: boolean } = {}): PriceStep[] {
+  if (!price.recurring) return [{ key: 'plan', label: FREQUENCY_LABEL.onetime, off: null, amount: money(price.cents), unit: 'total' }]
+  const freq = price.frequency ? FREQUENCY_LABEL[price.frequency] : 'Per visit'
+  const pct = price.planDiscountPct
+  const steps: PriceStep[] = []
+  if (pct) {
+    const full = price.cents / (1 - pct / 100)
+    steps.push({ key: 'full', label: 'Full price', off: null, amount: money(price.cents % 100 === 0 ? Math.round(full / 100) * 100 : Math.round(full)), unit: '/visit' })
+  }
+  steps.push({ key: 'plan', label: freq, off: pct ? `−${pct}%` : null, amount: money(price.cents), unit: '/visit' })
+  if (options.firstVisit !== false && price.firstVisitCents != null) {
+    steps.push({ key: 'first', label: 'First visit', off: price.firstVisitPct ? `−${price.firstVisitPct}%` : null, amount: money(price.firstVisitCents), unit: null })
+  }
+  return steps
+}
+
+/** "$45/visit · Every 2 weeks · Oct 28"; one-time prices read "$120 total · Oct 28". */
 export function priceLine(price: Price): string {
   return [price.recurring ? `${money(price.cents)}/visit` : `${money(price.cents)} total`,
     price.recurring && price.frequency ? FREQUENCY_LABEL[price.frequency] : null, dayLabel(price.at)].filter(Boolean).join(' · ')

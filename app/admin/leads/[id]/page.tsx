@@ -12,8 +12,11 @@ import { callerIdFor, connectMode } from '@/lib/phone/flow'
 import { staffByPhone, staffPeople } from '@/lib/staff-directory'
 import { processLeadAlert } from '../quote-actions'
 import { CopyText, LeadChips, LeadLive, LogCallButton, RecordingButton, TextLink } from '../LeadLive'
-import { QuoteMap, QuotePanel, QuoteProvider, type QuoteBooking, type QuoteLead } from '../QuoteTools'
-import TracingMap, { tracedShapes } from '../TracingMap'
+import { AddNoteButton, EditContactButton, EditPriceButton, QuoteMap, QuotePanel, QuoteProvider, QuoteStatusChip, type QuoteBooking, type QuoteLead } from '../QuoteTools'
+import { ReopenButton, ScheduleVisit } from '../LeadActions'
+import { tracedShapes } from '../TracingMap'
+import LawnMap from '../../LawnMap'
+import PriceSteps from '../../PriceSteps'
 import Icon, { type IconName } from '../../icons'
 
 export const dynamic = 'force-dynamic'
@@ -138,13 +141,16 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const textBody = `Hi${firstName ? ` ${firstName}` : ''}, this is QuietGreen. Thanks for asking about ${(s.services.join(', ') || 'lawn care').toLowerCase()}${lead.address ? ` at ${lead.address}` : ''}. When is a good time to talk?`
   const directions = lead.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lead.address)}` : null
 
-  const map = (big: boolean) => shapes.length
-    ? <TracingMap shapes={shapes} width={big ? 720 : 640} height={big ? 440 : 300} label={`Traced lawn${s.tracedSqFt ? `, ${s.tracedSqFt.toLocaleString('en-US')} sq ft` : ''}`} />
-    : mapUrl ? <a href={mapUrl} target="_blank" rel="noopener noreferrer" className="crm-map-shot">
-      {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset */}
-      <img src={mapUrl} alt="Map screenshot from the website" />
-    </a>
-      : null
+  // Same map as Jobs: the website's saved map image, else the tracing on satellite tiles.
+  const map = (big: boolean) => mapUrl || shapes.length
+    ? <LawnMap screenshotUrl={mapUrl} shapes={shapes} sqFt={s.tracedSqFt} width={big ? 720 : 640} height={big ? 440 : 300} /> : null
+  const pendingVisit = s.booking === 'requested' && live?.status === 'pending' ? live as SummaryBooking & { id: string; updated_at: string } : null
+  // One main button per column (UX audit Q2); Call stays (sticky bar on phone, header on desktop).
+  const callBack = s.column === 'quoted'
+  const main = pendingVisit ? <a className="crm-button crm-button-primary" href="#schedule"><Icon name="calendar" size={17} />Schedule visit</a>
+    : s.column === 'closed' ? <ReopenButton leadId={lead.id} className="crm-button crm-button-primary" />
+    : s.column === 'customer' && existing ? <Link className="crm-button crm-button-primary" href={`/admin/customers/${existing.id}`}><Icon name="users" size={17} />Open customer</Link>
+    : null
 
   return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={price?.cents ?? null} frequency={price?.frequency ?? normalizeFrequency(lead.frequency)}>
     <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} customerMatches={customerMatches} quoteUrl={quoteUrl}>
@@ -155,11 +161,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="crm-lead2-head">
           <div className="crm-lead2-who">
-            <h1>{s.name}</h1>
+            <h1>{s.name} <EditContactButton /></h1>
             <p className="crm-lead2-contact">{s.phoneDisplay || '—'}{lead.email && <> · <CopyText text={lead.email} label="email" /></>}</p>
           </div>
           <div className="crm-lead2-actions">
-            <a className="crm-button crm-button-primary crm-call" href={`tel:${lead.phone}`}><Icon name="phone" size={17} />Call {s.phoneDisplay}</a>
+            {main}
+            <a className={`crm-button crm-call${main ? ' crm-desktop-only' : ' crm-button-primary'}`} href={`tel:${lead.phone}`}><Icon name="phone" size={17} />
+              {callBack ? `Call back${lead.check_back_on ? ` · ${dayLabel(lead.check_back_on)}` : ''}` : `Call ${s.phoneDisplay}`}</a>
             <TextLink className="crm-button" phone={lead.phone} body={textBody}><Icon name="message" size={17} />Text</TextLink>
             <LogCallButton className="crm-button crm-desktop-only" />
           </div>
@@ -173,18 +181,19 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
         <div className="crm-lead2-grid">
           <div className="crm-lead2-main">
-            <Block title="Price" className="crm-o1" aside={price ? dayLabel(price.at) : null}>
+            <Block title="Price" className="crm-o1 crm-price-card" aside={<><QuoteStatusChip />{price && <span>{dayLabel(price.at)}</span>}</>}>
               <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>
+              {price && <PriceSteps price={price} />}
               <Rows rows={[
-                ...(price?.firstVisitCents != null ? [{ label: 'First visit', value: <>{money(price.firstVisitCents)} {price.firstVisitPct && <Pill tone="ok">{price.firstVisitPct}% off</Pill>}</> }] : []),
-                ...(price?.planDiscountPct ? [{ label: 'Plan discount', value: <span className="crm-muted">{price.planDiscountPct}% off · {price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}</span> }] : []),
                 { label: 'Source', value: chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
                 ...otherPrices.map(row => ({ label: row.label, value: row.value })),
-                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill>
-                  {s.booking === 'requested' && live && <> <Link className="crm-inline-link" href={`/admin/jobs?filter=pending&search=${encodeURIComponent(lead.name ?? lead.phone)}`}>Schedule in Jobs →</Link></>}</> },
+                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
                 ...(lead.first_visit_on ? [{ label: 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),
-                ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: money(live!.overgrowth_fee! * 100) }] : []),
+                ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: <>{money(live!.overgrowth_fee! * 100)} <small className="crm-muted">in first visit</small></> }] : []),
               ]} />
+              {pendingVisit && <ScheduleVisit booking={pendingVisit} canEmail={!!lead.email && !!process.env.RESEND_API_KEY} />}
+              <QuotePanel />
+              <div className="crm-price-foot"><EditPriceButton hasPrice={!!price} /></div>
             </Block>
 
             <Block title="Property" className="crm-o2" aside={directions && <a href={directions} target="_blank" rel="noopener noreferrer">Directions ↗</a>}>
@@ -215,7 +224,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </div>
             </Block>
 
-            <Block title="History" className="crm-o5" aside={<LogCallButton className="crm-button crm-button-sm" />}>
+            <Block title="History" className="crm-o5" aside={<><AddNoteButton /><LogCallButton className="crm-button crm-button-sm" /></>}>
               <ol className="crm-history">
                 {timeline.map(row => 'steps' in row ? <li key={row.key}>
                   <span className="crm-history-time">{row.steps[0].time}</span>
@@ -281,8 +290,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <aside className="crm-lead2-side">
             {map(true) && <div className="crm-lead2-bigmap">{map(true)}
               <p className="crm-block-head"><span>{lead.address ?? '—'}</span><span>{s.tracedSqFt ? `${s.tracedSqFt.toLocaleString('en-US')} sq ft` : '—'}</span></p></div>}
-            <div className="crm-o7"><QuotePanel /></div>
-            <div className="crm-o9"><QuoteMap /></div>
+            <div className="crm-o1"><QuoteMap /></div>
           </aside>
         </div>
 

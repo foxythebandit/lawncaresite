@@ -9,6 +9,8 @@ export type BoardCard = {
   id: string; href: string; column: BoardColumn
   name: string; ago: string; value: string | null
   card: LeadSummary['card']
+  /** Lowercase name, phone digits and address, for the Leads search box. */
+  search: string
   createdAt: string; checkBackOn: string | null
   /** New column only: not taken from the alert, or saw the website price and didn't book. */
   warm: boolean
@@ -20,6 +22,7 @@ export function boardCard(lead: SummaryLead & { estimated_value?: unknown }, boo
   return {
     id: lead.id, href: `/admin/leads/${lead.id}`, column: s.column,
     name: s.name, ago: ago(lead.created_at, now), card: s.card,
+    search: [s.name, String(lead.phone ?? '').replace(/\D/g, ''), lead.address ?? ''].join(' ').toLowerCase(),
     value: lead.estimated_value != null && Number.isFinite(value) && value > 0 ? money(Math.round(value * 100)) : null,
     createdAt: lead.created_at, checkBackOn: lead.check_back_on ?? null,
     warm: (!!lead.not_taken_at && !lead.taken_by) || (s.price?.source === 'website' && s.booking === 'not_booked'),
@@ -40,6 +43,14 @@ export function sortColumn(column: BoardColumn, cards: BoardCard[]): BoardCard[]
       : a.checkBackOn ? -1 : b.checkBackOn ? 1 : newest(a, b))
   }
   return list.sort(newest)
+}
+
+/** Name or address words, or 3+ digits of the phone (UX audit Q6). */
+export function matchesSearch(card: BoardCard, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const digits = q.replace(/\D/g, '')
+  return card.search.includes(q) || (digits.length >= 3 && digits.length === q.replace(/[\s()+.-]/g, '').length && card.search.includes(digits))
 }
 
 export function groupBoard(cards: BoardCard[]): Record<BoardColumn, BoardCard[]> {

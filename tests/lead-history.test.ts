@@ -50,7 +50,7 @@ test('a later phone price becomes the headline and the website price stays as a 
   const prices = allPrices({ ...lead, phone_price_cents: 5000, phone_frequency: 'weekly', phone_price_at: at('20:00') })
   assert.equal(prices.headline?.source, 'phone')
   assert.equal(prices.headline?.cents, 5000)
-  assert.deepEqual(prices.others.map(r => [r.label, r.value]), [['Website', '$45/visit · every 2 wks · Oct 28']])
+  assert.deepEqual(prices.others.map(r => [r.label, r.value]), [['Website', '$45/visit · Every 2 weeks · Oct 28']])
 })
 
 test('emailed quote, phone and website prices all show; the newest is the headline', () => {
@@ -58,7 +58,7 @@ test('emailed quote, phone and website prices all show; the newest is the headli
     quote_draft: draft(48), quote_emailed_at: at('21:00') })
   assert.equal(prices.headline?.source, 'emailed')
   assert.equal(prices.headline?.cents, 4800)
-  assert.deepEqual(prices.others.map(r => [r.label, r.value]), [['Phone', '$50/visit · every 2 wks · Oct 28'], ['Website', '$45/visit · every 2 wks · Oct 28']])
+  assert.deepEqual(prices.others.map(r => [r.label, r.value]), [['Phone', '$50/visit · Every 2 weeks · Oct 28'], ['Website', '$45/visit · Every 2 weeks · Oct 28']])
 })
 
 test('an unsent draft is shown as a row but never the headline', () => {

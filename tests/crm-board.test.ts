@@ -7,7 +7,7 @@ import { websitePrice } from '@/lib/website-intake'
 
 const now = Date.parse('2026-10-28T20:00:00Z')
 const card = (id: string, extra: Partial<BoardCard> = {}): BoardCard => ({
-  id, href: `/admin/leads/${id}`, column: 'new', name: id, ago: '1h', value: null, card: { amount: null, unit: null, status: null, detail: '' },
+  id, href: `/admin/leads/${id}`, column: 'new', name: id, ago: '1h', value: null, card: { amount: null, unit: null, status: null, detail: '' }, search: id,
   createdAt: '2026-10-28T10:00:00Z', checkBackOn: null, warm: false, ...extra,
 })
 

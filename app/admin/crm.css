@@ -176,6 +176,9 @@
   display: flex; flex-direction: column; background: var(--c-surface);
   border: 1px solid var(--c-border); border-radius: var(--r-card); box-shadow: var(--shadow-card); overflow: hidden;
 }
+.admin-list-group + .admin-list-group { border-top: 1px solid var(--c-border); }
+.admin-list-group-head { margin: 0; padding: 10px 16px; background: var(--c-subtle); border-bottom: 1px solid var(--c-border); font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--c-text-2); }
+.admin-list-group-head span { margin-left: 4px; color: var(--c-text-3); font-weight: 500; }
 .crm-list > * + *, .admin-list > * + * { border-top: 1px solid var(--c-border); }
 .admin-empty, .crm-empty {
   padding: 56px 20px; text-align: center; color: var(--c-text-2); font-size: 14px;
@@ -225,8 +228,12 @@
 .admin-customer-note { padding: 10px 12px; border-radius: var(--r-control); background: var(--c-surface); border: 1px solid var(--c-border); font-size: 13.5px; }
 .admin-customer-note strong { display: block; font-size: 12px; color: var(--c-text-3); font-weight: 500; margin-bottom: 3px; }
 .admin-customer-note p { white-space: pre-wrap; }
-.admin-card-screenshot { display: block; margin: 0 0 14px; border-radius: var(--r-control); overflow: hidden; border: 1px solid var(--c-border); max-width: 420px; }
-.admin-card-screenshot img { display: block; width: 100%; max-height: 200px; object-fit: cover; }
+.admin-card-map { margin: 0 0 14px; max-width: 420px; }
+.admin-card-price { margin: 0 0 14px; max-width: 420px; }
+.crm-price-steps dd strong { font-weight: 650; }
+.crm-price-steps dd small { color: var(--c-text-3); }
+.crm-price-card .crm-kv > div, .admin-card-price .crm-kv > div { grid-template-columns: 136px minmax(0, 1fr); }
+.crm-price-steps dt .crm-pill { margin-left: 4px; }
 .admin-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 0 16px; }
 .admin-card-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-left: auto; font-size: 13px; }
 .admin-card-history-link, .admin-edit-service-link, .crm-link {
@@ -888,6 +895,9 @@
 .crm-tone-neutral { color: var(--c-text-2); }
 .crm-board-page { max-width: 1520px; }
 .crm-board-heading { align-items: center; margin-bottom: 18px; }
+.crm-board-search { margin: -6px 0 14px; }
+.crm-board-search .admin-search-input { width: min(100%, 320px); }
+@media (max-width: 860px) { .crm-board-search { margin: 0 0 10px; } .crm-board-search .admin-search-input { width: 100%; height: 42px; font-size: 16px; } }
 .crm-board-toggle .admin-view-btn { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 500; }
 .crm-board-chips { display: none; }
 .crm-board-cols { display: grid; grid-template-columns: repeat(6, minmax(168px, 1fr)); gap: 10px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
@@ -1057,6 +1067,21 @@
 .crm-block-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .crm-block-aside { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--c-text-2); white-space: nowrap; }
 .crm-block-aside a { color: var(--c-brand); text-decoration: none; display: inline-flex; align-items: center; min-height: 44px; margin: -12px 0; }
+.crm-block-aside { display: inline-flex; align-items: center; gap: 8px; }
+.crm-block-aside .crm-chip { text-transform: none; letter-spacing: 0; }
+.crm-price-steps + .crm-kv > div:first-child { border-top: 1px solid var(--c-border); }
+.crm-price-foot { display: flex; justify-content: flex-start; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--c-border); }
+.crm-icon-button { display: inline-grid; place-items: center; width: 36px; height: 36px; margin: -4px 0 -4px 2px; vertical-align: middle; border: 0; border-radius: 999px; background: none; color: var(--c-text-3); cursor: pointer; position: relative; }
+.crm-icon-button::after { content: ''; position: absolute; inset: -4px; }
+.crm-icon-button:hover { background: var(--c-subtle); color: var(--c-text); }
+.crm-schedule { margin-top: 12px; padding: 12px; border-radius: var(--r-control); background: var(--c-subtle); scroll-margin-top: 80px; }
+.crm-schedule-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.crm-schedule .crm-field { margin-bottom: 10px; }
+.crm-schedule .crm-button { width: 100%; }
+.crm-schedule p { margin: 8px 0 0; font-size: 13px; }
+.crm-error { color: var(--c-red); font-size: 13px; }
+.crm-quote-panel .crm-action-row:first-child { margin-top: 12px; }
+#price-calculator { scroll-margin-top: 72px; }
 .crm-bignum { margin: 0 0 8px; font-size: 32px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; color: var(--c-text); }
 .crm-bignum small { margin-left: 6px; font-size: 13.5px; font-weight: 500; letter-spacing: 0; color: var(--c-text-2); }
 .crm-kv { margin: 0; font-size: 13.5px; }
@@ -1159,3 +1184,10 @@
   .crm-logcall-form .crm-choices[aria-label="How often"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @media (prefers-reduced-motion: reduce) { .crm-outcomes, .crm-logcall-fields { animation: none; } }
+
+/* Today with no jobs (UX audit Q11): next visit and today's call-backs. */
+.admin-today-next { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+.admin-today-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 6px 0; border-top: 1px solid var(--c-border); color: var(--c-text); text-decoration: none; font-size: 14px; }
+.admin-today-row:first-of-type { border-top: 0; }
+.admin-today-row > span:not(.crm-pill) { color: var(--c-text-2); text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-today-next .crm-muted { margin: 4px 0; font-size: 14px; }

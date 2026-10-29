@@ -7,6 +7,10 @@ import { changeAgreement, changeJob, createPaymentLink, linkJobIdentity, markCom
 import { formatMoney, jobPrice, jobStatusLabel, type JobLine } from '@/lib/crm-jobs'
 import { formatAttributionLabel } from '@/lib/attribution'
 import ReminderButtons from './ReminderButtons'
+import PriceSteps from './PriceSteps'
+import LawnMap from './LawnMap'
+import type { Shape } from './leads/TracingMap'
+import { bookingPrice, money as dollars } from '@/lib/lead-summary'
 import Icon from './icons'
 import { uuid } from '@/lib/uuid'
 
@@ -39,6 +43,8 @@ type Props = {
   booking: Booking; historyCount?: number; customers?: Customer[]; properties?: Property[]
   agreement?: Agreement | null; futureJobIds?: string[]; items?: JobLine[]; payments?: Payment[]
   emailConfigured?: boolean; quotedVisit?: boolean
+  /** The lead's website tracing, drawn when the visit has no saved map image. */
+  shapes?: Shape[]
 }
 
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
@@ -62,7 +68,7 @@ function addonDetails(addons: Record<string, unknown>) {
   }).join('; ')
 }
 
-export default function BookingCard({ booking, historyCount = 1, customers = [], properties = [], agreement, futureJobIds = [], items = [], payments = [], emailConfigured = false, quotedVisit = false }: Props) {
+export default function BookingCard({ booking, historyCount = 1, customers = [], properties = [], agreement, futureJobIds = [], items = [], payments = [], emailConfigured = false, quotedVisit = false, shapes = [] }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [expanded, setExpanded] = useState(false)
@@ -100,6 +106,9 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
   const samePhone = customers.filter(c => (c.phone ?? '').replace(/\D/g, '') === booking.phone.replace(/\D/g, ''))
   const actualPaid = payments.reduce((total, row) => total + Number(row.amount), 0)
   const source = formatAttributionLabel(booking)
+  const price = bookingPrice(booking)
+  // Plan visits after the first carry the plan's prices; the first-visit discount was the first one's.
+  const firstVisit = quotedVisit || (!booking.agreement_id && !booking.occurrence_on)
 
   function opId(key: string) {
     if (!operation.current || operation.current.key !== key) operation.current = { key, id: uuid() }
@@ -148,13 +157,16 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         <div className="admin-card-fact"><span>Job total · paid</span><span>{money(jobPrice(booking))} · {money(actualPaid)}</span></div>
         {source && <div className="admin-card-fact"><span>Source</span><span>{source}</span></div>}
       </div>
-      {(booking.first_visit_price != null || booking.accepted_quote_snapshot != null || booking.customer_notes || (booking.addon_interest && Object.keys(booking.addon_interest).length > 0)) && <div className="admin-card-notes">
-        {booking.first_visit_price != null && <div className="admin-card-row">Original first-visit quote: {money(booking.first_visit_price)}{booking.overgrowth_fee ? ` (cleanup component before discount: ${money(booking.overgrowth_fee)}; already included)` : ''}. Ongoing price: {money(booking.price_per_visit)} per visit.</div>}
+      {price && <div className="admin-card-price">
+        <PriceSteps price={price} firstVisit={firstVisit} />
+        {firstVisit && (booking.overgrowth_fee ?? 0) > 0 && <dl className="crm-kv"><div><dt>Cleanup fee</dt><dd>{dollars(booking.overgrowth_fee! * 100)} <small>in first visit</small></dd></div></dl>}
+      </div>}
+      {(booking.accepted_quote_snapshot != null || booking.customer_notes || (booking.addon_interest && Object.keys(booking.addon_interest).length > 0)) && <div className="admin-card-notes">
         {booking.accepted_quote_snapshot != null && <div className="admin-card-row">Accepted quote is saved with this job. Operational edits below preserve it.</div>}
         {booking.customer_notes && <div className="admin-customer-note"><strong>Customer note</strong><p>{booking.customer_notes}</p></div>}
         {booking.addon_interest && Object.keys(booking.addon_interest).length > 0 && <div className="admin-customer-note"><strong>Submitted add-on interest</strong><p>{addonDetails(booking.addon_interest)}</p></div>}
       </div>}
-      {booking.map_screenshot_url && <a href={booking.map_screenshot_url} target="_blank" rel="noopener noreferrer" className="admin-card-screenshot"><img src={booking.map_screenshot_url} alt="Traced lawn" /></a>}
+      {(booking.map_screenshot_url || shapes.length > 0) && <div className="admin-card-map"><LawnMap screenshotUrl={booking.map_screenshot_url} shapes={shapes} sqFt={booking.sq_ft} /></div>}
       <div className="admin-card-actions">
         <a href={`tel:${booking.phone}`} className="crm-button crm-button-primary admin-action-call"><Icon name="phone" size={15} />Call {formatPhone(booking.phone)}</a>
         <a href={`sms:${booking.phone}`} className="crm-button admin-action-text"><Icon name="message" size={15} />Text</a>
