@@ -7,7 +7,8 @@ import type { JobLine } from '@/lib/crm-jobs'
 import Icon from '../../icons'
 import { uuid } from '@/lib/uuid'
 
-type Property = { id: string; address: string; hasActivePlan: boolean }
+type OpenVisit = { id: string; date: string | null; price: number; recurring: boolean }
+type Property = { id: string; address: string; hasActivePlan: boolean; openVisits: OpenVisit[] }
 type Line = { key: string; description: string; amount: string }
 
 const blankLine = (): Line => ({ key: uuid(), description: '', amount: '' })
@@ -33,6 +34,21 @@ export default function CustomerActions({ customerId, properties }: { customerId
   const [planPrice, setPlanPrice] = useState('')
   const [planEvery, setPlanEvery] = useState('2-week')
   const [planDate, setPlanDate] = useState('')
+  const [planFrom, setPlanFrom] = useState('new')
+  const planVisits = properties.find(p => p.id === planProperty)?.openVisits ?? []
+
+  /** A visit already booked at the property (a lead's recurring booking) becomes the first plan visit. */
+  function choosePlanProperty(id: string) {
+    setPlanProperty(id)
+    const visit = (properties.find(p => p.id === id)?.openVisits ?? []).find(v => v.recurring)
+    choosePlanFrom(visit?.id ?? 'new', id)
+  }
+  function choosePlanFrom(value: string, propertyId = planProperty) {
+    setPlanFrom(value)
+    const visit = (properties.find(p => p.id === propertyId)?.openVisits ?? []).find(v => v.id === value)
+    if (visit?.date) setPlanDate(visit.date)
+    if (visit && visit.price > 0 && !planPrice) setPlanPrice(visit.price.toFixed(2))
+  }
 
   function op(name: string) {
     if (!ops.current[name]) ops.current[name] = uuid()
@@ -70,10 +86,11 @@ export default function CustomerActions({ customerId, properties }: { customerId
     const [count, unit] = planEvery.split('-') as [string, 'week' | 'month']
     startTransition(async () => {
       try {
-        const result = await startCustomerPlan({ jobOperationId: op('plan-job'), planOperationId: op('plan'), customerId,
+        const result = await startCustomerPlan({ jobOperationId: op('plan-job'), planOperationId: op('plan'), confirmOperationId: op('plan-confirm'), customerId,
           propertyId: planProperty === 'new' ? null : planProperty, newAddress: planProperty === 'new' ? planAddress : null,
+          existingBookingId: planProperty !== 'new' && planFrom !== 'new' ? planFrom : null,
           firstDate: planDate, intervalUnit: unit, intervalCount: Number(count), pricePerVisit: planPrice.trim() })
-        finish(result, 'Mowing plan started. The first visit is under Jobs.')
+        finish(result, 'Mowing plan started. The first visit is under Upcoming visits.')
       } catch { setMessage({ text: 'Could not start the plan. Retry to check the same request.', error: true }) }
     })
   }
@@ -91,7 +108,7 @@ export default function CustomerActions({ customerId, properties }: { customerId
   return <>
     <div className="crm-customer-actions">
       <button type="button" className={`crm-button${open === 'job' ? ' crm-button-primary' : ''}`} onClick={() => { setOpen(open === 'job' ? null : 'job'); setMessage(null) }}>+ Add job</button>
-      <button type="button" className={`crm-button${open === 'plan' ? ' crm-button-primary' : ''}`} onClick={() => { setOpen(open === 'plan' ? null : 'plan'); setMessage(null) }}><Icon name="calendar" size={15} />Start mowing plan</button>
+      <button type="button" className={`crm-button${open === 'plan' ? ' crm-button-primary' : ''}`} onClick={() => { if (open !== 'plan') choosePlanProperty(planProperty); setOpen(open === 'plan' ? null : 'plan'); setMessage(null) }}><Icon name="calendar" size={15} />Start mowing plan</button>
     </div>
 
     {open === 'job' && <section className="crm-sheet" aria-label="Add job">
@@ -121,9 +138,15 @@ export default function CustomerActions({ customerId, properties }: { customerId
 
     {open === 'plan' && <section className="crm-sheet" aria-label="Start mowing plan">
       <h2>Start a mowing plan</h2>
-      <p>Creates the first visit and repeats it on a schedule. Each finished visit creates the next one. Extra work stays separate — use Add job.</p>
+      <p>Repeats lawn care on a schedule. Each visit you mark done books the next one. Extra work stays separate — use Add job.</p>
       <div className="crm-sheet-grid">
-        {propertyPicker(planProperty, setPlanProperty, planAddress, setPlanAddress, planProperties)}
+        {propertyPicker(planProperty, choosePlanProperty, planAddress, setPlanAddress, planProperties)}
+        {planVisits.length > 0 && <label className="crm-field">First visit
+          <select value={planFrom} onChange={e => choosePlanFrom(e.target.value)}>
+            {planVisits.map(v => <option key={v.id} value={v.id}>Already booked{v.date ? ` · ${v.date}` : ''} · ${v.price.toFixed(2)}</option>)}
+            <option value="new">A new visit</option>
+          </select>
+        </label>}
         <label className="crm-field">Price per visit ($)<input inputMode="decimal" value={planPrice} placeholder="45.00" onChange={e => /^\d{0,8}(\.\d{0,2})?$/.test(e.target.value) && setPlanPrice(e.target.value)} /></label>
         <label className="crm-field">How often
           <select value={planEvery} onChange={e => setPlanEvery(e.target.value)}>

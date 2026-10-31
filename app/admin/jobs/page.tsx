@@ -165,6 +165,8 @@ export default async function AdminPage({
                   quotedVisit={!!b.lead_id && quotedVisitByLead.get(b.lead_id) === b.id}
                   customers={identities.customers} properties={identities.properties}
                   agreement={agreements.find(a => a.id === b.agreement_id) as any}
+                  customerPlan={(!b.agreement_id && b.customer_id && agreements.find(a => a.status === 'active'
+                    && a.customer_id === b.customer_id && a.property_id === b.property_id)) as any || null}
                   futureJobIds={all.filter(row => row.agreement_id === b.agreement_id
                     && Boolean(b.agreement_id) && ['pending','confirmed'].includes(row.status)
                     && (!((row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) as string | null)
