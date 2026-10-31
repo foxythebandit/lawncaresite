@@ -1,0 +1,150 @@
+import { formatPhone } from '@/lib/format-phone'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { getAgreements, getBookings, getCustomers, getJobPayments, getLeads } from '../../actions'
+import { formatMoney, jobPrice, jobStatusLabel } from '@/lib/crm-jobs'
+import { requireStaff } from '@/lib/staff'
+import Icon from '../../icons'
+import CustomerActions from './CustomerActions'
+import UpcomingVisits, { type UpcomingVisit } from './UpcomingVisits'
+
+export const dynamic = 'force-dynamic'
+
+const validId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function dateText(value: string | null) {
+  if (!value) return 'Not scheduled'
+  return new Date(value.length === 10 ? `${value}T12:00:00` : value).toLocaleDateString('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+const money = formatMoney
+const visitCount = (n: number) => `${n} visit${n === 1 ? '' : 's'}`
+
+export default async function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  await requireStaff(`/admin/customers/${id}`)
+  if (!validId.test(id)) notFound()
+  const [{ customers, properties }, allJobs, allLeads, allPayments, allAgreements] = await Promise.all([
+    getCustomers(), getBookings(), getLeads(), getJobPayments(), getAgreements(),
+  ])
+  const customer = customers.find(row => row.id === id)
+  if (!customer) notFound()
+  const ownProperties = properties.filter(row => row.customer_id === id)
+  const jobs = allJobs.filter(row => row.customer_id === id)
+  const leads = allLeads.filter(row => row.customer_id === id)
+  const jobIds = new Set(jobs.map(row => row.id))
+  const payments = allPayments.filter(row => jobIds.has(row.booking_id))
+  const historicalAmounts = jobs.filter(row => row.amount_charged != null)
+  const agreements = allAgreements.filter(row => row.customer_id === id)
+  const addressById = new Map(ownProperties.map(row => [row.id, row.address]))
+
+  // Open visits first, soonest (and overdue) on top; everything else is history, newest first.
+  const visitDate = (job: (typeof jobs)[number]) => (job.confirmed_date ?? job.preferred_date ?? null) as string | null
+  const isOpen = (job: (typeof jobs)[number]) => ['pending', 'confirmed'].includes(job.status)
+  const openJobs = jobs.filter(isOpen).sort((a, b) => (visitDate(a) ?? '').localeCompare(visitDate(b) ?? ''))
+  const pastJobs = jobs.filter(job => !isOpen(job))
+    .sort((a, b) => (visitDate(b) ?? b.created_at).localeCompare(visitDate(a) ?? a.created_at))
+  const activePlans = agreements.filter(agreement => agreement.status === 'active')
+  const needsPlan = (job: (typeof jobs)[number]) => !job.agreement_id && !job.one_time
+    && Boolean(job.frequency?.trim()) && !/^(one[ -]?time|single|once)$/i.test(job.frequency.trim())
+  const upcomingVisits: UpcomingVisit[] = openJobs.map(job => ({
+    id: job.id, updatedAt: job.updated_at, status: job.status, date: visitDate(job), time: job.confirmed_time ?? null,
+    address: job.address, price: jobPrice(job), inPlan: Boolean(job.agreement_id),
+    joinPlanId: needsPlan(job) ? activePlans.find(plan => plan.property_id === job.property_id)?.id ?? null : null,
+    needsPlan: needsPlan(job),
+  }))
+  const nextPlanVisit = (agreementId: string) => openJobs.find(job => job.agreement_id === agreementId)
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
+
+  const nameParts: string[] = String(customer.name ?? '').trim().split(/\s+/).filter(Boolean)
+  const initials = nameParts.map(part => part[0]).filter((_, i) => i === 0 || i === nameParts.length - 1).join('').toUpperCase() || '?'
+
+  return <main className="crm-page crm-customer-detail">
+    <Link className="crm-back" href="/admin/customers"><Icon name="arrowLeft" size={15} />Customers</Link>
+    <div className="crm-page-heading">
+      <div className="crm-identity">
+        <span className="crm-avatar crm-avatar-lg" aria-hidden="true">{initials}</span>
+        <div><h1>{customer.name || 'Unnamed customer'}</h1>
+          <p className="crm-muted">{formatPhone(customer.phone) || 'No phone'}{customer.email ? ` · ${customer.email}` : ''}</p></div>
+      </div>
+      <div className="crm-head-actions">
+        {customer.phone && <a className="crm-button crm-button-primary" href={`tel:${customer.phone}`}><Icon name="phone" size={15} />Call</a>}
+        {customer.phone && <a className="crm-button" href={`sms:${customer.phone}`}><Icon name="message" size={15} />Text</a>}
+        {customer.email && <a className="crm-button" href={`mailto:${customer.email}`}><Icon name="mail" size={15} />Email</a>}
+      </div>
+    </div>
+    <CustomerActions customerId={id} properties={ownProperties.map(property => ({ id: property.id, address: property.address,
+      hasActivePlan: agreements.some(agreement => agreement.property_id === property.id && ['active', 'paused'].includes(agreement.status)),
+      // A recurring visit already booked here (from a lead) can be the plan's first visit instead of a duplicate.
+      openVisits: openJobs.filter(job => job.property_id === property.id && !job.agreement_id)
+        .map(job => ({ id: job.id, date: visitDate(job), price: Number(job.price_per_visit ?? jobPrice(job)), recurring: needsPlan(job) })) }))} />
+    {activePlans.map(agreement => {
+      const next = nextPlanVisit(agreement.id)
+      const nextDate = next ? visitDate(next) : null
+      return <div className="crm-plan-card" key={agreement.id}>
+        <div>
+          <strong>Mowing plan · every {agreement.interval_count === 1 ? '' : `${agreement.interval_count} `}{agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {money(agreement.price_per_visit)}/visit</strong>
+          <span>{addressById.get(agreement.property_id) || 'Property'} · {next
+            ? `next visit ${dateText(nextDate)}${nextDate && nextDate < today ? ' (overdue — mark it done or move it)' : ''}`
+            : 'no visit booked'}</span>
+        </div>
+      </div>
+    })}
+    <UpcomingVisits visits={upcomingVisits} firstName={String(customer.name ?? '').trim().split(/\s+/)[0] || 'the customer'}
+      hasEmail={Boolean(customer.email)} emailConfigured={Boolean(process.env.RESEND_API_KEY)} />
+    <div className="crm-customer-sections">
+      <section className="crm-panel crm-customer-wide"><h2>Past visits ({pastJobs.length})</h2>
+        {pastJobs.length ? pastJobs.map(job => <div className="crm-customer-entry" key={job.id}>
+          <div>
+            <strong>{job.address}</strong>
+            <span>{dateText(job.confirmed_date || job.preferred_date || job.created_at)} · {money(jobPrice(job))} job total
+              {job.accepted_quote_snapshot ? ' · Accepted quote preserved' : ''}</span>
+            {job.lead_id && <Link href={`/admin/leads/${job.lead_id}`}>Open linked lead →</Link>}
+          </div>
+          <span className={`admin-badge admin-badge-${job.status}`}>{jobStatusLabel(job.status)}</span>
+        </div>) : <p className="crm-muted">No finished visits yet.</p>}
+      </section>
+      <section className="crm-panel"><h2>Properties ({ownProperties.length})</h2>
+        {ownProperties.length ? ownProperties.map(property => <div className="crm-customer-entry" key={property.id}>
+          <div>
+            <strong>{property.address}</strong>
+            <span>{visitCount(jobs.filter(job => job.property_id === property.id).length)}{property.measured_at ? ` · Measured ${dateText(property.measured_at)}` : ''}</span>
+          </div>
+        </div>) : <p className="crm-muted">No property linked yet.</p>}
+      </section>
+      <section className="crm-panel"><h2>Mowing plans ({agreements.length})</h2>
+        {agreements.length ? agreements.map(agreement => <div className="crm-customer-entry" key={agreement.id}>
+          <div>
+            <strong>{addressById.get(agreement.property_id) || 'Property'}</strong>
+            <span>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {agreement.status === 'active' ? `Next ${nextPlanVisit(agreement.id) ? dateText(visitDate(nextPlanVisit(agreement.id)!)) : 'not booked'} · ` : ''}{money(agreement.price_per_visit)} per visit</span>
+          </div>
+          <span className={`admin-badge admin-badge-${agreement.status === 'active' ? 'confirmed' : agreement.status === 'paused' ? 'pending' : 'canceled'}`}>{agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span>
+        </div>) : <p className="crm-muted">No mowing plan.</p>}
+      </section>
+      <section className="crm-panel"><h2>Payments ({payments.length + historicalAmounts.length})</h2>
+        {payments.length ? payments.map(payment => <div className="crm-customer-entry" key={payment.id}>
+          <div>
+            <strong>{money(payment.amount)} · {payment.method}</strong>
+            <span>{dateText(payment.paid_on)} · {payment.provenance === 'manual' ? 'Staff recorded' : 'Processor verified'}</span>
+          </div>
+        </div>) : null}
+        {historicalAmounts.length > 0 && <><h3>Historical recorded amounts</h3><p className="crm-muted">Kept separately from dated payments; these records have not been reconciled.</p>
+          {historicalAmounts.map(job => <div className="crm-customer-entry" key={job.id}>
+            <div>
+              <strong>{money(job.amount_charged)} · {job.payment_method || 'Method unknown'}</strong>
+              <span>{job.address} · Paid date unverified{job.payment_recorded_at ? ` · Recorded ${dateText(job.payment_recorded_at)}` : ''}</span>
+            </div>
+          </div>)}</>}
+        {payments.length === 0 && historicalAmounts.length === 0 && <p className="crm-muted">No payments recorded for linked visits.</p>}
+      </section>
+      <section className="crm-panel"><h2>Leads ({leads.length})</h2>
+        {leads.length ? leads.map(lead => <div className="crm-customer-entry" key={lead.id}>
+          <div>
+            <Link href={`/admin/leads/${lead.id}`}><strong>{lead.address || 'Address pending'} →</strong></Link>
+            <span>{dateText(lead.created_at)} · {lead.stage}</span>
+          </div>
+        </div>) : <p className="crm-muted">No lead linked to this customer.</p>}
+      </section>
+    </div>
+  </main>
+}

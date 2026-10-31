@@ -1,5 +1,7 @@
 import { getBookings } from '../actions'
 import DayJobs from '../DayJobs'
+import ScheduleTabs from '../ScheduleTabs'
+import { formatMoney, formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +28,7 @@ export default async function WeekPage() {
       isToday: key === todayKey,
       label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
       jobs,
-      revenue: jobs.reduce((s, b) => s + (b.price_per_visit ?? 0), 0),
+      revenue: jobs.reduce((s, b) => s + jobPrice(b), 0),
     }
   })
 
@@ -34,41 +36,39 @@ export default async function WeekPage() {
   const weekRevenue = days.reduce((s, d) => s + d.revenue, 0)
 
   return (
-    <>
+    <div className="crm-page">
+      <div className="crm-page-heading">
+        <div><h1>Next 7 days</h1><p className="crm-muted">Confirmed visits, day by day.</p></div>
+      </div>
+
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{weekJobs}</span>
-          <span className="admin-stat-label">Jobs this week</span>
+          <span className="admin-stat-label">Jobs next 7 days</span>
         </div>
-        <div className="admin-stat-divider" />
         <div className="admin-stat">
-          <span className="admin-stat-val admin-stat-money">${weekRevenue.toLocaleString()}</span>
-          <span className="admin-stat-label">Week's revenue</span>
+          <span className="admin-stat-val">{formatMoneyWhole(weekRevenue)}</span>
+          <span className="admin-stat-label">Scheduled job value</span>
         </div>
       </div>
 
-      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div className="admin-schedule-head"><ScheduleTabs current="week" /></div>
+      <div className="admin-week">
         {days.map(day => (
           <div key={day.key} className={`admin-week-day${day.isToday ? ' admin-week-day-today' : ''}`}>
             <div className="admin-week-day-header">
               <span className="admin-week-day-label">
-                {day.isToday && <span className="admin-week-day-today-tag">Today</span>}
                 {day.label}
+                {day.isToday && <span className="admin-week-day-today-tag">Today</span>}
               </span>
-              {day.jobs.length > 0 && (
-                <span className="admin-week-day-summary">
-                  {day.jobs.length} job{day.jobs.length === 1 ? '' : 's'} · ${day.revenue.toLocaleString()}
-                </span>
-              )}
+              <span className="admin-week-day-summary">
+                {day.jobs.length > 0 ? `${day.jobs.length} job${day.jobs.length === 1 ? '' : 's'} · ${formatMoney(day.revenue)}` : 'No jobs'}
+              </span>
             </div>
-            {day.jobs.length === 0 ? (
-              <div className="admin-week-day-empty">No jobs confirmed.</div>
-            ) : (
-              <DayJobs jobs={day.jobs} />
-            )}
+            {day.jobs.length > 0 && <DayJobs jobs={day.jobs} />}
           </div>
         ))}
       </div>
-    </>
+    </div>
   )
 }

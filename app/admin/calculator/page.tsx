@@ -83,7 +83,7 @@ export default function CalculatorPage() {
           <span className="logo-dot" style={{ background: 'var(--green-bright)', width: 9, height: 9, borderRadius: '50%', display: 'inline-block' }} />
           <span>QuietGreen</span>
         </div>
-        <Link href="/admin" style={{ fontSize: 13, color: 'rgba(255,255,255,.7)', textDecoration: 'none' }}>
+        <Link href="/admin/jobs" style={{ fontSize: 13, color: 'rgba(255,255,255,.7)', textDecoration: 'none' }}>
           ← Bookings
         </Link>
       </header>

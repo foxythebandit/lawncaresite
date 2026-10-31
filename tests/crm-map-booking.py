@@ -4,16 +4,17 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CFG=json.loads(pathlib.Path('/tmp/qg-test-config.json').read_text())
-assert CFG['API_URL'].startswith('http://127.0.0.1:')
-BASE='http://localhost:3100'
+assert CFG['API_URL'] == 'http://127.0.0.1:56421'
+BASE=__import__('os').environ.get('QG_TEST_BASE','http://localhost:3102')
+assert BASE in ('http://localhost:3102','http://127.0.0.1:3102'), 'Only revamp test app allowed'
 def db(path):
  req=urllib.request.Request(CFG['API_URL']+'/rest/v1/'+path,headers={'apikey':CFG['SECRET_KEY'],'Authorization':'Bearer '+CFG['SERVICE_ROLE_KEY']})
  with urllib.request.urlopen(req) as r:return json.load(r)
-pathlib.Path('/tmp/qg-sms-mode').write_text('reject')
+pathlib.Path(__import__('os').environ.get('QG_SMS_MODE','/tmp/qg-revamp-sms-mode')).write_text('reject')
 png=io.BytesIO();Image.new('RGB',(256,256),'#648c60').save(png,format='PNG')
 def route_external(route):
  url=route.request.url
- if url.startswith((BASE,CFG['API_URL'])):route.continue_()
+ if urllib.parse.urlsplit(url).netloc in (urllib.parse.urlsplit(BASE).netloc,urllib.parse.urlsplit(CFG['API_URL']).netloc):route.continue_()
  elif 'nominatim.openstreetmap.org/search' in url:route.fulfill(json=[{'lat':'30.3049','lon':'-97.7184','display_name':'807 E 47th St, Austin, TX'}])
  elif 'arcgisonline.com' in url:route.fulfill(body=png.getvalue(),content_type='image/png')
  else:route.abort()

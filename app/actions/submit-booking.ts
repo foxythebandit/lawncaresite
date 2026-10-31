@@ -1,8 +1,9 @@
  'use server'
 import { saveIntakeScreenshot } from '@/lib/intake-screenshot'
 import { type Attribution } from '@/lib/attribution'
-import { recordIntake } from '@/lib/intake'
+import { recordIntake, verifiedLead } from '@/lib/intake'
 import { websiteLead } from '@/lib/website-intake'
+import { saveWebsiteQuote } from './website-quote'
 export interface BookingData extends Attribution {
   submission_id: string
   lead_token?: string
@@ -24,6 +25,7 @@ export interface BookingData extends Attribution {
   distance_fee?:     number
   map_screenshot?:   string
   addon_interest?:   Record<string, unknown> | null
+  lawn_tracing?:     { name: string; sqFt: number; coords: [number, number][] | null }[]
 }
 
 export async function submitBooking(data: BookingData) {
@@ -32,7 +34,8 @@ export async function submitBooking(data: BookingData) {
     for (const amount of [data.price_per_visit, data.first_visit_price, data.overgrowth_fee]) {
       if (!Number.isFinite(amount) || amount < 0 || amount > 1000000) return { success: false, error: 'Invalid estimate.' }
     }
-    const lead = websiteLead(data, 'booking')
+    const lead = websiteLead({ ...data, website_price: { price_per_visit: data.price_per_visit, first_visit_price: data.first_visit_price,
+      frequency: data.one_time ? 'onetime' : data.frequency } }, 'booking')
     const result = await recordIntake('website-booking', data.submission_id, lead, {
       name: lead.name, phone: lead.phone, email: lead.email, address: lead.address,
       sq_ft: lead.sq_ft, frequency: lead.frequency, one_time: data.one_time ?? false, manual_quote: false,
@@ -44,6 +47,9 @@ export async function submitBooking(data: BookingData) {
       utm_term: lead.utm_term, utm_content: lead.utm_content,
     }, data.lead_token)
     if (!result.duplicate && result.booking_id) await saveIntakeScreenshot('bookings', result.booking_id, data.map_screenshot)
+    // A booking on an existing lead only adds the booking row; keep the lead's price and tracing current too.
+    const existing = verifiedLead(data.lead_token)
+    if (!result.duplicate && existing) await saveWebsiteQuote(existing, lead)
     return { success: true, eventId: result.event_id }
   } catch { return { success: false, error: 'Could not save your booking request. Please retry.' } }
 }

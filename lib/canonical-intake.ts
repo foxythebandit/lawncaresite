@@ -9,7 +9,7 @@ function text(value: unknown, max: number, required = false): string | null {
   return value.trim()
 }
 /** This is QuietGreen's contract, not an asserted ConviFlo wire format. */
-export function canonicalIntake(input: unknown) {
+export function canonicalIntake(input: unknown, { requireAddress = true } = {}) {
   const data = object(input)
   if (data.version !== 1) throw new Error('Unsupported version')
   const submission = text(data.submission_id, 128, true)!
@@ -32,10 +32,15 @@ export function canonicalIntake(input: unknown) {
   if (consentAt && (!Number.isFinite(Date.parse(consentAt)) || Date.parse(consentAt) > Date.now() + 300000)) throw new Error('Invalid consent timestamp')
   for (const key of ['score','estimated_value']) if (data[key] != null && (typeof data[key] !== 'number' || !Number.isFinite(data[key]) || (data[key] as number) < 0)) throw new Error('Invalid estimate')
   return { submission, lead: {
-    name: text(contact.name, 150), phone, email, address: text(contact.address, 500),
+    name: text(contact.name, 150), phone, email, address: text(contact.address, 500, requireAddress),
     form_version: text(data.form_version, 100, true), services, answers,
     timing: text(data.timing, 150), frequency: text(data.frequency, 50), attribution: attr,
-    gclid: attr.first_touch?.gclid || null, utm_source: attr.first_touch?.utm_source || null,
+    gclid: attr.first_touch?.gclid || null, gbraid: attr.first_touch?.gbraid || null,
+    wbraid: attr.first_touch?.wbraid || null,
+    google_campaign_id: attr.first_touch?.google_campaign_id || null,
+    google_adgroup_id: attr.first_touch?.google_adgroup_id || null,
+    google_ad_id: attr.first_touch?.google_ad_id || null,
+    utm_source: attr.first_touch?.utm_source || null,
     utm_medium: attr.first_touch?.utm_medium || null, utm_campaign: attr.first_touch?.utm_campaign || null,
     utm_term: attr.first_touch?.utm_term || null, utm_content: attr.first_touch?.utm_content || null,
     consent: consent?.granted === true, consent_text: consentText, consent_version: consentVersion, consented_at: consentAt,

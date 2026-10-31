@@ -75,11 +75,13 @@ const BOOKING_CONVERSION_LABEL = 'udMYCI2xipYdEOvG0cZE'
 /**
  * Fires when the booking form submits successfully ("Request locked in.").
  * Primary Ads conversion; the quote_shown conversion above is the secondary
- * lead signal.
+ * lead signal. Pass the first-visit price so Ads records the real booking
+ * value instead of the conversion action's flat default.
  */
 export function trackBookingRequested(value?: number) {
-  trackEvent('booking_requested', value ? { value, currency: 'USD' } : undefined)
+  const valueParams = value ? { value, currency: 'USD' } : undefined
+  trackEvent('booking_requested', valueParams)
   if (BOOKING_CONVERSION_LABEL) {
-    trackEvent('conversion', { send_to: `AW-18401747819/${BOOKING_CONVERSION_LABEL}` })
+    trackEvent('conversion', { send_to: `AW-18401747819/${BOOKING_CONVERSION_LABEL}`, ...valueParams })
   }
 }

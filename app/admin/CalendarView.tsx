@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { formatMoney, jobPrice, jobStatusLabel } from '@/lib/crm-jobs'
+import Icon from './icons'
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -19,7 +21,10 @@ interface Booking {
   confirmed_time: string | null
   status: string
   price_per_visit: number | null
+  job_total?: number | string | null
+  first_visit_price?: number | null
   phone: string
+  customer_id: string | null
 }
 
 export default function CalendarView({ bookings }: { bookings: Booking[] }) {
@@ -57,15 +62,19 @@ export default function CalendarView({ bookings }: { bookings: Booking[] }) {
 
   const todayStr   = today.toISOString().split('T')[0]
   const monthLabel = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  const selectedJobs = selected ? (byDate.get(selected) ?? []) : []
+
+  const shownDate = selected ?? (todayStr.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`) ? todayStr : null)
+  const shownJobs = shownDate ? (byDate.get(shownDate) ?? []) : []
 
   return (
-    <div style={{ padding: '12px 16px 24px' }}>
+    <div className="admin-calendar-layout">
       <div className="admin-calendar">
         <div className="admin-cal-header">
-          <button className="admin-cal-nav" onClick={prev}>‹</button>
           <span className="admin-cal-month">{monthLabel}</span>
-          <button className="admin-cal-nav" onClick={next}>›</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="admin-cal-nav" onClick={prev} aria-label="Previous month"><Icon name="chevronLeft" size={16} /></button>
+            <button className="admin-cal-nav" onClick={next} aria-label="Next month"><Icon name="chevronRight" size={16} /></button>
+          </div>
         </div>
         <div className="admin-cal-grid">
           {DAYS.map(d => (
@@ -76,20 +85,21 @@ export default function CalendarView({ bookings }: { bookings: Booking[] }) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const jobs        = byDate.get(dateStr) ?? []
             const isToday     = dateStr === todayStr
-            const isSelected  = dateStr === selected
-            const hasConfirmed = jobs.some(j => j.status === 'confirmed')
-            const hasPending   = jobs.some(j => j.status === 'pending')
+            const isSelected  = dateStr === shownDate
+            const confirmed = jobs.filter(j => j.status === 'confirmed').length
+            const pending   = jobs.filter(j => j.status === 'pending').length
             return (
               <button
                 key={dateStr}
                 className={`admin-cal-day${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}`}
                 onClick={() => setSelected(isSelected ? null : dateStr)}
+                aria-label={`${dateStr}: ${confirmed} scheduled, ${pending} to schedule`}
               >
                 <span className="admin-cal-day-num">{day}</span>
-                {(hasConfirmed || hasPending) && (
+                {(confirmed > 0 || pending > 0) && (
                   <span className="admin-cal-dots">
-                    {hasConfirmed && <span className="admin-cal-dot confirmed" />}
-                    {hasPending   && <span className="admin-cal-dot pending"   />}
+                    {confirmed > 0 && <span className="admin-cal-count confirmed">{confirmed} scheduled</span>}
+                    {pending > 0   && <span className="admin-cal-count pending">{pending} to schedule</span>}
                   </span>
                 )}
               </button>
@@ -98,29 +108,27 @@ export default function CalendarView({ bookings }: { bookings: Booking[] }) {
         </div>
       </div>
 
-      {selected && (
-        <div className="admin-cal-detail">
-          <div className="admin-cal-detail-date">
-            {new Date(selected + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </div>
-          {selectedJobs.length === 0 ? (
-            <div style={{ color: 'var(--ink-soft)', fontSize: 13, padding: '4px 0' }}>No jobs this day.</div>
-          ) : selectedJobs.map(b => (
-            <div key={b.id} className="admin-cal-job">
-              <span className={`admin-badge admin-badge-${b.status}`}>{b.status}</span>
-              <div className="admin-cal-job-info">
-                <div className="admin-cal-job-name">{b.name}</div>
-                <div className="admin-cal-job-addr">{b.address}</div>
-              </div>
-              <div className="admin-cal-job-right">
-                {b.confirmed_time && <div className="admin-cal-job-time">{formatTime(b.confirmed_time)}</div>}
-                {b.price_per_visit && <div className="admin-cal-job-price">${b.price_per_visit}</div>}
-                <Link href={`/admin/client/${encodeURIComponent(b.phone)}`} className="admin-cal-job-hist">History →</Link>
-              </div>
-            </div>
-          ))}
+      <div className="admin-cal-detail">
+        <div className="admin-cal-detail-date">
+          {shownDate ? new Date(shownDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : 'Select a day'}
         </div>
-      )}
+        {!shownDate ? <div className="admin-cal-detail-empty">Pick a date to see its visits.</div>
+          : shownJobs.length === 0 ? (
+          <div className="admin-cal-detail-empty">No jobs this day.</div>
+        ) : shownJobs.map(b => (
+          <div key={b.id} className="admin-cal-job">
+            <div className="admin-cal-job-info">
+              <div className="admin-cal-job-name">{b.name} <span className={`admin-badge admin-badge-${b.status}`}>{jobStatusLabel(b.status)}</span></div>
+              <div className="admin-cal-job-addr">{b.address}</div>
+              <Link href={b.customer_id ? `/admin/customers/${b.customer_id}` : `/admin/client/${encodeURIComponent(b.phone)}`} className="admin-cal-job-hist">History →</Link>
+            </div>
+            <div className="admin-cal-job-right">
+              {b.confirmed_time && <div className="admin-cal-job-time">{/^\d{1,2}:\d{2}$/.test(b.confirmed_time) ? formatTime(b.confirmed_time) : b.confirmed_time}</div>}
+              {(b.job_total ?? b.first_visit_price ?? b.price_per_visit) != null && <div className="admin-cal-job-price">{formatMoney(jobPrice(b))}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

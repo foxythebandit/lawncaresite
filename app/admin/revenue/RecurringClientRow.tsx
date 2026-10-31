@@ -1,40 +1,20 @@
-'use client'
-
-import { useTransition } from 'react'
-import { deleteBooking } from '../actions'
+import { formatMoney, formatMoneyWhole } from '@/lib/crm-jobs'
 
 interface Props {
   id: string
-  phone: string
+  href: string
   name: string
   annual: number
   perVisit: number
   widthPct: number
 }
 
-export default function RecurringClientRow({ id, phone, name, annual, perVisit, widthPct }: Props) {
-  const [pending, startTransition] = useTransition()
-
-  return (
-    <div className="admin-expected-bar-row">
-      <a href={`/admin/client/${encodeURIComponent(phone)}`} className="admin-expected-bar-name" style={{ textDecoration: 'none', color: 'inherit' }}>
-        {name}
-      </a>
-      <div className="admin-expected-bar-track">
-        <div className="admin-expected-bar-fill" style={{ width: `${widthPct}%` }} />
-      </div>
-      <span className="admin-expected-bar-val" title={`$${perVisit} × 30 mows`}>
-        ${annual.toLocaleString()}/yr
-        <small>${perVisit} × 30</small>
-      </span>
-      <button
-        className="admin-revenue-row-delete"
-        onClick={() => { if (window.confirm(`Delete ${name}'s booking entirely? This removes their whole record, not just this projection. (To keep their history but stop counting them as recurring, use the "One-time service" toggle on their card instead.)`)) startTransition(() => deleteBooking(id)) }}
-        disabled={pending}
-        title="Delete this booking"
-      >
-        ×
-      </button>
-    </div>
-  )
+export default function RecurringClientRow({ href, name, annual, perVisit, widthPct }: Props) {
+  return <div className="admin-expected-bar-row">
+    <a href={href} className="admin-expected-bar-name" style={{ textDecoration: 'none', color: 'inherit' }}>{name}</a>
+    <div className="admin-expected-bar-track"><div className="admin-expected-bar-fill" style={{ width: `${widthPct}%` }} /></div>
+    <span className="admin-expected-bar-val" title={`${formatMoney(perVisit)} × 30 conservative mowing visits`}>
+      {formatMoneyWhole(annual)}/yr<small>{formatMoney(perVisit)} × 30</small>
+    </span>
+  </div>
 }

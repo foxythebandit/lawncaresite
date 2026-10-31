@@ -1,708 +1,351 @@
 'use client'
 
-import { useTransition, useState, useRef } from 'react'
-import { updateStatus, updateNotes, markComplete, deleteBooking, createPaymentLink, setOneTime, updateServiceDetails, updateContactDetails } from './actions'
+import { formatPhone } from '@/lib/format-phone'
+import { useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { addVisitToPlan, changeAgreement, changeJob, createPaymentLink, linkJobIdentity, markComplete, moveVisit, recordManualPayment, saveJobItems, scheduleJobAndEmail, startJobAgreement, updateContactDetails, updateNotes } from './actions'
+import { formatMoney, jobPrice, jobStatusLabel, type JobLine } from '@/lib/crm-jobs'
 import { formatAttributionLabel } from '@/lib/attribution'
 import ReminderButtons from './ReminderButtons'
+import PriceSteps from './PriceSteps'
+import LawnMap from './LawnMap'
+import type { Shape } from './leads/TracingMap'
+import { bookingPrice, money as dollars } from '@/lib/lead-summary'
+import Icon from './icons'
+import { uuid } from '@/lib/uuid'
 
-interface Booking {
-  id: string
-  name: string
-  phone: string
-  email: string | null
-  address: string
-  preferred_date: string | null
-  preferred_time: string | null
-  confirmed_date: string | null
-  confirmed_time: string | null
-  sq_ft: number | null
-  frequency: string | null
-  price_per_visit: number | null
-  first_visit_price: number | null
-  overgrowth_fee: number | null
-  last_mow: string | null
-  status: string
-  created_at: string
-  map_screenshot_url: string | null
-  notes: string | null
-  customer_notes: string | null
-  completed_at: string | null
-  amount_charged: number | null
-  payment_method: string | null
-  next_visit_date: string | null
-  payment_link: string | null
-  gclid: string | null
-  utm_source: string | null
-  utm_medium: string | null
-  utm_campaign: string | null
-  utm_term: string | null
-  utm_content: string | null
-  notify_failed: boolean
-  one_time: boolean
-  last_reminder_sent_at: string | null
-  manual_quote: boolean
-  lawn_size_bucket: string | null
-  addon_interest: Record<string, any> | null
+export type Booking = {
+  id: string; updated_at: string; name: string; phone: string; email: string | null
+  address: string; status: string; preferred_date: string | null; confirmed_date: string | null
+  confirmed_time: string | null; completed_at: string | null; frequency: string | null
+  first_visit_price?: number | null; overgrowth_fee?: number | null
+  price_per_visit: number | null; job_total: number | string | null; sq_ft: number | null
+  notes: string | null; customer_notes: string | null; map_screenshot_url: string | null
+  payment_link: string | null; amount_charged: number | null; payment_method: string | null
+  customer_id: string | null; property_id: string | null; agreement_id: string | null
+  occurrence_on: string | null; accepted_quote_snapshot: unknown; one_time: boolean
+  last_reminder_sent_at: string | null; created_at: string
+  gclid: string | null; utm_source: string | null; utm_medium: string | null
+  utm_campaign: string | null; utm_term: string | null; utm_content: string | null
+  addon_interest: Record<string, unknown> | null
 }
 
-const HAZARD_LABELS: Record<string, string> = { poison_ivy: 'poison ivy', thorns: 'thorns/cactus', debris: 'buried debris' }
+type Customer = { id: string; name: string | null; phone: string | null; email: string | null }
+type Property = { id: string; customer_id: string; address: string }
+type Agreement = {
+  id: string; status: string; updated_at: string; anchor_on: string; next_on: string
+  interval_unit: 'week' | 'month'; interval_count: number; price_per_visit: number | string | null
+  items_template: JobLine[]
+}
+type Payment = { id: string; amount: number | string; paid_on: string; method: string; provenance: string }
 
-function formatAddonInterest(a: Record<string, any>): string {
-  const parts: string[] = []
-  if (a.fertilization) parts.push(`Fertilization — ${a.fertilization.sq_ft?.toLocaleString()} sq ft, starting at $${a.fertilization.price} (${a.fertilization.area === 'same' ? 'same area as lawn' : 'separate area'})`)
-  if (a.mulch)         parts.push(`Mulch — ${a.mulch.sq_ft?.toLocaleString()} sq ft @ ${a.mulch.depth_in}" deep (~${a.mulch.cu_yd} cu yd), starting at $${a.mulch.price}`)
-  if (a.maintenance)   parts.push('Maintenance — interested, hourly pricing to be quoted')
-  if (a.yardClearout) {
-    const hazards: string[] = a.yardClearout.hazards ?? []
-    const hazardNote = hazards.length ? ` — flagged ${hazards.map((k: string) => HAZARD_LABELS[k] ?? k).join(', ')} (+20% incl.)` : ''
-    parts.push(`Yard clearout — ${a.yardClearout.sq_ft?.toLocaleString()} sq ft, ${a.yardClearout.severity} overgrowth, starting at $${a.yardClearout.price}${hazardNote}`)
-  }
-  return parts.join(' · ')
+type Props = {
+  booking: Booking; historyCount?: number; customers?: Customer[]; properties?: Property[]
+  agreement?: Agreement | null; futureJobIds?: string[]; items?: JobLine[]; payments?: Payment[]
+  /** The customer's active plan at this visit's property, when this visit is not in it. */
+  customerPlan?: Agreement | null
+  emailConfigured?: boolean; quotedVisit?: boolean
+  /** The lead's website tracing, drawn when the visit has no saved map image. */
+  shapes?: Shape[]
 }
 
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+const money = formatMoney
+const dateLabel = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+function addonDetails(addons: Record<string, unknown>) {
+  return Object.entries(addons).map(([name, raw]) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return name
+    const fields = raw as Record<string, unknown>
+    const details = [
+      typeof fields.sq_ft === 'number' ? `${fields.sq_ft.toLocaleString()} sq ft` : null,
+      typeof fields.area === 'string' ? `area: ${fields.area}` : null,
+      typeof fields.depth_in === 'number' ? `${fields.depth_in} in deep` : null,
+      typeof fields.cu_yd === 'number' ? `${fields.cu_yd} cu yd` : null,
+      typeof fields.severity === 'string' ? `${fields.severity} overgrowth` : null,
+      typeof fields.price === 'number' ? `starting at ${money(fields.price)}` : null,
+      Array.isArray(fields.hazards) ? `hazards: ${fields.hazards.join(', ')}` : null,
+      fields.haul_away === true ? 'hauled away' : null,
+    ].filter(Boolean)
+    return `${name}${details.length ? ` — ${details.join(', ')}` : ''}`
+  }).join('; ')
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-}
-
-function formatTime(t: string) {
-  if (!/^\d{1,2}:\d{2}$/.test(t)) return t // "Morning" / "Afternoon" — pass through as-is
-  const [h, m] = t.split(':').map(Number)
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  const hr = h % 12 || 12
-  return `${hr}:${String(m).padStart(2, '0')} ${ampm}`
-}
-
-function calcNextDate(from: string, frequency: string | null) {
-  const base = new Date(from + 'T12:00:00')
-  const freq = (frequency ?? '').toLowerCase()
-  const days = freq.includes('bi') ? 14 : freq.includes('month') ? 30 : 7
-  base.setDate(base.getDate() + days)
-  return base.toISOString().split('T')[0]
-}
-
-const STATUS_STYLES: Record<string, { label: string; className: string }> = {
-  pending:   { label: 'Pending',   className: 'admin-badge-pending'   },
-  confirmed: { label: 'Confirmed', className: 'admin-badge-confirmed' },
-  declined:  { label: 'Declined',  className: 'admin-badge-declined'  },
-  completed: { label: 'Completed', className: 'admin-badge-completed' },
-}
-
-export default function BookingCard({ booking, historyCount = 1 }: { booking: Booking; historyCount?: number }) {
+export default function BookingCard({ booking, historyCount = 1, customers = [], properties = [], agreement, futureJobIds = [], items = [], payments = [], emailConfigured = false, quotedVisit = false, shapes = [], customerPlan = null }: Props) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [expanded, setExpanded]   = useState(false)
-  const [confirmingDate, setConfirmingDate] = useState(false)
-  const [pickedDate, setPickedDate] = useState(booking.preferred_date ?? '')
-  const [pickedTime, setPickedTime] = useState(booking.confirmed_time ?? '')
-  const [notes, setNotes]         = useState(booking.notes ?? '')
-  const [notesSaved, setNotesSaved] = useState(false)
-  const notesSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const operation = useRef<{ key: string; id: string } | null>(null)
+  const [visitDate, setVisitDate] = useState(booking.confirmed_date ?? booking.preferred_date ?? '')
+  const [visitTime, setVisitTime] = useState(booking.confirmed_time ?? '')
+  const [completedOn, setCompletedOn] = useState(today())
+  const [notes, setNotes] = useState(booking.notes ?? '')
+  const [contactName, setContactName] = useState(booking.name)
+  const [contactPhone, setContactPhone] = useState(booking.phone)
+  const [contactEmail, setContactEmail] = useState(booking.email ?? '')
+  const [showContact, setShowContact] = useState(false)
+  const [lines, setLines] = useState<JobLine[]>(items.length ? items : [{ kind: 'service', description: 'Service', amount: jobPrice(booking).toFixed(2) }])
+  const [paymentAmount, setPaymentAmount] = useState(jobPrice(booking).toFixed(2))
+  const [paidOn, setPaidOn] = useState(today())
+  const [paymentMethod, setPaymentMethod] = useState('Cash')
+  const [paymentLink, setPaymentLink] = useState(booking.payment_link)
+  const [linkBusy, setLinkBusy] = useState(false)
+  const [selectedCustomerId, setSelectedCustomerId] = useState('new')
+  const [selectedPropertyId, setSelectedPropertyId] = useState('new')
+  const [newCustomerName, setNewCustomerName] = useState(booking.name)
+  const [newPropertyAddress, setNewPropertyAddress] = useState(booking.address)
+  const [intervalUnit, setIntervalUnit] = useState<'week' | 'month'>('week')
+  const [intervalCount, setIntervalCount] = useState(1)
+  const [nextOn, setNextOn] = useState('')
+  const [resumeOn, setResumeOn] = useState('')
+  const [showAgreement, setShowAgreement] = useState(false)
+  const [movePlan, setMovePlan] = useState(false)
+  const lawnLine = (items.length ? items : []).find(line => line.kind === 'service' && /(mow|lawn)/i.test(line.description))
+  const [planPrice, setPlanPrice] = useState((lawnLine ? Number(lawnLine.amount) : jobPrice(booking)).toFixed(2))
+  const [showPricing, setShowPricing] = useState(false)
 
-  const [editingService, setEditingService] = useState(false)
-  const [editFreq,  setEditFreq]  = useState(booking.frequency ?? 'Monthly')
-  const [editPrice, setEditPrice] = useState(booking.price_per_visit ?? 0)
-
-  const [editingContact, setEditingContact] = useState(false)
-  const [editName,  setEditName]  = useState(booking.name)
-  const [editPhone, setEditPhone] = useState(booking.phone)
-  const [editEmail, setEditEmail] = useState(booking.email ?? '')
-  const [contactError, setContactError] = useState('')
-
-  const isReschedule = booking.status === 'confirmed'
-
-  const today = new Date().toISOString().split('T')[0]
-  const [paymentLink, setPaymentLink] = useState<string | null>(null)
-  const [paymentLinkError, setPaymentLinkError] = useState('')
-  const [generatingLink, setGeneratingLink] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  const [completing, setCompleting] = useState(false)
-  const [completeDate, setCompleteDate] = useState(today)
-  const [completeAmount, setCompleteAmount] = useState(booking.price_per_visit ?? 0)
-  const [completePayment, setCompletePayment] = useState('Stripe')
-  const [completeOneTime, setCompleteOneTime] = useState(booking.one_time)
-  const [completeNextDate, setCompleteNextDate] = useState('')
-
-  const autoNextDate = calcNextDate(completeDate || today, booking.frequency)
-  const previewNextDate = completeNextDate || autoNextDate
-
-  const status = STATUS_STYLES[booking.status] ?? STATUS_STYLES.pending
+  const relatedProperties = properties.filter(p => p.customer_id === selectedCustomerId)
+  const samePhone = customers.filter(c => (c.phone ?? '').replace(/\D/g, '') === booking.phone.replace(/\D/g, ''))
+  const actualPaid = payments.reduce((total, row) => total + Number(row.amount), 0)
   const source = formatAttributionLabel(booking)
+  const price = bookingPrice(booking)
+  // Plan visits after the first carry the plan's prices; the first-visit discount was the first one's.
+  const firstVisit = quotedVisit || (!booking.agreement_id && !booking.occurrence_on)
 
-  function doConfirm() {
-    setConfirmingDate(false)
-    startTransition(() => updateStatus(booking.id, 'confirmed', pickedDate || undefined, pickedTime || undefined))
+  function opId(key: string) {
+    if (!operation.current || operation.current.key !== key) operation.current = { key, id: uuid() }
+    return operation.current.id
   }
-
-  function openReschedule() {
-    setPickedDate(booking.confirmed_date ?? booking.preferred_date ?? '')
-    setPickedTime(booking.confirmed_time ?? '')
-    setConfirmingDate(true)
-  }
-
-  function saveServiceDetails() {
-    setEditingService(false)
-    startTransition(() => updateServiceDetails(booking.id, { frequency: editFreq, price_per_visit: editPrice }))
-  }
-
-  function saveContactDetails() {
-    setContactError('')
+  function run(key: string, action: (id: string) => Promise<{ success: boolean; error?: string; data?: Record<string, unknown> }>, success: string) {
+    setError(''); setNotice('')
+    const id = opId(key)
     startTransition(async () => {
-      const result = await updateContactDetails(booking.id, { name: editName, phone: editPhone, email: editEmail })
-      if (result.success) setEditingContact(false)
-      else setContactError(result.error ?? 'Something went wrong.')
+      try {
+        const result = await action(id)
+        if (!result.success) { setError(result.error ?? 'Could not save. Please retry.'); return }
+        operation.current = null
+        setNotice(typeof result.data?.warning === 'string' ? result.data.warning : success)
+        router.refresh()
+      } catch {
+        setError('The request did not finish. Retry to check the same operation before trying a new one.')
+      }
     })
   }
-
-  function doMarkComplete() {
-    setCompleting(false)
-    startTransition(() => markComplete(booking.id, {
-      completed_at: completeDate,
-      amount_charged: completeAmount,
-      payment_method: completePayment,
-      one_time: completeOneTime,
-      next_visit_date: completeOneTime ? undefined : previewNextDate,
-    }))
+  function changeLine(index: number, patch: Partial<JobLine>) {
+    setLines(previous => previous.map((line, i) => i === index ? { ...line, ...patch } : line))
   }
+  const current = booking.status === 'pending' || booking.status === 'confirmed'
+  const linked = Boolean(booking.customer_id && booking.property_id)
 
-  function saveNotes(val: string) {
-    setNotes(val)
-    if (notesSaveTimer.current) clearTimeout(notesSaveTimer.current)
-    notesSaveTimer.current = setTimeout(() => {
-      startTransition(() => updateNotes(booking.id, val))
-      setNotesSaved(true)
-      setTimeout(() => setNotesSaved(false), 2000)
-    }, 800)
-  }
+  const visitDateText = booking.confirmed_date ? dateLabel(booking.confirmed_date) : booking.preferred_date ? `Requested ${dateLabel(booking.preferred_date)}` : 'No date set'
+  const needsOneTimeDecision = !agreement && !booking.one_time && Boolean(booking.frequency) && !/^(one[ -]?time|single|once)$/i.test((booking.frequency ?? '').trim())
 
-  return (
-    <div className={`admin-card ${pending ? 'admin-card-loading' : ''}`}>
-
-      <button className="admin-card-summary" onClick={() => setExpanded(e => !e)}>
-        <span className={`admin-badge ${status.className}`}>{status.label}</span>
-        {booking.notify_failed && (
-          <span className="admin-badge admin-badge-warning" title="The new-booking notification email failed to send">
-            ⚠ Notify failed
-          </span>
-        )}
-        {booking.one_time && (
-          <span className="admin-badge admin-badge-onetime" title="Marked as a one-time service">
-            One-time
-          </span>
-        )}
-        {booking.manual_quote && (
-          <span className="admin-badge admin-badge-manual" title="Came in through the 'We'll do the measuring' form — needs sizing and a price">
-            Manual quote
-          </span>
-        )}
+  return <div className="admin-card">
+    <button className="admin-card-summary" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+      <span className="admin-card-summary-who">
         <span className="admin-card-summary-name">{booking.name}</span>
         <span className="admin-card-summary-addr">{booking.address}</span>
-        {booking.price_per_visit && (
-          <span className="admin-card-summary-price">
-            ${booking.price_per_visit}<span className="admin-card-summary-sub">/visit</span>
-          </span>
-        )}
-        <svg
-          className={`admin-card-chevron${expanded ? ' admin-card-chevron-open' : ''}`}
-          width="16" height="16" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-        >
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
+      </span>
+      <span className="admin-card-summary-date">{booking.confirmed_date ? dateLabel(booking.confirmed_date) : booking.preferred_date ? <em>Req. {dateLabel(booking.preferred_date)}</em> : <em>No date</em>}</span>
+      <span className={`admin-badge admin-badge-${booking.status}`}>{jobStatusLabel(booking.status)}</span>
+      <span className="admin-card-summary-price">{money(jobPrice(booking))}</span>
+      <Icon name="chevronDown" size={16} className="admin-card-summary-chevron" />
+    </button>
+    {expanded && <div className="admin-card-body">
+      <div className="admin-card-facts">
+        <div className="admin-card-fact"><span>Property</span><span>{booking.address}</span></div>
+        <div className="admin-card-fact"><span>Visit</span><span>{visitDateText} {booking.confirmed_time ?? ''}</span></div>
+        {booking.sq_ft != null && <div className="admin-card-fact"><span>Lawn size</span><span>{booking.sq_ft.toLocaleString()} sq ft</span></div>}
+        <div className="admin-card-fact"><span>Job total · paid</span><span>{money(jobPrice(booking))} · {money(actualPaid)}</span></div>
+        {source && <div className="admin-card-fact"><span>Source</span><span>{source}</span></div>}
+      </div>
+      {price && <div className="admin-card-price">
+        <PriceSteps price={price} firstVisit={firstVisit} />
+        {firstVisit && (booking.overgrowth_fee ?? 0) > 0 && <dl className="crm-kv"><div><dt>Cleanup fee</dt><dd>{dollars(booking.overgrowth_fee! * 100)} <small>in first visit</small></dd></div></dl>}
+      </div>}
+      {(booking.accepted_quote_snapshot != null || booking.customer_notes || (booking.addon_interest && Object.keys(booking.addon_interest).length > 0)) && <div className="admin-card-notes">
+        {booking.accepted_quote_snapshot != null && <div className="admin-card-row">Accepted quote is saved with this job. Operational edits below preserve it.</div>}
+        {booking.customer_notes && <div className="admin-customer-note"><strong>Customer note</strong><p>{booking.customer_notes}</p></div>}
+        {booking.addon_interest && Object.keys(booking.addon_interest).length > 0 && <div className="admin-customer-note"><strong>Submitted add-on interest</strong><p>{addonDetails(booking.addon_interest)}</p></div>}
+      </div>}
+      {(booking.map_screenshot_url || shapes.length > 0) && <div className="admin-card-map"><LawnMap screenshotUrl={booking.map_screenshot_url} shapes={shapes} sqFt={booking.sq_ft} /></div>}
+      <div className="admin-card-actions">
+        <a href={`tel:${booking.phone}`} className="crm-button crm-button-primary admin-action-call"><Icon name="phone" size={15} />Call {formatPhone(booking.phone)}</a>
+        <a href={`sms:${booking.phone}`} className="crm-button admin-action-text"><Icon name="message" size={15} />Text</a>
+        {booking.email && <a href={`mailto:${booking.email}`} className="crm-button admin-action-email"><Icon name="mail" size={15} />Email</a>}
+        <div className="admin-card-links">
+          {linked ? <a href={`/admin/customers/${booking.customer_id}`} className="admin-card-history-link">Customer history ({historyCount} visit{historyCount === 1 ? '' : 's'}) →</a>
+            : <a href={`/admin/client/${encodeURIComponent(booking.phone)}`} className="admin-card-history-link">Unlinked phone history →</a>}
+          <button className="admin-edit-service-link" onClick={() => setShowContact(!showContact)}>Edit visit contact</button>
+        </div>
+      </div>
 
-      {expanded && (
-        <>
-          <div className="admin-card-body">
-            <div className="admin-card-row">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span>{booking.address}</span>
+      <div className="admin-card-grid">
+        {showContact && <section className="admin-edit-service-panel admin-card-wide" aria-label="Visit contact">
+          <h3>Visit contact</h3>
+          <p>Changing this visit contact does not merge or remove customer history.</p>
+          <div className="admin-complete-fields">
+            <input aria-label="Visit contact name" value={contactName} onChange={e => setContactName(e.target.value)} className="admin-confirm-date-input" />
+            <input aria-label="Visit contact phone" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className="admin-confirm-date-input" />
+            <input aria-label="Visit contact email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className="admin-confirm-date-input" />
+          </div>
+          <div className="admin-btn-row"><button className="crm-button" disabled={pending} onClick={() => run('contact', async () => updateContactDetails(booking.id, { name: contactName, phone: contactPhone, email: contactEmail }), 'Visit contact saved.')}>Save contact</button></div>
+        </section>}
+
+        {!linked && <section className="admin-edit-service-panel admin-card-wide" aria-label="Link customer and property">
+          <h3>Link customer and property</h3>
+          <p>Review matches before linking. Matching phone numbers are suggestions only.</p>
+          <div className="admin-complete-fields">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label>Customer</label>
+              <select value={selectedCustomerId} onChange={e => { setSelectedCustomerId(e.target.value); setSelectedPropertyId('new') }} className="admin-confirm-date-input">
+                <option value="new">Create new customer</option>
+                {samePhone.map(c => <option key={c.id} value={c.id}>Possible match: {c.name || formatPhone(c.phone)} · {formatPhone(c.phone)}</option>)}
+                {customers.filter(c => !samePhone.some(match => match.id === c.id)).map(c => <option key={c.id} value={c.id}>{c.name || formatPhone(c.phone) || c.id}</option>)}
+              </select>
+              {selectedCustomerId === 'new' && <input aria-label="New customer name" value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} className="admin-confirm-date-input" />}
             </div>
-            {(booking.confirmed_date || booking.preferred_date) && (
-              <div className="admin-card-row">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <span>
-                  {booking.confirmed_date
-                    ? <>
-                        <strong>Confirmed:</strong> {formatDate(booking.confirmed_date)}
-                        {booking.confirmed_time && <> · {formatTime(booking.confirmed_time)}</>}
-                      </>
-                    : <>
-                        <span style={{ color: 'var(--ink-soft)' }}>Preferred:</span> {formatDate(booking.preferred_date!)}
-                        {booking.preferred_time && <> · {formatTime(booking.preferred_time)}</>}
-                      </>
-                  }
-                </span>
-              </div>
-            )}
-            <div className="admin-card-row">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              <span>
-                {booking.manual_quote && !booking.sq_ft
-                  ? `Lawn size: ${booking.lawn_size_bucket ?? 'not specified'} — needs quote`
-                  : `${booking.sq_ft?.toLocaleString()} sq ft · ${booking.frequency} · $${booking.price_per_visit}/visit`}
-              </span>
-              {!editingService && (
-                <button
-                  type="button"
-                  className="admin-edit-service-link"
-                  onClick={() => { setEditFreq(booking.frequency ?? 'Monthly'); setEditPrice(booking.price_per_visit ?? 0); setEditingService(true) }}
-                >
-                  Change
-                </button>
-              )}
-            </div>
-            {editingService && (
-              <div className="admin-edit-service-panel">
-                <div className="admin-complete-field">
-                  <label>Service type</label>
-                  <select
-                    value={editFreq}
-                    onChange={e => setEditFreq(e.target.value)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  >
-                    <option>One-time</option>
-                    <option>Monthly</option>
-                    <option>Bi-weekly</option>
-                    <option>Weekly</option>
-                  </select>
-                </div>
-                <div className="admin-complete-field">
-                  <label>Price per visit ($)</label>
-                  <input
-                    type="number"
-                    value={editPrice}
-                    onChange={e => setEditPrice(parseFloat(e.target.value) || 0)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div className="admin-confirm-date-btns">
-                  <button className="admin-confirm-date-send" onClick={saveServiceDetails} disabled={pending}>
-                    Save
-                  </button>
-                  <button className="admin-confirm-date-cancel" onClick={() => setEditingService(false)} disabled={pending}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-            <label className="admin-onetime-toggle">
-              <input
-                type="checkbox"
-                checked={booking.one_time}
-                onChange={e => startTransition(() => setOneTime(booking.id, e.target.checked))}
-                disabled={pending}
-              />
-              One-time service (exclude from recurring revenue)
-            </label>
-            {source && (
-              <div className="admin-card-row">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                <span>{source}</span>
-              </div>
-            )}
-            {booking.overgrowth_fee ? (
-              <div className="admin-card-row admin-card-row-warning">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <span>First visit ${booking.first_visit_price} (incl. ${booking.overgrowth_fee} cleanup)</span>
-              </div>
-            ) : null}
-
-            {/* Completion record */}
-            {booking.status === 'completed' && booking.completed_at && (
-              <div className="admin-complete-record">
-                <div className="admin-complete-record-row">
-                  <span>Completed</span>
-                  <strong>{formatDate(booking.completed_at.split('T')[0])}</strong>
-                </div>
-                {booking.amount_charged != null && (
-                  <div className="admin-complete-record-row">
-                    <span>Charged</span>
-                    <strong>${booking.amount_charged.toFixed(2)}</strong>
-                  </div>
-                )}
-                {booking.payment_method && (
-                  <div className="admin-complete-record-row">
-                    <span>Via</span>
-                    <strong>{booking.payment_method}</strong>
-                  </div>
-                )}
-                {booking.next_visit_date && (
-                  <div className="admin-complete-record-row">
-                    <span>Next visit</span>
-                    <strong>{formatDate(booking.next_visit_date)}</strong>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="admin-card-row">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.54 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              <a href={`tel:${booking.phone}`} className="admin-card-link">{booking.phone}</a>
-              {!editingContact && (
-                <button
-                  type="button"
-                  className="admin-edit-service-link"
-                  onClick={() => { setEditName(booking.name); setEditPhone(booking.phone); setEditEmail(booking.email ?? ''); setContactError(''); setEditingContact(true) }}
-                >
-                  Change
-                </button>
-              )}
-            </div>
-            {booking.email && !editingContact && (
-              <div className="admin-card-row">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                <a href={`mailto:${booking.email}`} className="admin-card-link">{booking.email}</a>
-              </div>
-            )}
-            {editingContact && (
-              <div className="admin-edit-service-panel">
-                <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
-                  Swapping the renter/contact here keeps the address, price and frequency as-is — it only changes who the booking belongs to. Past visits stay on the old number; future ones follow this contact.
-                </p>
-                <div className="admin-complete-field">
-                  <label>Name</label>
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div className="admin-complete-field">
-                  <label>Phone</label>
-                  <input
-                    type="tel"
-                    value={editPhone}
-                    onChange={e => setEditPhone(e.target.value)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div className="admin-complete-field">
-                  <label>Email</label>
-                  <input
-                    type="email"
-                    value={editEmail}
-                    onChange={e => setEditEmail(e.target.value)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                {contactError && <p className="booking-error" role="alert" style={{ margin: '0 0 8px' }}>{contactError}</p>}
-                <div className="admin-confirm-date-btns">
-                  <button className="admin-confirm-date-send" onClick={saveContactDetails} disabled={pending}>
-                    Save
-                  </button>
-                  <button className="admin-confirm-date-cancel" onClick={() => { setEditingContact(false); setContactError('') }} disabled={pending}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-            <div className="admin-card-row">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <span>{timeAgo(booking.created_at)}</span>
-              <a href={`/admin/client/${encodeURIComponent(booking.phone)}`} className="admin-card-history-link">
-                {historyCount > 1 ? `View history (${historyCount} visits) →` : 'View history →'}
-              </a>
-            </div>
-
-            {/* Customer's own note from booking */}
-            {booking.customer_notes && (
-              <div className="admin-customer-note">
-                <span className="admin-customer-note-label">Note from customer</span>
-                <p>{booking.customer_notes}</p>
-              </div>
-            )}
-
-            {/* Add-on service interest expressed during booking */}
-            {booking.addon_interest && Object.keys(booking.addon_interest).length > 0 && (
-              <div className="admin-customer-note" style={{ borderColor: '#ffe3a3', background: '#fffaf0' }}>
-                <span className="admin-customer-note-label">Also interested in</span>
-                <p>{formatAddonInterest(booking.addon_interest)}</p>
-              </div>
-            )}
-
-            {/* Notes */}
-            <div className="admin-notes-wrap">
-              <label className="admin-notes-label">
-                Internal notes
-                {notesSaved && <span className="admin-notes-saved">Saved</span>}
-              </label>
-              <textarea
-                className="admin-notes-input"
-                placeholder="Gate code, dog in yard, rescheduled, etc."
-                value={notes}
-                onChange={e => saveNotes(e.target.value)}
-                rows={3}
-              />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label>Property</label>
+              {selectedCustomerId !== 'new' && <select value={selectedPropertyId} onChange={e => setSelectedPropertyId(e.target.value)} className="admin-confirm-date-input">
+                <option value="new">Create new property</option>
+                {relatedProperties.map(p => <option key={p.id} value={p.id}>{p.address}</option>)}
+              </select>}
+              {selectedPropertyId === 'new' && <input aria-label="New property address" value={newPropertyAddress} onChange={e => setNewPropertyAddress(e.target.value)} className="admin-confirm-date-input" />}
             </div>
           </div>
+          <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending} onClick={() => run('link:'+selectedCustomerId+':'+selectedPropertyId, id => linkJobIdentity({
+            bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id,
+            customerId: selectedCustomerId === 'new' ? null : selectedCustomerId,
+            propertyId: selectedPropertyId === 'new' ? null : selectedPropertyId,
+            customer: selectedCustomerId === 'new' ? { name: newCustomerName, phone: booking.phone, email: booking.email ?? '' } : null,
+            property: selectedPropertyId === 'new' ? { address: newPropertyAddress } : null,
+          }), 'Customer and property linked.')}>Link reviewed identity</button></div>
+        </section>}
 
-          {booking.map_screenshot_url && (
-            <a
-              href={booking.map_screenshot_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="admin-card-screenshot"
-            >
-              <img src={booking.map_screenshot_url} alt="Traced lawn" />
-              <span className="admin-screenshot-hint">Open full image ↗</span>
-            </a>
-          )}
-
-          <div className={`admin-card-actions ${booking.email ? 'admin-card-actions-3' : ''}`}>
-            <a href={`tel:${booking.phone}`} className="admin-action-call">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.54 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6.06 6.06l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              Call
-            </a>
-            <a href={`sms:${booking.phone}`} className="admin-action-text">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Text
-            </a>
-            {booking.email && (
-              <a href={`mailto:${booking.email}`} className="admin-action-email">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                Email
-              </a>
-            )}
+        {current && <section className="admin-edit-service-panel" aria-label="Visit schedule">
+          <h3>{booking.status === 'pending' ? 'Schedule visit' : 'Reschedule this visit'}</h3>
+          <div className="admin-complete-fields">
+            <input aria-label="Visit date" type="date" value={visitDate} onChange={e => setVisitDate(e.target.value)} className="admin-confirm-date-input" />
+            <input aria-label="Arrival time or window" value={visitTime} onChange={e => setVisitTime(e.target.value)} className="admin-confirm-date-input" placeholder="Morning, Afternoon, or HH:MM" />
           </div>
+          {agreement?.status === 'active' && <label className="crm-check"><input type="checkbox" checked={movePlan} onChange={e => setMovePlan(e.target.checked)} />Move the rest of the plan too</label>}
+          <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !visitDate} onClick={() => movePlan && agreement?.status === 'active'
+            ? run('move-plan:'+visitDate+visitTime, id => moveVisit({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, date: visitDate, time: visitTime, wholePlan: true, email: emailConfigured && Boolean(booking.email) }), 'Visit moved; the plan now runs from the new date.')
+            : run('schedule:'+visitDate+visitTime, id => scheduleJobAndEmail({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: booking.status === 'pending' ? 'confirm' : 'reschedule', date: visitDate, time: visitTime }), booking.status === 'pending' ? 'Visit confirmed.' : 'Only this visit was rescheduled.')}>{emailConfigured && booking.email ? booking.status === 'pending' ? 'Confirm & email customer' : 'Reschedule & email customer' : 'Save visit date'}</button></div>
+          {booking.status === 'confirmed' && <ReminderButtons bookingId={booking.id} name={booking.name} phone={booking.phone} email={booking.email} confirmedDate={booking.confirmed_date} confirmedTime={booking.confirmed_time} lastReminderSentAt={booking.last_reminder_sent_at} />}
+        </section>}
 
-          {booking.status === 'pending' && !confirmingDate && !completing && (
-            <>
-              <div className="admin-card-status-btns">
-                <button className="admin-status-confirm" onClick={() => setConfirmingDate(true)} disabled={pending}>
-                  ✓ Confirm
-                </button>
-                <button className="admin-status-decline" onClick={() => { if (window.confirm(`Decline ${booking.name}'s booking?`)) startTransition(() => updateStatus(booking.id, 'declined')) }} disabled={pending}>
-                  ✗ Decline
-                </button>
-              </div>
-              <button
-                className="admin-status-already-done"
-                onClick={() => setCompleting(true)}
-                disabled={pending}
-              >
-                Already did this job → Mark complete
-              </button>
-            </>
-          )}
+        {booking.status === 'confirmed' && <section className="admin-complete-panel" aria-label="Complete job">
+          <h3>Complete this visit</h3>
+          <input aria-label="Date completed" type="date" value={completedOn} onChange={e => setCompletedOn(e.target.value)} className="admin-confirm-date-input" />
+          <p>{agreement?.status === 'active' ? 'The next visit will be created from the mowing plan.' : 'This is a one-off visit; no next visit will be created.'} Payment is recorded separately.</p>
+          {needsOneTimeDecision && customerPlan && <>
+            <p role="alert">This visit is recurring but not in {booking.name.split(' ')[0]}&apos;s mowing plan (every {customerPlan.interval_count} {customerPlan.interval_unit}{customerPlan.interval_count === 1 ? '' : 's'}, {money(customerPlan.price_per_visit)}/visit). Add it to the plan; it keeps its {money(jobPrice(booking))} price and the plan continues from its date.</p>
+            <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending} onClick={() => run('join-plan', id => addVisitToPlan({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, agreementId: customerPlan.id }), 'Added to the mowing plan. You may complete it now.')}>Add to mowing plan</button></div>
+          </>}
+          {needsOneTimeDecision && !customerPlan && <>
+            <p role="alert">This visit is marked recurring but has no mowing plan. Link its customer, start a mowing plan, or mark this visit one-time.</p>
+            <div className="admin-btn-row"><button className="crm-button" disabled={pending} onClick={() => run('mark-one-time', id => changeJob({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: 'mark_one_time' }), 'Visit marked one-time. You may complete it now.')}>Mark this visit one-time</button></div>
+          </>}
+          <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || needsOneTimeDecision} onClick={() => run('complete:'+completedOn, id => markComplete(booking.id, { completed_at: completedOn, expected_updated_at: booking.updated_at, operation_id: id }), 'Visit completed.')}><Icon name="check" size={15} />Mark complete</button></div>
+        </section>}
 
-          {(booking.status === 'pending' || booking.status === 'confirmed') && confirmingDate && (
-            <div className="admin-confirm-date-panel">
-              <label className="admin-confirm-date-label">Date</label>
-              <input
-                type="date"
-                className="admin-confirm-date-input"
-                value={pickedDate}
-                onChange={e => setPickedDate(e.target.value)}
-              />
-              <label className="admin-confirm-date-label">Arrival window</label>
-              <div className="admin-time-window-row">
-                {(['Morning', 'Afternoon', ''] as const).map(opt => (
-                  <button
-                    key={opt || 'none'}
-                    type="button"
-                    className={`admin-time-window-btn ${pickedTime === opt ? 'selected' : ''}`}
-                    onClick={() => setPickedTime(opt)}
-                  >
-                    {opt || 'No preference'}
-                  </button>
-                ))}
-              </div>
-              <div className="admin-confirm-date-btns">
-                <button className="admin-confirm-date-send" onClick={doConfirm} disabled={pending}>
-                  {isReschedule ? '✓ Save new date & notify' : '✓ Confirm & send email'}
-                </button>
-                <button className="admin-confirm-date-cancel" onClick={() => setConfirmingDate(false)} disabled={pending}>
-                  Cancel
-                </button>
-              </div>
+        <section className="admin-edit-service-panel" aria-label="Payments">
+          <h3>Payments received <small>{money(actualPaid)}</small></h3>
+          {(payments.length > 0 || booking.amount_charged != null) && <div className="admin-payment-list">
+            {payments.map(p => <div key={p.id} className="admin-card-row"><span>{dateLabel(p.paid_on)} · {p.method} ({p.provenance === 'manual' ? 'staff recorded' : 'processor verified'})</span><strong>{money(p.amount)}</strong></div>)}
+            {booking.amount_charged != null && <p>Legacy amount recorded: {money(booking.amount_charged)} via {booking.payment_method ?? 'unspecified method'}. Date and settlement were not independently verified.</p>}
+          </div>}
+          <div className="admin-complete-fields">
+            <input aria-label="Paid amount" type="number" min="0.01" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="admin-confirm-date-input" />
+            <input aria-label="Date paid" type="date" value={paidOn} onChange={e => setPaidOn(e.target.value)} className="admin-confirm-date-input" />
+            <select aria-label="Payment method" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}><option>Cash</option><option>Stripe</option><option>Venmo</option><option>Zelle</option><option>Other</option></select>
+          </div>
+          <div className="admin-btn-row">
+            <button className="crm-button" disabled={pending} onClick={() => run('payment:'+paymentAmount+paidOn+paymentMethod, id => recordManualPayment({ bookingId: booking.id, operationId: id, amount: paymentAmount, paidOn, method: paymentMethod }), 'Payment recorded.')}>Record payment</button>
+            <button className="crm-button crm-button-ghost admin-action-stripe" disabled={linkBusy || jobPrice(booking) <= 0} onClick={async () => {
+              setLinkBusy(true); setError('')
+              const result = await createPaymentLink(booking.id, jobPrice(booking), booking.name, booking.address)
+              setLinkBusy(false)
+              if ('error' in result) setError(result.error); else setPaymentLink(result.url)
+            }}>{linkBusy ? 'Generating…' : 'Create Stripe payment link for job total'}</button>
+          </div>
+          {paymentLink && <div className="admin-payment-link-box"><a href={paymentLink} target="_blank" rel="noopener noreferrer">{paymentLink}</a> · <a href={`sms:${booking.phone}&body=${encodeURIComponent(`Hi ${booking.name.split(' ')[0]}, here is your QuietGreen payment link: ${paymentLink}`)}`}>Text link</a></div>}
+        </section>
+
+        <section className="admin-edit-service-panel" aria-label="Job price">
+          <button className="admin-panel-toggle" aria-expanded={showPricing} onClick={() => setShowPricing(!showPricing)}>Job items and price <Icon name="chevronDown" size={16} /></button>
+          {!showPricing && <p>Current job total: <strong>{money(jobPrice(booking))}</strong>. Paid: <strong>{money(actualPaid)}</strong>.</p>}
+          {showPricing && <>
+            <div className="admin-price-lines">
+              {lines.map((line, index) => <div key={index} className="admin-price-line">
+                <select aria-label={`Item ${index+1} type`} value={line.kind} onChange={e => changeLine(index, { kind: e.target.value as JobLine['kind'] })}><option value="service">Service</option><option value="discount">Discount</option></select>
+                <input aria-label={`Item ${index+1} description`} value={line.description} onChange={e => changeLine(index, { description: e.target.value })} className="admin-confirm-date-input" />
+                <input aria-label={`Item ${index+1} amount`} type="number" min="0" step="0.01" value={line.amount.replace(/^-/, '')} onChange={e => changeLine(index, { amount: e.target.value })} className="admin-confirm-date-input" />
+                <button className="admin-remove" aria-label={`Remove item ${index+1}`} disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, i) => i !== index))}>×</button>
+              </div>)}
             </div>
-          )}
-
-          {(booking.status === 'confirmed' || booking.status === 'completed') && !completing && !confirmingDate && (
-            <div className="admin-card-status-btns" style={{ flexDirection: 'column', gap: 8 }}>
-              {booking.status === 'confirmed' && (
-                <>
-                  <button
-                    className="admin-status-complete"
-                    onClick={() => setCompleting(true)}
-                    disabled={pending}
-                  >
-                    ✓ Mark complete
-                  </button>
-                  <button
-                    className="admin-status-already-done"
-                    onClick={openReschedule}
-                    disabled={pending}
-                    style={{ borderTop: 'none' }}
-                  >
-                    Reschedule this visit
-                  </button>
-                  <ReminderButtons
-                    bookingId={booking.id}
-                    name={booking.name}
-                    phone={booking.phone}
-                    email={booking.email}
-                    confirmedDate={booking.confirmed_date}
-                    confirmedTime={booking.confirmed_time}
-                    lastReminderSentAt={booking.last_reminder_sent_at}
-                  />
-                </>
-              )}
-              <button
-                className="admin-action-stripe"
-                disabled={pending || generatingLink}
-                onClick={async () => {
-                  setGeneratingLink(true)
-                  setPaymentLinkError('')
-                  const amount = booking.amount_charged ?? booking.price_per_visit ?? 0
-                  const result = await createPaymentLink(booking.id, amount, booking.name, booking.address)
-                  setGeneratingLink(false)
-                  if ('error' in result) { setPaymentLinkError(result.error); return }
-                  setPaymentLink(result.url)
-                }}
-              >
-                {generatingLink ? 'Generating…' : '$ Send payment link'}
-              </button>
-              {paymentLinkError && <p style={{ fontSize: 12, color: '#c0392b', margin: 0 }}>{paymentLinkError}</p>}
-              {(paymentLink || booking.payment_link) && (
-                <div className="admin-payment-link-box">
-                  <span className="admin-payment-link-url">{paymentLink || booking.payment_link}</span>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button
-                      className="admin-payment-link-copy"
-                      onClick={() => { navigator.clipboard.writeText(paymentLink || booking.payment_link!); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-                    >
-                      {copied ? 'Copied!' : 'Copy link'}
-                    </button>
-                    <a
-                      className="admin-payment-link-sms"
-                      href={`sms:${booking.phone}&body=Hi ${booking.name.split(' ')[0]}, here's your QuietGreen payment link: ${paymentLink || booking.payment_link}`}
-                    >
-                      Text to client
-                    </a>
-                    {booking.email && (
-                      <a
-                        className="admin-payment-link-sms"
-                        href={`mailto:${booking.email}?subject=${encodeURIComponent('Your QuietGreen payment link')}&body=${encodeURIComponent(`Hi ${booking.name.split(' ')[0]}, here's your QuietGreen payment link: ${paymentLink || booking.payment_link}`)}`}
-                      >
-                        Email to client
-                      </a>
-                    )}
-                  </div>
-                </div>
-              )}
+            <div className="admin-price-total"><span>Current job total</span><strong>{money(jobPrice(booking))}</strong></div>
+            <div className="admin-btn-row">
+              <button className="crm-button crm-button-sm crm-button-ghost" onClick={() => setLines([...lines, { kind: 'service', description: '', amount: '0.00' }])}>Add service</button>
+              <button className="crm-button crm-button-sm crm-button-ghost" onClick={() => setLines([...lines, { kind: 'discount', description: 'Discount', amount: '0.00' }])}>Add discount</button>
             </div>
-          )}
+            {current && <div className="admin-btn-row"><button className="crm-button" disabled={pending} onClick={() => run('items:'+JSON.stringify(lines), async id => { const result = await saveJobItems({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, items: lines }); if (result.success) setPaymentLink(null); return result }, 'Current job price saved. Accepted quote preserved.')}>Save current job price</button></div>}
+            {!current && <p>Finished job prices stay in history.</p>}
+          </>}
+        </section>
 
-          {(booking.status === 'confirmed' || booking.status === 'pending') && completing && (
-            <div className="admin-complete-panel">
-              <div className="admin-complete-panel-title">Mark job complete</div>
-              <div className="admin-complete-fields">
-                <div className="admin-complete-field">
-                  <label>Date completed</label>
-                  <input
-                    type="date"
-                    value={completeDate}
-                    onChange={e => setCompleteDate(e.target.value)}
-                    className="admin-confirm-date-input"
-                  />
-                </div>
-                <div className="admin-complete-field">
-                  <label>Amount charged ($)</label>
-                  <input
-                    type="number"
-                    value={completeAmount}
-                    onChange={e => setCompleteAmount(parseFloat(e.target.value) || 0)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div className="admin-complete-field">
-                  <label>Payment method</label>
-                  <select
-                    value={completePayment}
-                    onChange={e => setCompletePayment(e.target.value)}
-                    className="admin-confirm-date-input"
-                    style={{ width: '100%' }}
-                  >
-                    <option>Stripe</option>
-                    <option>Cash</option>
-                    <option>Venmo</option>
-                    <option>Zelle</option>
-                  </select>
-                </div>
-              </div>
-              <label className="admin-onetime-toggle" style={{ padding: '2px 0 10px' }}>
-                <input
-                  type="checkbox"
-                  checked={completeOneTime}
-                  onChange={e => setCompleteOneTime(e.target.checked)}
-                />
-                One-time visit — no follow-up needed
-              </label>
-              {completeOneTime ? (
-                <div className="admin-complete-next-hint">
-                  No follow-up will be scheduled and no reminder email will go out.
-                </div>
-              ) : (
-                <div className="admin-complete-field" style={{ padding: '2px 0 10px' }}>
-                  <label>
-                    Next visit {completeNextDate ? '(customer requested)' : '(auto-scheduled)'}
-                    {booking.confirmed_time && <> · {formatTime(booking.confirmed_time)}</>}
-                  </label>
-                  <input
-                    type="date"
-                    value={previewNextDate}
-                    onChange={e => setCompleteNextDate(e.target.value)}
-                    className="admin-confirm-date-input"
-                  />
-                  {completeNextDate && (
-                    <button type="button" className="admin-edit-service-link" style={{ marginTop: 4 }} onClick={() => setCompleteNextDate('')}>
-                      Reset to auto ({formatDate(autoNextDate)})
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className="admin-confirm-date-btns">
-                <button className="admin-confirm-date-send" onClick={doMarkComplete} disabled={pending}>
-                  {completeOneTime ? '✓ Save (one-time)' : '✓ Save & schedule next'}
-                </button>
-                <button className="admin-confirm-date-cancel" onClick={() => setCompleting(false)} disabled={pending}>
-                  Cancel
-                </button>
-              </div>
+        {(current || booking.status === 'completed') && !agreement && !customerPlan && linked && <section className="admin-edit-service-panel" aria-label="Start recurring agreement">
+          <button className="admin-panel-toggle" aria-expanded={showAgreement} onClick={() => setShowAgreement(!showAgreement)}>Start mowing plan <Icon name="chevronDown" size={16} /></button>
+          {showAgreement && <>
+            <p>Repeats lawn care on a schedule. This visit keeps its own price and payments; one-off work like cleanups stays out of the plan.</p>
+            <label>Lawn care price per visit ($)</label>
+            <input aria-label="Plan price per visit" inputMode="decimal" value={planPrice} onChange={e => /^\d{0,8}(\.\d{0,2})?$/.test(e.target.value) && setPlanPrice(e.target.value)} className="admin-confirm-date-input" />
+            <label>Every</label>
+            <div className="admin-complete-fields">
+              <input aria-label="Interval count" type="number" min="1" max="52" value={intervalCount} onChange={e => setIntervalCount(Number(e.target.value))} className="admin-confirm-date-input" />
+              <select value={intervalUnit} onChange={e => setIntervalUnit(e.target.value as 'week'|'month')}><option value="week">Weeks</option><option value="month">Months</option></select>
             </div>
-          )}
+            <label>Next visit after this one</label><input type="date" value={nextOn} onChange={e => setNextOn(e.target.value)} className="admin-confirm-date-input" />
+            <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !nextOn || !visitDate || !Number(planPrice)} onClick={() => run('start-agreement:'+nextOn+planPrice, id => startJobAgreement({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, anchorOn: booking.confirmed_date ?? booking.preferred_date ?? '', nextOn, intervalUnit, intervalCount, itemsTemplate: [{ kind: 'service', description: 'Lawn care', amount: planPrice }] }), 'Mowing plan started.')}>Start plan</button></div>
+          </>}
+        </section>}
 
-          {booking.status !== 'pending' && booking.status !== 'completed' && (
-            <button className="admin-status-reset" onClick={() => startTransition(() => updateStatus(booking.id, 'pending'))} disabled={pending}>
-              Reset to pending
-            </button>
-          )}
-          <button
-            style={{ width: '100%', background: '#fff5f5', color: '#b03030', border: 'none', borderTop: '1px solid #fde0e0', padding: '11px', fontSize: '13px', fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer' }}
-            onClick={() => { if (window.confirm(`Delete ${booking.name}? This cannot be undone.`)) startTransition(() => deleteBooking(booking.id)) }}
-            disabled={pending}
-          >
-            Delete client
-          </button>
-        </>
-      )}
-    </div>
-  )
+        {agreement && <section className="admin-edit-service-panel" aria-label="Recurring agreement">
+          <h3>Mowing plan <span className={`admin-badge admin-badge-${agreement.status === 'active' ? 'confirmed' : agreement.status === 'paused' ? 'pending' : 'canceled'}`}>{agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span></h3>
+          <p>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · next {dateLabel(agreement.next_on)} · future template {money(agreement.price_per_visit)}.</p>
+          <p>Changing the template affects newly generated visits only. Existing visit prices stay put.</p>
+          {agreement.status !== 'ended' && <div className="admin-btn-row"><button className="crm-button crm-button-sm" disabled={pending} onClick={() => run('template:'+JSON.stringify(lines), id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'price_template', itemsTemplate: lines }), 'Future agreement price saved.')}>Use these items for future visits</button></div>}
+          {agreement.status === 'active' && <>
+            <p>Pause or end will cancel {futureJobIds.length} upcoming unfinished visit{futureJobIds.length === 1 ? '' : 's'} after this preview. Completed and overdue work stays in history.</p>
+            <div className="admin-btn-row">
+              <button className="crm-button crm-button-sm" disabled={pending} onClick={() => { if (window.confirm(`Pause the plan and cancel ${futureJobIds.length} upcoming visit(s)?`)) run('pause:'+futureJobIds.join(','), id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'pause', futureJobIds }), 'Plan paused.') }}>Pause plan</button>
+              <button className="crm-button crm-button-sm crm-button-danger" disabled={pending} onClick={() => { if (window.confirm(`End and cancel ${futureJobIds.length} upcoming visit(s)? This plan cannot resume.`)) run('end:'+futureJobIds.join(','), id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'end', futureJobIds }), 'Plan ended.') }}>End plan</button>
+            </div>
+          </>}
+          {agreement.status === 'paused' && <>
+            <label>Explicit next date</label><input aria-label="Resume next date" type="date" value={resumeOn} onChange={e => setResumeOn(e.target.value)} className="admin-confirm-date-input" />
+            <p>If this reopens a visit canceled by the pause, that visit keeps its original price.</p>
+            <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !resumeOn} onClick={() => run('resume:'+resumeOn, id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'resume', nextOn: resumeOn }), 'Plan resumed.')}>Resume plan</button></div>
+          </>}
+        </section>}
+
+        <section className="admin-notes-wrap" aria-label="Internal notes">
+          <label className="admin-notes-label" htmlFor={`notes-${booking.id}`}>Internal notes</label>
+          <textarea id={`notes-${booking.id}`} className="admin-notes-input" value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Gate code, dog, where to park…" />
+          <div className="admin-btn-row"><button className="crm-button crm-button-sm" disabled={pending} onClick={() => run('notes:'+notes, async () => { await updateNotes(booking.id, notes); return { success: true } }, 'Notes saved.')}>Save notes</button></div>
+        </section>
+      </div>
+
+      {booking.status === 'completed' && booking.completed_at && <div className="admin-complete-record" style={{ marginTop: 12 }}>Completed {dateLabel(booking.completed_at)}.</div>}
+      {current && <div className="admin-card-status-btns">
+        {agreement && <button className="crm-button crm-button-sm" disabled={pending} onClick={() => run('skip', id => changeJob({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: 'skip' }), 'This visit skipped; next agreement visit scheduled.')}>Skip only this visit</button>}
+        <button className="crm-button crm-button-sm crm-button-danger" disabled={pending} onClick={() => { if (window.confirm(quotedVisit && !agreement ? `Cancel this visit and keep its history? This also marks ${booking.name.split(' ')[0]}'s quote as canceled.` : 'Cancel this visit and keep its history?')) run('cancel', id => changeJob({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: 'cancel' }), 'Visit canceled and retained in history.') }}>Cancel visit</button>
+      </div>}
+      {error && <div className="crm-toast crm-toast-error booking-error" role="alert"><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError('')}>×</button></div>}
+      {notice && <div className="crm-toast" role="status"><span>{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')}>×</button></div>}
+    </div>}
+  </div>
 }

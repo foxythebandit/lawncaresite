@@ -1,0 +1,1916 @@
+{
+  "photon:jim": {
+    "query": "162 Danish Dr, Hutto, TX 78634",
+    "kind": "house",
+    "ground_truth": [
+      30.5106347,
+      -97.5865912
+    ],
+    "url": "https://photon.komoot.io/api/?q=162+Danish+Dr%2C+Hutto%2C+TX+78634&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "latency_ms": 923
+  },
+  "nominatim:jim": {
+    "query": "162 Danish Dr, Hutto, TX 78634",
+    "kind": "house",
+    "ground_truth": [
+      30.5106347,
+      -97.5865912
+    ],
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=162+Danish+Dr%2C+Hutto%2C+TX+78634&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [],
+    "latency_ms": 816
+  },
+  "photon:office": {
+    "query": "807 E 47th St, Austin, TX",
+    "kind": "house",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=807+E+47th+St%2C+Austin%2C+TX&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 379192594,
+            "osm_key": "building",
+            "osm_value": "yes",
+            "type": "house",
+            "housenumber": "807",
+            "street": "East 47th Street",
+            "locality": "Ideal Place",
+            "city": "Austin",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78751",
+            "countrycode": "US",
+            "extent": [
+              -97.718882,
+              30.307526,
+              -97.718641,
+              30.307297
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.7187552,
+              30.307429
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 909
+  },
+  "nominatim:office": {
+    "query": "807 E 47th St, Austin, TX",
+    "kind": "house",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=807+E+47th+St%2C+Austin%2C+TX&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 316163385,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 379192594,
+        "lat": "30.3074290",
+        "lon": "-97.7187552",
+        "class": "building",
+        "type": "yes",
+        "place_rank": 30,
+        "importance": 7.494392309448413e-05,
+        "addresstype": "building",
+        "name": "",
+        "display_name": "807, East 47th Street, Ideal Place, Austin, Travis County, Texas, 78751, United States",
+        "boundingbox": [
+          "30.3072970",
+          "30.3075260",
+          "-97.7188820",
+          "-97.7186410"
+        ]
+      }
+    ],
+    "latency_ms": 453
+  },
+  "photon:austin-city-hall": {
+    "query": "301 W 2nd St, Austin, TX 78701",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=301+W+2nd+St%2C+Austin%2C+TX+78701&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 204413180,
+            "osm_key": "office",
+            "osm_value": "government",
+            "type": "house",
+            "housenumber": "301",
+            "name": "Austin City Hall",
+            "street": "West 2nd Street",
+            "locality": "Warehouse District",
+            "city": "Austin",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78701",
+            "countrycode": "US",
+            "extent": [
+              -97.7476475,
+              30.2651473,
+              -97.7467489,
+              30.264428
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.7472145,
+              30.2648103
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 204413180,
+            "osm_key": "amenity",
+            "osm_value": "townhall",
+            "type": "house",
+            "housenumber": "301",
+            "name": "Austin City Hall",
+            "street": "West 2nd Street",
+            "locality": "Warehouse District",
+            "city": "Austin",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78701",
+            "countrycode": "US",
+            "extent": [
+              -97.7476475,
+              30.2651473,
+              -97.7467489,
+              30.264428
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.7472145,
+              30.2648103
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 1539153968,
+            "osm_key": "shop",
+            "osm_value": "convenience",
+            "type": "house",
+            "housenumber": "301",
+            "name": "Foxtrot",
+            "street": "West 2nd Street",
+            "locality": "Warehouse District",
+            "city": "Austin",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78701",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.7469115,
+              30.2648968
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 12939212596,
+            "osm_key": "office",
+            "osm_value": "government",
+            "type": "house",
+            "housenumber": "301",
+            "name": "Council Chambers",
+            "street": "West 2nd Street",
+            "locality": "Warehouse District",
+            "city": "Austin",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78701",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.7475012,
+              30.2646282
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 3849777158,
+            "osm_key": "place",
+            "osm_value": "house",
+            "type": "house",
+            "housenumber": "301",
+            "street": "West 2nd Street",
+            "locality": "Warehouse District",
+            "city": "Austin",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78701",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.746989,
+              30.26488
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 789
+  },
+  "nominatim:austin-city-hall": {
+    "query": "301 W 2nd St, Austin, TX 78701",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=301+W+2nd+St%2C+Austin%2C+TX+78701&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 316137098,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 204413180,
+        "lat": "30.2648103",
+        "lon": "-97.7472145",
+        "class": "amenity",
+        "type": "townhall",
+        "place_rank": 30,
+        "importance": 0.3841981265934431,
+        "addresstype": "amenity",
+        "name": "Austin City Hall",
+        "display_name": "Austin City Hall, 301, West 2nd Street, Warehouse District, Austin, Travis County, Texas, 78701, United States",
+        "boundingbox": [
+          "30.2644280",
+          "30.2651473",
+          "-97.7476475",
+          "-97.7467489"
+        ]
+      }
+    ],
+    "latency_ms": 676
+  },
+  "photon:hutto-city-hall": {
+    "query": "500 W Live Oak St, Hutto, TX 78634",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=500+W+Live+Oak+St%2C+Hutto%2C+TX+78634&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 909080696,
+            "osm_key": "amenity",
+            "osm_value": "townhall",
+            "type": "house",
+            "housenumber": "500",
+            "name": "Hutto City Hall",
+            "street": "West Live Oak Street",
+            "city": "Hutto",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5525081,
+              30.5454821,
+              -97.5516432,
+              30.5451082
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5520382,
+              30.5453121
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1075
+  },
+  "nominatim:hutto-city-hall": {
+    "query": "500 W Live Oak St, Hutto, TX 78634",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=500+W+Live+Oak+St%2C+Hutto%2C+TX+78634&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 315416869,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 909080696,
+        "lat": "30.5453121",
+        "lon": "-97.5520382",
+        "class": "amenity",
+        "type": "townhall",
+        "place_rank": 30,
+        "importance": 5.4110780498924506e-05,
+        "addresstype": "amenity",
+        "name": "Hutto City Hall",
+        "display_name": "Hutto City Hall, 500, West Live Oak Street, Hutto, Williamson County, Texas, 78634, United States",
+        "boundingbox": [
+          "30.5451082",
+          "30.5454821",
+          "-97.5525081",
+          "-97.5516432"
+        ]
+      }
+    ],
+    "latency_ms": 955
+  },
+  "photon:round-rock-library": {
+    "query": "200 E Liberty Ave, Round Rock, TX 78664",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=200+E+Liberty+Ave%2C+Round+Rock%2C+TX+78664&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 382991813,
+            "osm_key": "amenity",
+            "osm_value": "library",
+            "type": "house",
+            "housenumber": "200",
+            "name": "Round Rock Public Library",
+            "street": "East Liberty Avenue",
+            "city": "Round Rock",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78664",
+            "countrycode": "US",
+            "extent": [
+              -97.6782703,
+              30.5106955,
+              -97.6774851,
+              30.5099535
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.6780521,
+              30.5104255
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1173
+  },
+  "nominatim:round-rock-library": {
+    "query": "200 E Liberty Ave, Round Rock, TX 78664",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=200+E+Liberty+Ave%2C+Round+Rock%2C+TX+78664&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 316894405,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 382991813,
+        "lat": "30.5104255",
+        "lon": "-97.6780521",
+        "class": "amenity",
+        "type": "library",
+        "place_rank": 30,
+        "importance": 0.18157831638402872,
+        "addresstype": "amenity",
+        "name": "Round Rock Public Library",
+        "display_name": "Round Rock Public Library, 200, East Liberty Avenue, Round Rock, Williamson County, Texas, 78664, United States",
+        "boundingbox": [
+          "30.5099535",
+          "30.5106955",
+          "-97.6782703",
+          "-97.6774851"
+        ]
+      }
+    ],
+    "latency_ms": 667
+  },
+  "photon:cedar-park-library": {
+    "query": "425 S Parkwest Dr, Cedar Park, TX 78613",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=425+S+Parkwest+Dr%2C+Cedar+Park%2C+TX+78613&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1349714578,
+            "osm_key": "amenity",
+            "osm_value": "library",
+            "type": "house",
+            "housenumber": "425",
+            "name": "Cedar Park Public Library",
+            "street": "South Parkwest Drive",
+            "city": "Cedar Park",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78613",
+            "countrycode": "US",
+            "extent": [
+              -97.8233717,
+              30.5054747,
+              -97.8225625,
+              30.5046893
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.8227266,
+              30.5050369
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1367
+  },
+  "nominatim:cedar-park-library": {
+    "query": "425 S Parkwest Dr, Cedar Park, TX 78613",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=425+S+Parkwest+Dr%2C+Cedar+Park%2C+TX+78613&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 316790621,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 1349714578,
+        "lat": "30.5050369",
+        "lon": "-97.8227266",
+        "class": "amenity",
+        "type": "library",
+        "place_rank": 30,
+        "importance": 5.57801174944231e-05,
+        "addresstype": "amenity",
+        "name": "Cedar Park Public Library",
+        "display_name": "Cedar Park Public Library, 425, South Parkwest Drive, Cedar Park, Williamson County, Texas, 78613, United States",
+        "boundingbox": [
+          "30.5046893",
+          "30.5054747",
+          "-97.8233717",
+          "-97.8225625"
+        ]
+      }
+    ],
+    "latency_ms": 445
+  },
+  "photon:leander-city-hall": {
+    "query": "105 N Brushy St, Leander, TX 78641",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=105+N+Brushy+St%2C+Leander%2C+TX+78641&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 29292372,
+            "osm_key": "amenity",
+            "osm_value": "townhall",
+            "type": "house",
+            "housenumber": "105",
+            "name": "City Hall",
+            "street": "North Brushy Street",
+            "city": "Leander",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78641",
+            "countrycode": "US",
+            "extent": [
+              -97.8550358,
+              30.5789508,
+              -97.8542672,
+              30.5786002
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.8546515,
+              30.5787755
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1131
+  },
+  "nominatim:leander-city-hall": {
+    "query": "105 N Brushy St, Leander, TX 78641",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=105+N+Brushy+St%2C+Leander%2C+TX+78641&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 312376289,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 29292372,
+        "lat": "30.5787755",
+        "lon": "-97.8546515",
+        "class": "amenity",
+        "type": "townhall",
+        "place_rank": 30,
+        "importance": 5.494087129010479e-05,
+        "addresstype": "amenity",
+        "name": "City Hall",
+        "display_name": "City Hall, 105, North Brushy Street, Leander, Williamson County, Texas, 78641, United States",
+        "boundingbox": [
+          "30.5786002",
+          "30.5789508",
+          "-97.8550358",
+          "-97.8542672"
+        ]
+      }
+    ],
+    "latency_ms": 422
+  },
+  "photon:pflugerville-city-hall": {
+    "query": "100 E Main St, Pflugerville, TX 78660",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=100+E+Main+St%2C+Pflugerville%2C+TX+78660&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 883719922,
+            "osm_key": "amenity",
+            "osm_value": "townhall",
+            "type": "house",
+            "housenumber": "100",
+            "name": "Pflugerville City Hall",
+            "street": "East Main street",
+            "locality": "Old Town",
+            "city": "Pflugerville",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78660",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.619908,
+              30.440994
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 74743797,
+            "osm_key": "amenity",
+            "osm_value": "public_building",
+            "type": "house",
+            "housenumber": "100",
+            "name": "Pflugerville City Hall",
+            "street": "Main Street East",
+            "locality": "Old Town",
+            "city": "Pflugerville",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78660",
+            "countrycode": "US",
+            "extent": [
+              -97.6202494,
+              30.4409913,
+              -97.6200176,
+              30.4407882
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.6201335,
+              30.4408898
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 383784130,
+            "osm_key": "building",
+            "osm_value": "yes",
+            "type": "house",
+            "housenumber": "100",
+            "street": "West Main Street",
+            "locality": "Old Town",
+            "city": "Pflugerville",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78660",
+            "countrycode": "US",
+            "extent": [
+              -97.620685,
+              30.441278,
+              -97.620266,
+              30.441019
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.6204598,
+              30.441145
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 74743795,
+            "osm_key": "amenity",
+            "osm_value": "public_building",
+            "type": "house",
+            "housenumber": "100",
+            "name": "Council Chambers",
+            "street": "East Main Street",
+            "locality": "Old Town",
+            "city": "Pflugerville",
+            "county": "Travis",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78660",
+            "countrycode": "US",
+            "extent": [
+              -97.6197848,
+              30.4412695,
+              -97.6195747,
+              30.4410852
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.6196798,
+              30.4411774
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1172
+  },
+  "nominatim:pflugerville-city-hall": {
+    "query": "100 E Main St, Pflugerville, TX 78660",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=100+E+Main+St%2C+Pflugerville%2C+TX+78660&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 315327710,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 74743797,
+        "lat": "30.4408898",
+        "lon": "-97.6201335",
+        "class": "amenity",
+        "type": "public_building",
+        "place_rank": 30,
+        "importance": 5.5398641947005685e-05,
+        "addresstype": "amenity",
+        "name": "Pflugerville City Hall",
+        "display_name": "Pflugerville City Hall, 100, Main Street East, Old Town, Pflugerville, Travis County, Texas, 78660, United States",
+        "boundingbox": [
+          "30.4407882",
+          "30.4409913",
+          "-97.6202494",
+          "-97.6200176"
+        ]
+      }
+    ],
+    "latency_ms": 2278
+  },
+  "photon:jim-partial": {
+    "query": "162 Danish",
+    "kind": "partial",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=162+Danish&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 9922077963,
+            "osm_key": "amenity",
+            "osm_value": "language_school",
+            "type": "house",
+            "name": "UCplus Danish Language School",
+            "street": "Gyldenl\u00f8vesgade",
+            "locality": "Vestervold",
+            "district": "Meatpacking District",
+            "city": "Copenhagen",
+            "state": "Capital Region of Denmark",
+            "country": "Denmark",
+            "postcode": "1603",
+            "countrycode": "DK"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              12.5627144,
+              55.6798134
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 4886281676,
+            "osm_key": "shop",
+            "osm_value": "interior_decoration",
+            "type": "house",
+            "name": "Urban Danish Design",
+            "street": "Gammel Kongevej",
+            "locality": "Vestervold",
+            "district": "Meatpacking District",
+            "city": "Copenhagen",
+            "state": "Capital Region of Denmark",
+            "country": "Denmark",
+            "postcode": "1610",
+            "countrycode": "DK"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              12.5550846,
+              55.673375
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 334605930,
+            "osm_key": "building",
+            "osm_value": "yes",
+            "type": "house",
+            "housenumber": "162",
+            "street": "Dani\u0161ovce",
+            "city": "Dani\u0161ovce",
+            "county": "District of Spi\u0161sk\u00e1 Nov\u00e1 Ves",
+            "state": "Region of Ko\u0161ice",
+            "country": "Slovakia",
+            "postcode": "053 22",
+            "countrycode": "SK",
+            "extent": [
+              20.6164502,
+              48.9485451,
+              20.6166783,
+              48.9483647
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              20.6165799,
+              48.9484657
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1291810558,
+            "osm_key": "building",
+            "osm_value": "commercial",
+            "type": "house",
+            "housenumber": "162",
+            "street": "Daneshgah",
+            "locality": "Felestin - Enghelab",
+            "district": "District 11",
+            "city": "Tehran",
+            "county": "Tehran County",
+            "state": "Tehran",
+            "country": "Iran",
+            "postcode": "13147-44518",
+            "countrycode": "IR",
+            "extent": [
+              51.3979986,
+              35.7006126,
+              51.3981734,
+              35.7004961
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              51.3980819,
+              35.7005554
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 166529775,
+            "osm_key": "shop",
+            "osm_value": "furniture",
+            "type": "house",
+            "housenumber": "8",
+            "name": "JYSK",
+            "street": "Am Polderdamm",
+            "district": "Bad Freienwalde (Oder)",
+            "city": "Bad Freienwalde (Oder)",
+            "county": "M\u00e4rkisch-Oderland",
+            "state": "Brandenburg",
+            "country": "Germany",
+            "postcode": "16259",
+            "countrycode": "DE",
+            "extent": [
+              14.0425189,
+              52.7889315,
+              14.043359,
+              52.7883657
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              14.0429149,
+              52.788672
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 11873830973,
+            "osm_key": "office",
+            "osm_value": "lawyer",
+            "type": "house",
+            "housenumber": "No: 395",
+            "name": "Keskin Hukuk & Dan\u0131\u015fmanl\u0131k",
+            "street": "\u0130stanbul Caddesi",
+            "locality": "Has Plaza, Panay\u0131r Mah.",
+            "district": "Panay\u0131r",
+            "city": "Bursa",
+            "state": "Bursa",
+            "country": "Turkey",
+            "postcode": "16250",
+            "countrycode": "TR"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              29.0621859,
+              40.2374561
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 14293522501,
+            "osm_key": "shop",
+            "osm_value": "clothes",
+            "type": "house",
+            "housenumber": "42",
+            "name": "La Boutique d\u2019Anisa",
+            "street": "Rue Grande",
+            "district": "La Gagnarderie",
+            "city": "Mansle-les-Fontaines",
+            "county": "Charente",
+            "state": "Nouvelle-Aquitaine",
+            "country": "France",
+            "postcode": "16230",
+            "countrycode": "FR"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              0.1782835,
+              45.8753313
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 7880442785,
+            "osm_key": "office",
+            "osm_value": "estate_agent",
+            "type": "house",
+            "housenumber": "8/A",
+            "name": "Karen Real Estate Property Management and Investment Consulting",
+            "street": "Manavgat Caddesi",
+            "district": "Dumlup\u0131nar",
+            "city": "Nil\u00fcfer",
+            "state": "Bursa",
+            "country": "Turkey",
+            "postcode": "16285",
+            "countrycode": "TR"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              28.845323,
+              40.2203664
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 12833393301,
+            "osm_key": "office",
+            "osm_value": "lawyer",
+            "type": "house",
+            "housenumber": "1/44",
+            "name": "MMK Hukuk & Dan\u0131\u015fmanl\u0131k - Av. Mehmet Mert Karaku\u015f",
+            "street": "1602",
+            "district": "O\u011fuzlar",
+            "city": "Etimesgut",
+            "state": "Ankara",
+            "country": "Turkey",
+            "postcode": "06796",
+            "countrycode": "TR"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              32.6077221,
+              39.945665
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 5941478085,
+            "osm_key": "office",
+            "osm_value": "company",
+            "type": "house",
+            "housenumber": "26A",
+            "name": "Ege Engineering Surveying-Project-Consultancy",
+            "street": "Papatya Sokak",
+            "district": "Be\u015fevler",
+            "city": "Nil\u00fcfer",
+            "state": "Bursa",
+            "country": "Turkey",
+            "postcode": "16022",
+            "countrycode": "TR"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              28.9637037,
+              40.2074905
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1688
+  },
+  "nominatim:jim-partial": {
+    "query": "162 Danish",
+    "kind": "partial",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=162+Danish&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 412877789,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 689744213,
+        "lat": "30.5107550",
+        "lon": "-97.5865270",
+        "class": "place",
+        "type": "house",
+        "place_rank": 30,
+        "importance": 9.99999999995449e-06,
+        "addresstype": "place",
+        "name": "",
+        "display_name": "162, Danish Drive, Williamson County, Texas, 78634, United States",
+        "boundingbox": [
+          "30.5107050",
+          "30.5108050",
+          "-97.5865770",
+          "-97.5864770"
+        ]
+      }
+    ],
+    "latency_ms": 972
+  },
+  "photon:jim-road": {
+    "query": "Danish Dr, Hutto, TX",
+    "kind": "road",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=Danish+Dr%2C+Hutto%2C+TX&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 539546668,
+            "osm_key": "highway",
+            "osm_value": "residential",
+            "type": "street",
+            "name": "Danish Drive",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5856841,
+              30.5102212,
+              -97.585609,
+              30.5099347
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5856193,
+              30.5100854
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855542,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5560332,
+              30.5274815,
+              -97.551798,
+              30.5247882
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5542219,
+              30.5262854
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855540,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5516556,
+              30.5298824,
+              -97.5508777,
+              30.5275507
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5508935,
+              30.5285654
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855538,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "city": "Hutto",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5527586,
+              30.5343248,
+              -97.5527291,
+              30.5340842
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5527438,
+              30.5342045
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1338102529,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5567452,
+              30.5247385,
+              -97.5551816,
+              30.5211525
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5556133,
+              30.5233501
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1338102530,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5561672,
+              30.5247975,
+              -97.5560332,
+              30.5247385
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5561002,
+              30.524768
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855543,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.551798,
+              30.5275507,
+              -97.5516556,
+              30.5274815
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5517268,
+              30.5275161
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855541,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5511471,
+              30.5299813,
+              -97.5511381,
+              30.5298824
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5511426,
+              30.5299319
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855532,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "city": "Hutto",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5529659,
+              30.5340842,
+              -97.5510969,
+              30.5299813
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5526295,
+              30.5315734
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 1335855537,
+            "osm_key": "waterway",
+            "osm_value": "stream",
+            "type": "other",
+            "name": "Hutto Draw",
+            "city": "Hutto",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5527291,
+              30.540947,
+              -97.5515223,
+              30.5343248
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5520586,
+              30.5379271
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1818
+  },
+  "nominatim:jim-road": {
+    "query": "Danish Dr, Hutto, TX",
+    "kind": "road",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=Danish+Dr%2C+Hutto%2C+TX&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [],
+    "latency_ms": 704
+  },
+  "photon:fake-number": {
+    "query": "999999 Danish Dr, Hutto, TX 78634",
+    "kind": "negative",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=999999+Danish+Dr%2C+Hutto%2C+TX+78634&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "latency_ms": 869
+  },
+  "nominatim:fake-number": {
+    "query": "999999 Danish Dr, Hutto, TX 78634",
+    "kind": "negative",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=999999+Danish+Dr%2C+Hutto%2C+TX+78634&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [],
+    "latency_ms": 522
+  },
+  "photon:fake-street": {
+    "query": "123 Imaginary Unicorn Lane, Hutto, TX 78634",
+    "kind": "negative",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=123+Imaginary+Unicorn+Lane%2C+Hutto%2C+TX+78634&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": []
+    },
+    "latency_ms": 899
+  },
+  "nominatim:fake-street": {
+    "query": "123 Imaginary Unicorn Lane, Hutto, TX 78634",
+    "kind": "negative",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=123+Imaginary+Unicorn+Lane%2C+Hutto%2C+TX+78634&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [],
+    "latency_ms": 3258
+  },
+  "photon:out-of-area": {
+    "query": "1600 Pennsylvania Ave NW, Washington, DC",
+    "kind": "civic-outside",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=1600+Pennsylvania+Ave+NW%2C+Washington%2C+DC&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "R",
+            "osm_id": 19761182,
+            "osm_key": "office",
+            "osm_value": "government",
+            "type": "house",
+            "housenumber": "1600",
+            "name": "White House",
+            "street": "Pennsylvania Avenue Northwest",
+            "district": "Ward 2",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20500",
+            "countrycode": "US",
+            "extent": [
+              -77.0368541,
+              38.8977959,
+              -77.0362509,
+              38.8974904
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0365525,
+              38.8976387
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 432096036,
+            "osm_key": "building",
+            "osm_value": "apartments",
+            "type": "house",
+            "housenumber": "1600",
+            "name": "1600 Pennsylvania Ave SE Apartments",
+            "street": "Pennsylvania Avenue Southeast",
+            "locality": "Barney Circle",
+            "district": "Ward 6",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20003",
+            "countrycode": "US",
+            "extent": [
+              -76.9824942,
+              38.8794352,
+              -76.9815745,
+              38.8790168
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -76.9819501,
+              38.8792256
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 12941543310,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Constitution Ave NW at Pennsylvania Ave NW",
+            "street": "Constitution Avenue Northwest",
+            "district": "Ward 6",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20001",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0162593,
+              38.8920358
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 603191102,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Pennsylvania Ave NW at 9th St NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "district": "Ward 2",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20004",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0235313,
+              38.8935957
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 2276095941,
+            "osm_key": "amenity",
+            "osm_value": "bicycle_rental",
+            "type": "house",
+            "name": "25th St and Pennsylvania Ave NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "locality": "West End",
+            "district": "Ward 2",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20037",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.053485,
+              38.9038267
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 12941543377,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Pennsylvania Ave NW at Constitution Ave NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "district": "Ward 2",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20580",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0190053,
+              38.8923658
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 6248422889,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Pennsylvania Ave NW at 6th St NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "district": "Ward 2",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20580",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0202414,
+              38.8926899
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 12941505081,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Pennsylvania Ave NW at 22nd St NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "locality": "The West End",
+            "district": "Ward 2",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20006",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0489733,
+              38.9020038
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 6248423547,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Pennsylvania Ave NW at Constitution Ave NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "district": "Ward 6",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20554",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.0183186,
+              38.8924781
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "N",
+            "osm_id": 6248423485,
+            "osm_key": "highway",
+            "osm_value": "bus_stop",
+            "type": "house",
+            "name": "Pennsylvania Ave NW at 10th St NW",
+            "street": "Pennsylvania Avenue Northwest",
+            "district": "Penn Quarter",
+            "city": "Washington",
+            "state": "District of Columbia",
+            "country": "United States",
+            "postcode": "20004",
+            "countrycode": "US"
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -77.02558,
+              38.894494
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 744
+  },
+  "nominatim:out-of-area": {
+    "query": "1600 Pennsylvania Ave NW, Washington, DC",
+    "kind": "civic-outside",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=1600+Pennsylvania+Ave+NW%2C+Washington%2C+DC&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 349001929,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 19761182,
+        "lat": "38.8976387",
+        "lon": "-77.0365525",
+        "class": "office",
+        "type": "government",
+        "place_rank": 30,
+        "importance": 0.6958339719610435,
+        "addresstype": "office",
+        "name": "White House",
+        "display_name": "White House, 1600, Pennsylvania Avenue Northwest, Ward 2, Washington, District of Columbia, 20500, United States",
+        "boundingbox": [
+          "38.8974904",
+          "38.8977959",
+          "-77.0368541",
+          "-77.0362509"
+        ]
+      }
+    ],
+    "latency_ms": 795
+  },
+  "photon:hutto-no-zip": {
+    "query": "500 W Live Oak St, Hutto, TX",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://photon.komoot.io/api/?q=500+W+Live+Oak+St%2C+Hutto%2C+TX&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 909080696,
+            "osm_key": "amenity",
+            "osm_value": "townhall",
+            "type": "house",
+            "housenumber": "500",
+            "name": "Hutto City Hall",
+            "street": "West Live Oak Street",
+            "city": "Hutto",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5525081,
+              30.5454821,
+              -97.5516432,
+              30.5451082
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5520382,
+              30.5453121
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 987
+  },
+  "nominatim:hutto-no-zip": {
+    "query": "500 W Live Oak St, Hutto, TX",
+    "kind": "civic",
+    "ground_truth": null,
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=500+W+Live+Oak+St%2C+Hutto%2C+TX&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 315634529,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 909080696,
+        "lat": "30.5453121",
+        "lon": "-97.5520382",
+        "class": "amenity",
+        "type": "townhall",
+        "place_rank": 30,
+        "importance": 5.4110780498924506e-05,
+        "addresstype": "amenity",
+        "name": "Hutto City Hall",
+        "display_name": "Hutto City Hall, 500, West Live Oak Street, Hutto, Williamson County, Texas, 78634, United States",
+        "boundingbox": [
+          "30.5451082",
+          "30.5454821",
+          "-97.5525081",
+          "-97.5516432"
+        ]
+      }
+    ],
+    "latency_ms": 775
+  },
+  "photon:jim-no-city": {
+    "query": "162 Danish Dr, TX 78634",
+    "kind": "house-variant",
+    "ground_truth": [
+      30.5106347,
+      -97.5865912
+    ],
+    "url": "https://photon.komoot.io/api/?q=162+Danish+Dr%2C+TX+78634&limit=10&lang=en&lat=30.3049&lon=-97.7184",
+    "status": 200,
+    "response": {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": {
+            "osm_type": "W",
+            "osm_id": 539546668,
+            "osm_key": "highway",
+            "osm_value": "residential",
+            "type": "street",
+            "name": "Danish Drive",
+            "county": "Williamson",
+            "state": "Texas",
+            "country": "United States",
+            "postcode": "78634",
+            "countrycode": "US",
+            "extent": [
+              -97.5856841,
+              30.5102212,
+              -97.585609,
+              30.5099347
+            ]
+          },
+          "geometry": {
+            "type": "Point",
+            "coordinates": [
+              -97.5856193,
+              30.5100854
+            ]
+          }
+        }
+      ]
+    },
+    "latency_ms": 1397
+  },
+  "nominatim:jim-no-city": {
+    "query": "162 Danish Dr, TX 78634",
+    "kind": "house-variant",
+    "ground_truth": [
+      30.5106347,
+      -97.5865912
+    ],
+    "url": "https://nominatim.openstreetmap.org/search?format=json&q=162+Danish+Dr%2C+TX+78634&limit=1&countrycodes=us&viewbox=-98.3184%2C30.8049%2C-97.1184%2C29.8049&bounded=0",
+    "status": 200,
+    "response": [
+      {
+        "place_id": 383047168,
+        "licence": "Data \u00a9 OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 689744213,
+        "lat": "30.5107550",
+        "lon": "-97.5865270",
+        "class": "place",
+        "type": "house",
+        "place_rank": 30,
+        "importance": 9.99999999995449e-06,
+        "addresstype": "place",
+        "name": "",
+        "display_name": "162, Danish Drive, Williamson County, Texas, 78634, United States",
+        "boundingbox": [
+          "30.5107050",
+          "30.5108050",
+          "-97.5865770",
+          "-97.5864770"
+        ]
+      }
+    ],
+    "latency_ms": 615
+  }
+}

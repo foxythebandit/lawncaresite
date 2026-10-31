@@ -1,0 +1,8 @@
+.mapq-outside .mapq-step:not(:first-child), .mapq-outside .mapq-map-wrap { display: none; }
+.mapq-waitlist { margin: 18px 0 0; padding: 17px; border: 1px solid rgba(183,228,199,.35); border-radius: 12px; background: rgba(255,255,255,.05); }
+.mapq-waitlist h3 { margin: 0 0 13px; color: #fff; font-family: var(--font-display); font-size: 22px; font-weight: 500; }
+.mapq-waitlist label { display: grid; gap: 5px; margin: 10px 0; color: var(--green-light); font-size: 12px; }
+.mapq-waitlist input { width: 100%; min-height: 42px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; background: #fff; color: var(--ink); font: 15px var(--font-body); }
+.mapq-waitlist p { color: rgba(255,255,255,.75); font-size: 12px; }
+.mapq-waitlist button { width: 100%; }
+.mapq-waitlist-success { margin: 14px 0; padding: 14px; border: 1px solid var(--green-bright); border-radius: 9px; color: var(--green-light); background: rgba(82,183,136,.12); }

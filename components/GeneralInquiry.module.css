@@ -86,6 +86,7 @@
 }
 .wide { grid-column: 1 / -1; }
 .optional { color: var(--ink-soft); font-weight: 400; }
+.serviceNote { display: block; margin-top: 6px; color: var(--green-mid); font-size: 12px; font-weight: 500; }
 .grid input, .grid select, .grid textarea {
   display: block;
   width: 100%;
@@ -144,6 +145,7 @@
   line-height: 1.55;
 }
 .consent input { flex: none; margin-top: 2px; accent-color: var(--green-mid); }
+.consent a { color: inherit; text-decoration: underline; }
 .error { color: #9a2f26; font-size: 13px; margin-bottom: 12px; }
 .submit {
   display: inline-flex;

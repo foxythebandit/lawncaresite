@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { submitServiceInquiry, type ServiceInquiryKind } from '@/app/actions/submit-service-inquiry'
 import { photonSearch, type GeoResult } from '@/lib/address-search'
 import { getAttribution } from '@/lib/attribution'
@@ -9,9 +10,11 @@ import { QUOTE_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
 import styles from './GeneralInquiry.module.css'
 
-const SERVICES: ServiceInquiryKind[] = ['Landscaping', 'Yard cleanup', 'Gutter cleaning', 'Lawn mowing', 'Other']
+const SERVICES: ServiceInquiryKind[] = ['Landscaping', 'Yard cleanup', 'Hedge trimming', 'Tree pruning', 'Gutter cleaning', 'Lawn mowing', 'Other']
+// Every job is different — these are quoted in person rather than from a formula
+const QUOTED_ON_SITE: ServiceInquiryKind[] = ['Hedge trimming', 'Tree pruning']
 
-export default function GeneralInquiry() {
+export default function GeneralInquiry({ defaultService }: { defaultService?: ServiceInquiryKind } = {}) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [address, setAddress] = useState('')
@@ -22,7 +25,7 @@ export default function GeneralInquiry() {
   const suggestionVersion = useRef(0)
   const addressInput = useRef<HTMLInputElement>(null)
   const [email, setEmail] = useState('')
-  const [service, setService] = useState<ServiceInquiryKind | ''>('')
+  const [service, setService] = useState<ServiceInquiryKind | ''>(defaultService ?? '')
   const [notes, setNotes] = useState('')
   const [consent, setConsent] = useState(false)
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success'>('idle')
@@ -65,7 +68,7 @@ export default function GeneralInquiry() {
   function startNewInquiry() {
     closeSuggestions()
     try { sessionStorage.removeItem('qg_submission_service') } catch { /* Storage may be unavailable. */ }
-    setName(''); setPhone(''); setAddress(''); setEmail(''); setService(''); setNotes(''); setConsent(false)
+    setName(''); setPhone(''); setAddress(''); setEmail(''); setService(defaultService ?? ''); setNotes(''); setConsent(false)
     setError(''); setStatus('idle')
   }
 
@@ -98,7 +101,7 @@ export default function GeneralInquiry() {
           <span className={styles.eyebrow}>Have another project in mind?</span>
           <h2 id="service-inquiry-heading">Landscaping &amp; other outdoor projects.</h2>
           <p>Tell us what you have in mind. We&apos;ll call to discuss the scope and a quote.</p>
-          <a href="#map-quote" className={styles.mowingLink}>Just need lawn mowing? See your price <span aria-hidden="true">↗</span></a>
+          <Link href="/#map-quote" className={styles.mowingLink}>Just need lawn mowing? See your price <span aria-hidden="true">↗</span></Link>
         </div>
         <div className={styles.card}>
           {status === 'success' ? (
@@ -141,11 +144,13 @@ export default function GeneralInquiry() {
                 <label>What do you need help with? <select name="service" required value={service} onChange={e => setService(e.target.value as ServiceInquiryKind | '')}>
                   <option value="">Choose a service</option>
                   {SERVICES.map(item => <option key={item} value={item}>{item}</option>)}
-                </select></label>
+                </select>
+                {service && QUOTED_ON_SITE.includes(service) && <span className={styles.serviceNote}>Priced on site — we&apos;ll take a look and quote you before any work starts.</span>}
+                </label>
                 <label>Email <span className={styles.optional}>(optional)</span> <input name="email" type="email" autoComplete="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} /></label>
                 <label className={styles.wide}>Project details <span className={styles.optional}>(optional)</span> <textarea name="notes" rows={4} maxLength={2000} placeholder="What would you like done? Anything we should know about the property?" value={notes} onChange={e => setNotes(e.target.value)} /></label>
               </div>
-              <label className={styles.consent}><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> <span>{QUOTE_CONSENT_TEXT} (Optional)</span></label>
+              <label className={styles.consent}><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> <span>{QUOTE_CONSENT_TEXT} (Optional) <a href="/privacy#sms" target="_blank" rel="noopener">Privacy Policy</a></span></label>
               {error && <p className={styles.error} role="alert">{error}</p>}
               <button type="submit" className={styles.submit} disabled={status === 'submitting'}>{status === 'submitting' ? 'Sending…' : 'Send project inquiry'} <span aria-hidden="true">→</span></button>
             </form>

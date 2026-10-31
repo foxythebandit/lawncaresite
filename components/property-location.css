@@ -1,0 +1,10 @@
+.mapq-property-confirm { margin-top: 14px; padding: 16px; border: 1px solid var(--green-bright); border-radius: 12px; background: rgba(82,183,136,.12); color: #fff; }
+.mapq-property-confirm strong { display: block; font-size: 16px; }
+.mapq-property-confirm p { margin: 8px 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.mapq-property-confirm button { width: 100%; margin-top: 6px; }
+.mapq-location-help { margin-top: 14px; color: var(--green-light); font-size: 13px; line-height: 1.5; }
+.mapq-location-help summary { cursor: pointer; padding: 8px 0; }
+.mapq-location-help a { color: inherit; text-underline-offset: 3px; }
+.mapq-location-help label { display: grid; gap: 6px; margin: 12px 0; }
+.mapq-location-help input { width: 100%; min-height: 44px; border: 1px solid rgba(255,255,255,.3); border-radius: 9px; background: #fff; color: var(--ink); padding: 10px 12px; font: inherit; }
+.mapq-location-help button { min-height: 44px; }

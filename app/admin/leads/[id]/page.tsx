@@ -1,64 +1,304 @@
-import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
-import MapQuoteBuilder from '@/components/MapQuoteBuilder'
-import { processLeadAlert, requestLeadBooking, updateLeadContact } from '../quote-actions'
+import { leadToken } from '@/lib/intake'
+import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
+import { ago, alertLegHistory, allPrices, dayLabel, historyItem, money, phoneDisplay, requestBookings, summarizeLead,
+  type HistoryIcon, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
+import { humanize, serviceLabels } from '@/lib/lead-labels'
+import { signedMapUrl } from '@/lib/map-screenshot'
+import { callerIdFor, connectMode } from '@/lib/phone/flow'
+import { staffByPhone, staffPeople } from '@/lib/staff-directory'
+import { processLeadAlert } from '../quote-actions'
+import { CopyText, LeadChips, LeadLive, LogCallButton, RecordingButton, TextLink } from '../LeadLive'
+import { AddNoteButton, EditContactButton, EditPriceButton, QuoteMap, QuotePanel, QuoteProvider, QuoteStatusChip, type QuoteBooking, type QuoteLead } from '../QuoteTools'
+import { ReopenButton, ScheduleVisit } from '../LeadActions'
+import { tracedShapes } from '../TracingMap'
+import LawnMap from '../../LawnMap'
+import PriceSteps from '../../PriceSteps'
+import Icon, { type IconName } from '../../icons'
 
 export const dynamic = 'force-dynamic'
-export default async function LeadQuotePage({ params }: { params: Promise<{ id: string }> }) {
+
+type Row = { label: string; value: React.ReactNode }
+type Alert = { id: string; recipient: string; channel: string; state: string; provider_status: string | null; error_code: string | null; attempts: number; provider_sid: string | null }
+type Call = { id: string; leg: string; staff_name: string | null; staff_phone: string; caller_id: string | null; result: string | null; status: string; duration_seconds: number | null; recording_sid: string | null; answered_at: string | null; ended_at: string | null; created_at: string }
+type Customer = { id: string; name: string | null; phone: string | null; created_at: string }
+
+const ICON: Record<HistoryIcon, IconName> = { in: 'inbox', phone: 'phone', alert: 'bell', call: 'note', quote: 'tag', board: 'columns', note: 'note', booking: 'calendar' }
+const asObject = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+const dash = (value: React.ReactNode) => value === null || value === undefined || value === '' ? '—' : value
+const stamp = (value: string | null | undefined) => value ? new Date(value).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null
+const mins = (seconds: number | null) => `${Math.max(1, Math.round((seconds ?? 0) / 60))} min`
+
+function Block({ title, aside, className = '', children }: { title: string; aside?: React.ReactNode; className?: string; children: React.ReactNode }) {
+  return <section className={`crm-block ${className}`}><h2 className="crm-block-head"><span>{title}</span>{aside && <span className="crm-block-aside">{aside}</span>}</h2>{children}</section>
+}
+function Rows({ rows }: { rows: Row[] }) {
+  return <dl className="crm-kv">{rows.map(row => <div key={row.label}><dt>{row.label}</dt><dd>{dash(row.value)}</dd></div>)}</dl>
+}
+const Pill = ({ tone = 'neutral', children }: { tone?: string; children: React.ReactNode }) => <span className={`crm-pill crm-pill-${tone}`}>{children}</span>
+
+/** Staff first name for a phone, when STAFF_PEOPLE names it. */
+function staffName(phone: string) {
+  const person = staffByPhone(phone)
+  return person && person.name !== person.phone ? person.name : null
+}
+
+/** Plain words for an alert delivery row (PLAN.md 4.1f: "Sent to Caelan · call · answered"). */
+function alertWords(alert: Alert) {
+  const who = staffName(alert.recipient) ?? (phoneDisplay(alert.recipient) || 'nobody set up')
+  const channel = alert.channel === 'voice' ? 'call' : 'text'
+  const status = alert.provider_status?.toLowerCase()
+  const state = channel === 'call' && status === 'completed' ? 'answered' : status === 'no-answer' ? 'no answer' : status === 'busy' ? 'busy'
+    : ({ delivered: 'delivered', accepted: 'sent', pending: 'waiting', sending: 'sending', disabled: 'off', failed: 'failed', unknown: 'unknown' } as Record<string, string>)[alert.state] ?? alert.state
+  return `Sent to ${who} · ${channel} · ${state}${alert.attempts > 1 ? ` · ${alert.attempts} tries` : ''}${alert.error_code ? ` · code ${alert.error_code}` : ''}`
+}
+function callWords(call: Call) {
+  const who = call.staff_name ?? staffName(call.staff_phone) ?? phoneDisplay(call.staff_phone)
+  const result = call.result ? humanize(call.result).toLowerCase() : call.status
+  const shownAs = call.caller_id && call.caller_id !== call.staff_phone ? ` · shown as ${phoneDisplay(call.caller_id)}` : ''
+  return call.leg === 'alert' ? `Alert call to ${who} · ${result}` : `${who} called · ${result}${call.result === 'talked' ? ` ${mins(call.duration_seconds)}` : ''}${shownAs}`
+}
+
+export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   await requireStaff(`/admin/leads/${id}`)
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound()
   const db = adminDb()
   const { data: lead } = await db.from('leads').select('*').eq('id', id).single()
   if (!lead) notFound()
-  const [{ data: events }, { data: bookings }] = await Promise.all([
-    db.from('intake_events').select('*, staff_alerts(*)').eq('lead_id', id).order('created_at'),
-    db.from('bookings').select('id, status, created_at, confirmed_at, completed_at, payment_recorded_at, amount_charged, payment_method').eq('lead_id', id).order('created_at'),
+  const phoneDigits = String(lead.phone ?? '').replace(/\D/g, '').slice(-10)
+  // customers.phone is stored in mixed formats: match the ten digits in order on the server, then exactly below.
+  const phonePattern = phoneDigits.length === 10 ? `%${phoneDigits.split('').join('%')}%` : null
+  const customerFields = 'id,name,phone,created_at'
+  const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }] = await Promise.all([
+    db.from('lead_activities').select('id,kind,outcome,body,actor_email,occurred_at,data').eq('lead_id', id).order('occurred_at').limit(200),
+    db.from('intake_events').select('id,source,submission_id,booking_id,created_at,staff_alerts(*)').eq('lead_id', id).order('created_at'),
+    db.from('bookings').select('*').eq('lead_id', id).order('created_at'),
+    phonePattern ? db.from('customers').select(customerFields).ilike('phone', phonePattern).limit(25) : { data: [] as Customer[] },
+    lead.customer_id ? db.from('customers').select(customerFields).eq('id', lead.customer_id).maybeSingle() : { data: null as Customer | null },
+    db.from('lead_calls').select('id,leg,staff_name,staff_phone,caller_id,result,status,duration_seconds,recording_sid,answered_at,ended_at,created_at').eq('lead_id', id).order('created_at'),
   ])
-  return <>
-    <div className="admin-card lead-workspace">
-      <Link href="/admin/leads">← Leads</Link>
-      <h1>{lead.name || 'Quote inquiry'}</h1>
-      <p>{lead.address || 'Address not yet provided'}</p>
-      <p><a href={`tel:${lead.phone}`}>Call {lead.phone}</a>{lead.email && <> · {lead.email}</>}</p>
-      <p>{(lead.services ?? []).join(', ') || 'Services unknown'} · {lead.frequency || 'Frequency unknown'} · {lead.timing || 'Timing unknown'}</p>
-      <p><strong>{lead.quote_confirmed_at ? 'Confirmed quote' : lead.quote_saved_at ? 'Draft estimate' : 'New inquiry'}</strong> · Received {new Date(lead.created_at).toLocaleString('en-US', { timeZone: 'America/Chicago' })}</p>
-      {lead.quote_saved_at && <p>Quote saved {lead.quote_saved_at}{lead.quote_confirmed_at && ` · Confirmed ${lead.quote_confirmed_at}`}</p>}
-      {lead.quote_confirmed_at && lead.name && (lead.quote_draft?.address || lead.address) && !bookings?.length && <form action={requestLeadBooking.bind(null, id)}>
-        <label>Requested visit date <input type="date" name="preferred_date" /></label>
-        <button>Create booking request</button>
-        <p>Confirm the booking separately from Bookings after agreeing with the customer.</p>
-      </form>}
-      <details><summary>Edit contact name and email</summary>
-        <form action={updateLeadContact.bind(null, id)}>
-          <label>Name <input name="name" defaultValue={lead.name ?? ''} required maxLength={150} /></label>
-          <label>Email <input name="email" type="email" defaultValue={lead.email ?? ''} maxLength={254} /></label>
-          <button>Save contact</button>
-        </form>
-      </details>
-      <details><summary>Answers and acquisition details</summary>
-        <pre>{JSON.stringify({ answers: lead.answers, attribution: lead.attribution, source: lead.source, form_version: lead.form_version,
-          external_submission_id: lead.external_submission_id, consent: lead.consent, consent_text: lead.consent_text,
-          consent_version: lead.consent_version, consented_at: lead.consented_at, score: lead.score, estimated_value: lead.estimated_value }, null, 2)}</pre>
-        <p>External scores and estimated values are not revenue. Missing attribution is unknown.</p>
-      </details>
-      <details><summary>Booking stages ({bookings?.length ?? 0})</summary>
-        {(bookings ?? []).map(b => <p key={b.id}>{b.status === 'pending' ? 'Booking request' : b.status === 'confirmed' ? 'Confirmed booking' : b.status === 'completed' ? 'Completed job' : b.status} · Requested {b.created_at}
-          {b.confirmed_at && ` · Confirmed ${b.confirmed_at}`}
-          {b.completed_at && ` · Completed ${b.completed_at}`}
-          {b.payment_recorded_at && ` · Payment recorded ${b.payment_recorded_at}: $${b.amount_charged ?? 0} (${b.payment_method})`}</p>)}
-      </details>
-      <details><summary>Staff SMS status</summary>
-        {(events ?? []).flatMap(e => (e.staff_alerts ?? []).map((a: { id: string; recipient: string; state: string; provider_status: string; error_code: string; attempts: number; provider_sid: string }) => <div key={a.id}>
-          <p>{a.recipient || 'Recipient not configured'} · {a.state} {a.provider_status && `(${a.provider_status})`} · {a.attempts} attempts {a.error_code && `· ${a.error_code}`}</p>
-          {a.provider_sid ? <form action={processLeadAlert.bind(null, id, a.id, e.id, 'refresh')}><button>Check delivery</button></form>
-            : ['pending','disabled','failed'].includes(a.state) ? <form action={processLeadAlert.bind(null, id, a.id, e.id, 'retry')}><button>Retry staff alert</button></form>
-            : <p>Check Twilio logs before resending; acceptance is uncertain.</p>}
-        </div>))}
-      </details>
-    </div>
-    <MapQuoteBuilder staffQuote={{ id, address: lead.address, sq_ft: lead.sq_ft, services: lead.services, frequency: lead.frequency, draft: lead.quote_draft }} />
-  </>
+  // Same-phone customers are suggestions only; staff confirms before linking.
+  const customerMatches = ((phoneCustomers ?? []) as Customer[]).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits)
+  const existing = linkedCustomer ?? customerMatches[0] ?? null
+  const existedBefore = !!existing && Date.parse(existing.created_at) < Date.parse(lead.created_at)
+  const quoteUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
+  // One request timestamp for every relative label on the page.
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now()
+  const addressChanged = (activities ?? []).some(a => a.outcome === 'contact_address_changed')
+  const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: existedBefore, addressChanged, now })
+  const answers = asObject(lead.answers)
+  const own = requestBookings((bookings ?? []) as SummaryBooking[])
+  const live = (own.find(b => b.status !== 'canceled') ?? own[0]) as (SummaryBooking & { lawn_size_bucket?: string | null; map_screenshot_url?: string | null }) | undefined
+  const mapUrl = await signedMapUrl(lead.map_screenshot_url ?? (bookings ?? []).map(b => b.map_screenshot_url).filter(Boolean).pop())
+  const shapes = tracedShapes(lead.lawn_tracing, lead.quote_draft?.sections)
+  const price = s.price
+  const otherPrices = allPrices(lead as SummaryLead, (bookings ?? []) as SummaryBooking[]).others
+  const addonKeys = Object.keys(asObject(live?.addon_interest ?? answers.addon_interest))
+  const chip = (key: string) => s.chips.find(c => c.key === key)
+  const chipPill = (key: string) => { const c = chip(key); return c ? <> <Pill tone={c.tone}>{c.label}</Pill></> : null }
+  // R14: a cell missing from TWILIO_VERIFIED_CALLER_IDS shows the alert line to the customer.
+  const alertLine = phoneDisplay(process.env.TWILIO_FROM_NUMBER) || 'the alert line'
+  const unverified = connectMode() === 'twilio' ? staffPeople().filter(person => callerIdFor(person.phone) !== person.phone) : []
+
+  // History: came in, later intake (online booking), alert legs, every activity; time · icon · 2–3 words.
+  const callById = new Map((calls ?? []).map(call => [call.id, call as Call]))
+  const legRows = ((calls ?? []) as Call[]).filter(call => call.leg === 'alert').flatMap(call =>
+    alertLegHistory(call, now).map((row, i) => ({ key: `${call.id}-${i}`, ...row, recording: null, alert: true })))
+  const history = [
+    { key: 'in', at: lead.created_at, time: historyItem({ kind: 'note', occurred_at: lead.created_at }, now).time, icon: 'in' as HistoryIcon, text: 'Came in', quote: null as string | null, recording: null as string | null },
+    ...(events ?? []).slice(1).map(event => ({ key: event.id, at: event.created_at, time: historyItem({ kind: 'note', occurred_at: event.created_at }, now).time,
+      icon: 'booking' as HistoryIcon, text: event.booking_id ? 'Booked online' : 'Came in again', quote: null, recording: null })),
+    ...legRows,
+    ...(activities ?? []).map(activity => {
+      const item = historyItem(activity, now)
+      const call = callById.get(String(asObject(activity.data).call_id ?? ''))
+      return { key: activity.id, at: activity.occurred_at, ...item, recording: call?.recording_sid ? `/api/twilio/recordings/${call.id}` : null, alert: activity.kind === 'alert' }
+    }),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+  // Alert-call steps (ring, answered, pressed 1) fold into one row headed by how it ended; all steps stay one tap away.
+  type HistoryRow = (typeof history)[number] & { alert?: boolean }
+  const timeline: (HistoryRow | { key: string; steps: HistoryRow[] })[] = []
+  for (const item of history as HistoryRow[]) {
+    const last = timeline[timeline.length - 1]
+    if (item.alert && last && 'steps' in last) last.steps.push(item)
+    else timeline.push(item.alert ? { key: `alerts-${item.key}`, steps: [item] } : item)
+  }
+  const alertSummary = (steps: HistoryRow[]) => [...steps].reverse().find(step => /took|passed|Nobody/.test(step.text))?.text ?? 'Alert calls'
+
+  const firstTouch = asObject(asObject(lead.attribution).first_touch)
+  const latestTouch = asObject(asObject(lead.attribution).latest_touch)
+  const touchRows = (touch: Record<string, unknown>) => Object.entries(touch).filter(([, v]) => typeof v === 'string' && v).map(([k, v]) => ({ label: k, value: String(v) }))
+  const clickIds = ['gclid', 'gbraid', 'wbraid', 'fbclid', 'fbc', 'fbp'].map(k => ({ label: k, value: (lead[k] as string | null) ?? (firstTouch[k] as string | undefined) ?? null })).filter(r => r.value)
+  const rawUtm = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'google_campaign_id', 'google_adgroup_id', 'google_ad_id']
+    .map(k => ({ label: k, value: (lead[k] as string | null) ?? null })).filter(r => r.value)
+  const alerts = (events ?? []).flatMap(event => ((event.staff_alerts ?? []) as Alert[]).map(alert => ({ alert, event })))
+  const firstName = lead.name?.trim().split(/\s+/)[0]
+  const textBody = `Hi${firstName ? ` ${firstName}` : ''}, this is QuietGreen. Thanks for asking about ${(s.services.join(', ') || 'lawn care').toLowerCase()}${lead.address ? ` at ${lead.address}` : ''}. When is a good time to talk?`
+  const directions = lead.address ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lead.address)}` : null
+
+  // Same map as Jobs: the website's saved map image, else the tracing on satellite tiles.
+  const map = (big: boolean) => mapUrl || shapes.length
+    ? <LawnMap screenshotUrl={mapUrl} shapes={shapes} sqFt={s.tracedSqFt} width={big ? 720 : 640} height={big ? 440 : 300} /> : null
+  const pendingVisit = s.booking === 'requested' && live?.status === 'pending' ? live as SummaryBooking & { id: string; updated_at: string } : null
+  // One main button per column (UX audit Q2); Call stays (sticky bar on phone, header on desktop).
+  const callBack = s.column === 'quoted'
+  const main = pendingVisit ? <a className="crm-button crm-button-primary" href="#schedule"><Icon name="calendar" size={17} />Schedule visit</a>
+    : s.column === 'closed' ? <ReopenButton leadId={lead.id} className="crm-button crm-button-primary" />
+    : s.column === 'customer' && existing ? <Link className="crm-button crm-button-primary" href={`/admin/customers/${existing.id}`}><Icon name="users" size={17} />Open customer</Link>
+    : null
+
+  return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={price?.cents ?? null} frequency={price?.frequency ?? normalizeFrequency(lead.frequency)}>
+    <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} customerMatches={customerMatches} quoteUrl={quoteUrl}>
+      <div className="crm-workspace crm-lead2">
+        <div className="crm-lead2-top">
+          <Link className="crm-back" href="/admin/leads"><Icon name="arrowLeft" size={15} />Board</Link>
+          <span>{ago(lead.created_at, now)} ago</span>
+        </div>
+        <div className="crm-lead2-head">
+          <div className="crm-lead2-who">
+            <h1>{s.name} <EditContactButton /></h1>
+            <p className="crm-lead2-contact">{s.phoneDisplay || '—'}{lead.email && <> · <CopyText text={lead.email} label="email" /></>}</p>
+          </div>
+          <div className="crm-lead2-actions">
+            {main}
+            <a className={`crm-button crm-call${main ? ' crm-desktop-only' : ' crm-button-primary'}`} href={`tel:${lead.phone}`}><Icon name="phone" size={17} />
+              {callBack ? `Call back${lead.check_back_on ? ` · ${dayLabel(lead.check_back_on)}` : ''}` : `Call ${s.phoneDisplay}`}</a>
+            <TextLink className="crm-button" phone={lead.phone} body={textBody}><Icon name="message" size={17} />Text</TextLink>
+            <LogCallButton className="crm-button crm-desktop-only" />
+          </div>
+        </div>
+        {/* Booking and price-source chips live in the Price block's rows, so the header keeps only status. */}
+        <LeadChips chips={s.chips.filter(c => c.key !== 'booking' && c.key !== 'price')} />
+        {lead.needs_call_log_at && <div className="crm-logcall-banner" role="status">
+          <span><Icon name="note" size={16} />Log this call · {historyItem({ kind: 'note', occurred_at: lead.needs_call_log_at }, now).time}</span>
+          <LogCallButton className="crm-button crm-button-sm crm-button-primary">Log call</LogCallButton>
+        </div>}
+
+        <div className="crm-lead2-grid">
+          <div className="crm-lead2-main">
+            <Block title="Price" className="crm-o1 crm-price-card" aside={<><QuoteStatusChip />{price && <span>{dayLabel(price.at)}</span>}</>}>
+              <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>
+              {price && <PriceSteps price={price} />}
+              <Rows rows={[
+                { label: 'Source', value: chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
+                ...otherPrices.map(row => ({ label: row.label, value: row.value })),
+                { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
+                ...(lead.first_visit_on ? [{ label: 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),
+                ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: <>{money(live!.overgrowth_fee! * 100)} <small className="crm-muted">in first visit</small></> }] : []),
+              ]} />
+              {pendingVisit && <ScheduleVisit booking={pendingVisit} canEmail={!!lead.email && !!process.env.RESEND_API_KEY} />}
+              <QuotePanel />
+              <div className="crm-price-foot"><EditPriceButton hasPrice={!!price} /></div>
+            </Block>
+
+            <Block title="Property" className="crm-o2" aside={directions && <a href={directions} target="_blank" rel="noopener noreferrer">Directions ↗</a>}>
+              <Rows rows={[
+                { label: 'Address', value: <>{lead.address ?? null}{chipPill('address')}{chipPill('address_changed')}</> },
+                { label: shapes.length ? 'Traced' : 'Lawn', value: s.tracedSqFt ? `${s.tracedSqFt.toLocaleString('en-US')} sq ft` : null },
+              ]} />
+              {map(false) && <div className="crm-lead2-thumb">{map(false)}</div>}
+            </Block>
+
+            <Block title="Request" className="crm-o3">
+              <Rows rows={[
+                { label: 'Services', value: <>{s.services.join(', ') || null}{chipPill('service_unclear')}</> },
+                { label: 'Frequency', value: normalizeFrequency(lead.frequency) ? FREQUENCY_LABEL[normalizeFrequency(lead.frequency)!] : lead.frequency },
+                { label: 'Timing', value: s.wanted.label },
+                ...(addonKeys.length ? [{ label: 'Add-ons', value: serviceLabels(addonKeys).join(', ') }] : []),
+                ...(live?.lawn_size_bucket ? [{ label: 'Lawn size', value: humanize(live.lawn_size_bucket) }] : []),
+                ...s.answers.map(a => ({ label: a.label, value: a.value })),
+              ]} />
+              {s.notes && <p className="crm-quote-text">&ldquo;{s.notes}&rdquo;</p>}
+            </Block>
+
+            <Block title="Source" className="crm-o4">
+              <div className="crm-lead-chips">
+                <Pill>{s.source.channel}</Pill>
+                {s.source.detail && <Pill>{s.source.detail}</Pill>}
+                {s.source.conviflo && s.source.channel !== 'ConviFlo form' && <Pill>ConviFlo form</Pill>}
+              </div>
+            </Block>
+
+            <Block title="History" className="crm-o5" aside={<><AddNoteButton /><LogCallButton className="crm-button crm-button-sm" /></>}>
+              <ol className="crm-history">
+                {timeline.map(row => 'steps' in row ? <li key={row.key}>
+                  <span className="crm-history-time">{row.steps[0].time}</span>
+                  <Icon name="bell" size={15} className="crm-history-icon" />
+                  <details className="crm-history-text crm-history-group">
+                    <summary>{alertSummary(row.steps)} <small>{row.steps.length} alert steps</small></summary>
+                    <ol className="crm-history">{row.steps.map(item => <li key={item.key}>
+                      <span className="crm-history-time">{item.time}</span>
+                      <Icon name={ICON[item.icon]} size={15} className="crm-history-icon" />
+                      <span className="crm-history-text">{item.text}</span>
+                    </li>)}</ol>
+                  </details>
+                </li> : <li key={row.key}>
+                  <span className="crm-history-time">{row.time}</span>
+                  <Icon name={ICON[row.icon]} size={15} className="crm-history-icon" />
+                  <span className="crm-history-text">{row.text}{row.recording && <> <RecordingButton src={row.recording} /></>}
+                    {row.quote && <span className="crm-quote-text">&ldquo;{row.quote}&rdquo;</span>}</span>
+                </li>)}
+                {existing && <li>
+                  <span className="crm-history-time" />
+                  <Icon name="users" size={15} className="crm-history-icon" />
+                  <span className="crm-history-text"><Link href={`/admin/customers/${existing.id}`}>{existedBefore ? 'Existing customer' : 'Customer'} · {existing.name ?? phoneDisplay(existing.phone)}</Link></span>
+                </li>}
+              </ol>
+            </Block>
+
+            <details className="crm-block crm-lead2-details crm-o8">
+              <summary>Details</summary>
+              <h3>Consent</h3>
+              <Rows rows={[
+                { label: 'Consent', value: lead.consent == null ? null : lead.consent ? 'Granted' : 'Not granted' },
+                { label: 'Time', value: stamp(lead.consented_at) },
+                { label: 'Version', value: lead.consent_version },
+                { label: 'Text', value: lead.consent_text },
+              ]} />
+              <h3>Score</h3>
+              <Rows rows={[{ label: 'Score', value: lead.score != null ? String(lead.score) : null }, { label: 'Value', value: lead.estimated_value != null ? `$${lead.estimated_value}` : null }]} />
+              <h3>Tracking</h3>
+              <Rows rows={[...clickIds, ...rawUtm, ...touchRows(firstTouch).map(r => ({ ...r, label: `first · ${r.label}` })), ...touchRows(latestTouch).map(r => ({ ...r, label: `latest · ${r.label}` }))]} />
+              {!clickIds.length && !rawUtm.length && !Object.keys(firstTouch).length && <p className="crm-muted">—</p>}
+              <h3>Alerts</h3>
+              {unverified.map(person => <div key={person.phone} className="crm-alert-line">
+                <span>Caller ID not verified · {person.name === person.phone ? phoneDisplay(person.phone) : person.name} · customers see {alertLine}</span></div>)}
+              {alerts.map(({ alert, event }) => <div key={alert.id} className="crm-alert-line">
+                <span>{alertWords(alert)}</span>
+                {alert.provider_sid ? <form action={processLeadAlert.bind(null, lead.id, alert.id, event.id, 'refresh')}><button className="crm-button crm-button-sm">Check</button></form>
+                  : ['pending', 'disabled', 'failed'].includes(alert.state) ? <form action={processLeadAlert.bind(null, lead.id, alert.id, event.id, 'retry')}><button className="crm-button crm-button-sm">Retry</button></form> : null}
+              </div>)}
+              {(calls ?? []).map(call => <div key={call.id} className="crm-alert-line"><span>{callWords(call as Call)} · {stamp(call.created_at)}</span></div>)}
+              {!alerts.length && !(calls ?? []).length && <p className="crm-muted">—</p>}
+              <h3>Technical</h3>
+              <Rows rows={[
+                { label: 'Intake', value: lead.source },
+                { label: 'Submission', value: lead.external_submission_id },
+                { label: 'Form', value: lead.form_version },
+                { label: 'Lead ID', value: lead.id },
+                { label: 'Short link', value: lead.short_code },
+                ...(events ?? []).slice(1).map(event => ({ label: 'Later intake', value: `${event.source} · ${event.submission_id}` })),
+              ]} />
+            </details>
+          </div>
+
+          <aside className="crm-lead2-side">
+            {map(true) && <div className="crm-lead2-bigmap">{map(true)}
+              <p className="crm-block-head"><span>{lead.address ?? '—'}</span><span>{s.tracedSqFt ? `${s.tracedSqFt.toLocaleString('en-US')} sq ft` : '—'}</span></p></div>}
+            <div className="crm-o1"><QuoteMap /></div>
+          </aside>
+        </div>
+
+        <div className="crm-sticky-actions" aria-label="Quick actions">
+          <a className="crm-button crm-button-primary crm-button-lg" href={`tel:${lead.phone}`}><Icon name="phone" size={18} />Call</a>
+          <LogCallButton className="crm-button crm-button-lg" />
+        </div>
+      </div>
+    </QuoteProvider>
+  </LeadLive>
 }

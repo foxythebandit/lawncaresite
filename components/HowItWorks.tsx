@@ -40,6 +40,8 @@ export default function HowItWorks() {
             </div>
           </div>
 
+          <a href="#map-quote" className="btn-primary how-cta reveal" data-delay="400">See your price →</a>
+
         </div>
 
         {/* ── Right: Numbers ── */}

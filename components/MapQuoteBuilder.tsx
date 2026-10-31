@@ -1,6 +1,8 @@
 'use client'
 
 import 'maplibre-gl/dist/maplibre-gl.css'
+import './map-waitlist.css'
+import './property-location.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/style.css'
@@ -8,18 +10,24 @@ import { submitBooking } from '@/app/actions/submit-booking'
 import { getParcel }    from '@/app/actions/get-parcel'
 import TraceDemo        from '@/components/TraceDemo'
 import { submitLead }   from '@/app/actions/submit-lead'
+import { updateWebsitePrice } from '@/app/actions/update-website-price'
+import { submitWaitlist } from '@/app/actions/submit-waitlist'
 import { getAttribution } from '@/lib/attribution'
 import { trackQuoteAddressFound, trackQuoteLawnTraced, trackQuoteShown, trackAddonInterest, trackBookingRequested } from '@/lib/gtag'
 import { trackWebsiteLead } from '@/lib/meta-events'
 import { QUOTE_CONSENT_TEXT as LEAD_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
-import { OFFICE_LAT, OFFICE_LNG, photonSearch, type GeoResult } from '@/lib/address-search'
+import { OFFICE_LAT, OFFICE_LNG, photonSearch, geocodeAddress, cachedGeocode, type GeoResult } from '@/lib/address-search'
+import { isPropertyConfirmed, parseManualPropertyLocation, type PropertyConfirmation } from '@/lib/property-location'
+import { ESRI_IMAGERY, MAPBOX_TOKEN } from '@/lib/map-imagery'
+import { FREQUENCY_LABEL } from '@/lib/lead-board'
 import { saveLeadQuote } from '@/app/admin/leads/quote-actions'
 import { type StaffQuote, type QuoteDraft } from '@/lib/quote-draft'
+import QuotePriceEditor, { type ManualPriceLine } from '@/app/admin/leads/QuotePriceEditor'
 import ManualQuoteForm from './ManualQuoteForm'
 
 /* ── Types ────────────────────────────────────────────── */
-type AppStep = 'idle' | 'searching' | 'drawing' | 'done' | 'editing'
+type AppStep = 'idle' | 'searching' | 'confirming' | 'drawing' | 'done' | 'editing'
 type Frequency = 'onetime' | 'monthly' | 'biweekly' | 'weekly'
 
 interface Section {
@@ -54,13 +62,8 @@ const LAST_MOW_WEEKS: Record<string, number> = {
 }
 
 /* ── Constants ────────────────────────────────────────── */
-// Mapbox Satellite (sharper, more current) when a token is configured; Esri World Imagery otherwise
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 // Addresses farther than this get an "outside our area" message instead of a quote
 const SERVICE_RADIUS_MILES = 30
-// Bias geocoding toward Austin (lon/lat box ~35 mi around the office) so vague
-// entries like "123 Main St" resolve locally instead of in another state
-const GEOCODE_BIAS = `countrycodes=us&viewbox=${OFFICE_LNG - 0.6},${OFFICE_LAT + 0.5},${OFFICE_LNG + 0.6},${OFFICE_LAT - 0.5}&bounded=0`
 
 
 
@@ -93,7 +96,6 @@ function calcPrice(sqFt: number): number {
 // doesn't it serves a grey "Map data not yet available" tile instead of a 404.
 // The `esri-hd://` protocol loads the real tile when there is one and, for the
 // placeholder, crops + enlarges the nearest real ancestor tile instead.
-const ESRI_IMAGERY = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile'
 const ESRI_ALWAYS_AVAILABLE_Z = 19
 // A tile Esri has no imagery for (mid-Pacific) — byte-identical to every placeholder
 const ESRI_PLACEHOLDER_URL = `${ESRI_IMAGERY}/21/1048575/131072`
@@ -124,27 +126,6 @@ async function loadEsriTile(z: number, y: number, x: number, signal: AbortSignal
     return (await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 })).arrayBuffer()
   }
   return buf
-}
-
-/* ── Address lookup ───────────────────────────────────── */
-// Suggestions come from Photon: Nominatim's usage policy forbids
-// search-as-you-type, and it starts refusing (429/403, no CORS header) once
-// a visitor's IP sends a burst of requests — which broke the address box.
-// The final search still prefers Nominatim (better at exact house numbers)
-// and falls back to Photon if it errors, times out or finds nothing.
-async function geocodeAddress(address: string): Promise<GeoResult | null> {
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&${GEOCODE_BIAS}`,
-      { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(5000) }
-    )
-    if (res.ok) {
-      const data = await res.json()
-      if (data.length) return { label: data[0].display_name, lat: +data[0].lat, lon: +data[0].lon }
-    }
-  } catch { /* blocked, rate-limited or timed out — fall through to Photon */ }
-  const [hit] = await photonSearch(address, 1)
-  return hit ?? null
 }
 
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -189,14 +170,24 @@ function calcMulchPrice(sqFt: number, depthIn: number): number {
 const FERT_DISCLAIMER =
   "Base price covers a standard fertilizer treatment. Final price may be higher depending on your lawn's needs, such as weed control, organic products, soil amendments, or treating disease and pests. We'll confirm before any extra work."
 
-type AddonKey = 'fertilization' | 'mulch' | 'maintenance' | 'yardClearout'
-type DrawableAddonKey = Exclude<AddonKey, 'maintenance'>
+type AddonKey = 'fertilization' | 'mulch' | 'leafCleanup' | 'maintenance' | 'yardClearout'
+type DrawableAddonKey = Exclude<AddonKey, 'maintenance' | 'leafCleanup'>
 
 const ADDON_META: Record<AddonKey, { label: string; blurb: string; priceHint: string; color: string }> = {
   fertilization: { label: 'Fertilization',  blurb: "A feeding and weed-control schedule matched to Central Texas grasses like St. Augustine, Bermuda and Zoysia.", priceHint: 'Starting around $70/treatment.',                                        color: '#ffd166' },
   mulch:         { label: 'Mulch',          blurb: 'Fresh mulch for your beds, with edging and cleanup.',                                                         priceHint: 'Starting around $150 installed (3" depth).',                           color: '#c08552' },
-  maintenance:   { label: 'Maintenance',    blurb: 'Garden bed care, seasonal cleanups, leaf removal and weed pulling — so beds and lawn stay sharp between mows.', priceHint: 'Billed hourly, starting around $55/hr.',                                color: '#95dbb8' },
+  leafCleanup:   { label: 'Leaf Cleanup',   blurb: 'Leaves cleared from your lawn, beds and walkways with quiet battery blowers — no gas fumes.',                 priceHint: 'From $99 · most yards $150–$250 · haul-away +$50.',                     color: '#e9a23b' },
+  maintenance:   { label: 'Bed Maintenance', blurb: 'Weeding, bed care and touch-ups between mows — so your beds stay as sharp as the lawn.',                     priceHint: 'Visits from $75.',                                                      color: '#95dbb8' },
   yardClearout:  { label: 'Yard Clearout',  blurb: "Clearing overgrown beds, bushes, vines, cactus and brush — we'll bring a jungle back under control.",          priceHint: 'Starting around $75 — e.g. ~$125 for a 200 sq ft heavy clearout.',      color: '#e07a5f' },
+}
+
+/* Leaf cleanup: flat tiers by traced lawn size, so customers see a fixed
+   price instead of an hourly rate. Starting rates — revisit once real jobs
+   show how long each tier takes. */
+const LEAF_HAUL_AWAY_FEE = 50
+function calcLeafPrice(sqFt: number, haulAway: boolean): number {
+  const base = sqFt <= 2000 ? 99 : sqFt <= 5000 ? 175 : sqFt <= 10000 ? 300 : 450
+  return base + (haulAway ? LEAF_HAUL_AWAY_FEE : 0)
 }
 
 /* Yard clearout: $/sq ft by overgrowth level. "Heavy" is anchored to a real
@@ -278,18 +269,47 @@ const CheckIcon = () => (
 )
 
 /* ── Component ────────────────────────────────────────── */
-export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuote }) {
+export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
+  staffQuote?: StaffQuote
+  /** Staff mode only: the customer's website tracing, used when there is no saved quote yet. */
+  staffTracing?: { name?: string; sqFt?: number; coords: [number, number][] }[]
+}) {
   const staffMode = !!staffQuote
   const draft = staffQuote?.draft
+  // The traced lawn seeds the staff quote so "Calculated" has a price before staff redraw anything.
+  const [seed] = useState(() => {
+    const sections: Section[] = staffQuote && !draft ? (staffTracing ?? []).filter(shape => (shape.sqFt ?? 0) > 0)
+      .map((shape, i) => ({ id: `traced-${i}`, name: shape.name || `Lawn ${i + 1}`, sqFt: Math.round(shape.sqFt!), coords: shape.coords })) : []
+    const points = sections.flatMap(section => section.coords ?? [])
+    const lngs = points.map(p => p[0]), lats = points.map(p => p[1])
+    const center = points.length ? { lng: (Math.min(...lngs) + Math.max(...lngs)) / 2, lat: (Math.min(...lats) + Math.max(...lats)) / 2 } : null
+    return { sections, center }
+  })
+  const contactAddressAtReview = useRef(draft?.contactAddressAtReview ?? staffQuote?.address ?? null)
   const requestedServices = (staffQuote?.services ?? []).map(s => s.toLowerCase().replace(/[^a-z]/g, ''))
   const requestedFrequency = staffQuote?.frequency?.toLowerCase().replace(/[^a-z]/g, '') as Frequency | undefined
   const [leadToken, setLeadToken] = useState<string | undefined>(undefined)
+  // The price on screen and the traced shapes, read by the unlock submit (PLAN.md 3.3, S10, S12).
+  // Staff mode: the lead page opens at the top; the builder only scrolls itself after staff use it.
+  const staffUsed = useRef(false)
+  const shownQuote = useRef<{ price: { price_per_visit: number; first_visit_price: number; frequency: Frequency }; tracing: Omit<Section, 'id'>[] } | null>(null)
   const [saveMessage, setSaveMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [overridePrice, setOverridePrice] = useState<number | null>(() => draft?.overridePrice ?? null)
   const [staffNotes, setStaffNotes] = useState(() => draft?.notes ?? '')
+  const [includeMowing, setIncludeMowing] = useState(() => draft?.includeMowing ?? (!!draft?.sections.length || seed.sections.length > 0 || requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
+  const [showStaffMap, setShowStaffMap] = useState(() => !staffQuote || !!draft?.sections.length || seed.sections.length > 0 || !!(draft?.includeMowing ?? requestedServices.some(service => service.includes('mow') || service.includes('lawn'))))
+  const [manualLines, setManualLines] = useState<ManualPriceLine[]>(() => draft?.manualLines ?? (staffQuote?.services ?? [])
+    .filter(service => !/mow|lawn/i.test(service)).map((service, index) => ({ id: `requested-${index}`, service, amountCents: 0 })))
+  const [discountCents, setDiscountCents] = useState(() => draft?.discountCents ?? 0)
   const [mapReady, setMapReady] = useState(false)
   const restored = useRef(false)
+
+  useEffect(() => {
+    if (!showStaffMap) return
+    const frame = requestAnimationFrame(() => mapRef.current?.resize())
+    return () => cancelAnimationFrame(frame)
+  }, [showStaffMap])
 
   const mapDivRef        = useRef<HTMLDivElement>(null)
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -305,6 +325,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     mapMoveFn: (() => void) | null
   }>({ points: [], clickFn: null, moveFn: null, mapMoveFn: null })
 
+  const suggestionVersion = useRef(0)
+  const searchVersion = useRef(0)
+  const searchAbortRef = useRef<AbortController | null>(null)
+  const addressInputRef = useRef<HTMLInputElement>(null)
   const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestAbortRef = useRef<AbortController | null>(null)
   const addressWrapRef  = useRef<HTMLDivElement>(null)
@@ -315,13 +339,21 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const addonsRef       = useRef<HTMLDivElement>(null)
 
   const [step,        setStep]        = useState<AppStep>(() => draft?.sections.length ? 'done' : 'idle')
-  const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.address ?? '')
+  const [address,     setAddress]     = useState(() => draft?.address ?? staffQuote?.lookupAddress ?? staffQuote?.address ?? '')
   const [error,       setError]       = useState('')
+  const [outsideArea, setOutsideArea] = useState(false)
+  const [waitlistName, setWaitlistName] = useState('')
+  const [waitlistPhone, setWaitlistPhone] = useState('')
+  const [waitlistEmail, setWaitlistEmail] = useState('')
+  const [waitlistState, setWaitlistState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [waitlistError, setWaitlistError] = useState('')
   const [suggestions, setSuggestions] = useState<GeoResult[]>([])
   // The suggestion the visitor picked — reused on search so we don't geocode it again
   const pickedRef = useRef<GeoResult | null>(null)
   const [activeSug,   setActiveSug]   = useState(-1)
-  const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
+  const [sections, setSections] = useState<Section[]>(() => draft?.sections ?? (seed.sections.length ? seed.sections : staffQuote?.sq_ft ? [{ id: 'initial', name: 'Lawn', sqFt: staffQuote.sq_ft, coords: null }] : []))
+  const sectionsCountRef = useRef(sections.length)
+  useEffect(() => { sectionsCountRef.current = sections.length }, [sections])
   const [lawnSqFt, setLawnSqFt] = useState<number | null>(null)
   const [animSqFt, setAnimSqFt] = useState(0)
   const [liveSqFt, setLiveSqFt] = useState(0)
@@ -349,6 +381,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [mulchDepthIn,    setMulchDepthIn]    = useState(() => draft?.mulchDepthIn ?? MULCH_DEFAULT_DEPTH_IN)
   const [mulchIncluded,   setMulchIncluded]   = useState(() => draft?.mulchIncluded ?? requestedServices.includes('mulch'))
 
+  const [leafIncluded, setLeafIncluded] = useState(() => draft?.leafIncluded ?? requestedServices.includes('leafcleanup'))
+  const [leafHaulAway, setLeafHaulAway] = useState(() => draft?.leafHaulAway ?? false)
+
   const [maintenanceInterested, setMaintenanceInterested] = useState(() => draft?.maintenanceInterested ?? requestedServices.includes('maintenance'))
 
   const [yardAreaChoice, setYardAreaChoice] = useState<'same' | 'custom' | null>(() => draft?.yardAreaChoice ?? null)
@@ -364,6 +399,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const [leadError,    setLeadError]    = useState('')
 
   const [jobLatLng,     setJobLatLng]     = useState<{ lat: number; lng: number } | null>(() => draft?.jobLatLng ?? null)
+  const [propertyConfirmation, setPropertyConfirmation] = useState<PropertyConfirmation | null>(draft?.propertyConfirmation ?? null)
+  const [manualLocation, setManualLocation] = useState('')
+  const [candidateLabel, setCandidateLabel] = useState('')
   const [showBooking,   setShowBooking]   = useState(false)
   const [bookingName,   setBookingName]   = useState('')
   const [bookingPhone,  setBookingPhone]  = useState('')
@@ -486,32 +524,57 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     if (src) src.setData(sectionsGeoJSON(sections))
   }, [sections, mapReady])
 
+
   /* ─── Address autocomplete ──────────────────────────── */
-  const fetchSuggestions = useCallback((query: string) => {
+  const closeSuggestions = useCallback(() => {
+    suggestionVersion.current++
     if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
-    if (query.length < 3) { setSuggestions([]); return }
-    suggestTimerRef.current = setTimeout(async () => {
-      suggestAbortRef.current?.abort()
-      suggestAbortRef.current = new AbortController()
-      try {
-        setSuggestions(await photonSearch(query, 5, suggestAbortRef.current.signal))
-      } catch { /* aborted or network error — ignore */ }
-    }, 350)
+    suggestAbortRef.current?.abort()
+    setSuggestions([]); setActiveSug(-1)
   }, [])
 
+  const fetchSuggestions = useCallback((query: string) => {
+    closeSuggestions()
+    if (query.trim().length < 3) return
+    const version = suggestionVersion.current
+    suggestTimerRef.current = setTimeout(async () => {
+      const request = new AbortController()
+      suggestAbortRef.current = request
+      try {
+        const hits = await photonSearch(query, 5, request.signal)
+        if (version === suggestionVersion.current && document.activeElement === addressInputRef.current) setSuggestions(hits)
+      } catch { /* Typed final search remains available when suggestions fail. */ }
+    }, 350)
+  }, [closeSuggestions])
+
+  const invalidateSearch = useCallback(() => {
+    searchVersion.current++
+    searchAbortRef.current?.abort()
+    mapRef.current?.stop()
+  }, [])
+
+
   const pickSuggestion = (s: GeoResult) => {
+    closeSuggestions(); invalidateSearch()
     pickedRef.current = s
-    setAddress(s.label); setSuggestions([]); setActiveSug(-1)
+    setAddress(s.label); setPropertyConfirmation(null); setJobLatLng(null); setStep('idle'); setError('')
   }
+
+  useEffect(() => () => {
+    suggestionVersion.current++
+    searchVersion.current++
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
+    suggestAbortRef.current?.abort(); searchAbortRef.current?.abort()
+  }, [])
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (addressWrapRef.current && !addressWrapRef.current.contains(e.target as Node))
-        setSuggestions([])
+        closeSuggestions()
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [])
+  }, [closeSuggestions])
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -785,59 +848,115 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     })
   }, [])
 
+  // The pin must describe the same point that is saved. A nearby parcel with
+  // the same house number is not enough evidence to move it to another house.
+  useEffect(() => {
+    if (!mapReady || !jobLatLng || !mapRef.current) return
+    let alive = true
+    let marker: { remove(): void } | null = null
+    import('maplibre-gl').then(({ default: ml }) => {
+      if (!alive || !mapRef.current) return
+      const el = document.createElement('div')
+      el.className = 'crm-house-pin'
+      el.title = 'Property location — check the house before tracing'
+      el.innerHTML = '<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 39C15 39 2 23.5 2 14a13 13 0 0 1 26 0c0 9.5-13 25-13 25z" fill="currentColor" stroke="#fff" stroke-width="2.5"/><circle cx="15" cy="14" r="5" fill="#fff"/></svg>'
+      el.style.pointerEvents = 'none'
+      marker = new ml.Marker({ element: el, anchor: 'bottom' }).setLngLat([jobLatLng.lng, jobLatLng.lat]).addTo(mapRef.current)
+    })
+    return () => { alive = false; marker?.remove() }
+  }, [mapReady, jobLatLng])
+
+  const clearPropertyMeasurements = useCallback(() => {
+    setSections([]); setLawnSqFt(null); sectionsCountRef.current = 0
+    drawRef.current.points = []; setPtCount(0)
+    setFertAreaChoice(null); setFertCustomSqFt(null); setFertIncluded(false)
+    setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchIncluded(false)
+    setYardAreaChoice(null); setYardCustomSqFt(null); setYardIncluded(false); setYardHazards([])
+    setAddonDrawTarget(null); removeAddonPolygon()
+    const map = mapRef.current
+    if (map?.getLayer('parcel-outline')) map.removeLayer('parcel-outline')
+    if (map?.getSource('parcel-boundary')) map.removeSource('parcel-boundary')
+  }, [removeAddonPolygon])
+
+  const editAddress = (value: string) => {
+    invalidateSearch(); stopDraw()
+    pickedRef.current = null
+    setAddress(value); setPropertyConfirmation(null); setJobLatLng(null); setCandidateLabel('')
+    clearPropertyMeasurements(); setStep('idle'); setError(''); setOutsideArea(false); setWaitlistState('idle')
+    sessionStorage.removeItem('qg_submission_waitlist')
+    fetchSuggestions(value)
+  }
+
   /* ─── Address search ─────────────────────────────────── */
+  const showPropertyCandidate = useCallback((hit: GeoResult, version: number) => {
+    const map = mapRef.current
+    if (!map || searchVersion.current !== version) return
+    stopDraw()
+    if (jobLatLng && (jobLatLng.lat !== hit.lat || jobLatLng.lng !== hit.lon)) clearPropertyMeasurements()
+    setJobLatLng({ lat: hit.lat, lng: hit.lon }); setCandidateLabel(hit.label)
+    setPropertyConfirmation(null)
+    const needsConfirmation = !!staffQuote || hit.precision !== 'address'
+    const ready = () => {
+      if (version !== searchVersion.current) return
+      if (needsConfirmation) setStep('confirming')
+      else if (sectionsCountRef.current > 0) setStep('done')
+      else { startDraw(); setStep('drawing') }
+    }
+    // Fast lookup should not be hidden behind a multi-second flight animation.
+    map.jumpTo({ center: [hit.lon, hit.lat], zoom: 18 })
+    ready()
+    getParcel(address, hit.lat, hit.lon).then(parcel => {
+      if (version === searchVersion.current && parcel) drawParcelBoundary(parcel.coordinates)
+    }).catch(() => { /* Parcel outlines are supplemental, not property identity. */ })
+  }, [staffQuote, address, jobLatLng, clearPropertyMeasurements, stopDraw, startDraw, drawParcelBoundary])
+
   const handleSearch = useCallback(async (ev?: React.FormEvent) => {
     ev?.preventDefault()
     if (!address.trim()) { setError('Enter your address to find your property.'); return }
-    if (!mapRef.current) return
-    // Cancel any in-flight autocomplete so it can't reopen the dropdown over the result
-    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current)
-    suggestAbortRef.current?.abort()
-    setSuggestions([])
-    setError('')
-    setStep('searching')
-    // Deferred a frame — calling this synchronously in the same tick as the
-    // setStep above gets silently dropped (the state-driven re-render right
-    // after appears to cancel a scrollIntoView queued in the same handler).
-    requestAnimationFrame(() => mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    if (!mapRef.current || !mapReady) { setError('The map is loading. Try again in a moment.'); return }
+    invalidateSearch(); closeSuggestions(); stopDraw()
+    const version = searchVersion.current
+    const request = new AbortController()
+    searchAbortRef.current = request
+    setPropertyConfirmation(null); setError(''); setOutsideArea(false); setStep('searching')
+    const previousWaitlistProperty = sessionStorage.getItem('qg_waitlist_property')
+    if (previousWaitlistProperty && address !== previousWaitlistProperty) { sessionStorage.removeItem('qg_submission_waitlist'); setWaitlistState('idle') }
+    requestAnimationFrame(() => { if (version === searchVersion.current && (!staffQuote || staffUsed.current)) mapDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
     try {
       const picked = pickedRef.current
-      const hit = picked && picked.label === address ? picked : await geocodeAddress(address)
-      if (!hit) { setError('Address not found — try adding city or zip.'); setStep('idle'); return }
-      const { lat, lon } = hit
-
-      // Outside the service area: stop here rather than quote a huge travel fee
-      const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, lat, lon)
-      if (miles > SERVICE_RADIUS_MILES) {
-        setError(`That address is about ${Math.round(miles).toLocaleString()} miles from us — we serve Austin and up to ${SERVICE_RADIUS_MILES} miles out. Double-check the address (add city or zip), or call (682) 352-8260.`)
-        setStep('idle')
-        scrollToNext(addressWrapRef, 'center')
+      const hit = picked?.label === address && picked.precision === 'address' ? picked
+        : await (staffQuote ? cachedGeocode : geocodeAddress)(address, request.signal)
+      if (version !== searchVersion.current || request.signal.aborted) return
+      if (!hit) { setError('We could not find an exact property. Check the street number, city and ZIP, or use the location option below.'); setStep('idle'); return }
+      const miles = haversineMiles(OFFICE_LAT, OFFICE_LNG, hit.lat, hit.lon)
+      if (!staffQuote && miles > SERVICE_RADIUS_MILES) {
+        setError(`That address is about ${Math.round(miles).toLocaleString()} miles from us. We serve Austin and up to ${SERVICE_RADIUS_MILES} miles out. Join our waitlist below and we'll contact you if coverage changes.`)
+        setOutsideArea(true); sessionStorage.setItem('qg_waitlist_property', address); setStep('idle')
         return
       }
-      setJobLatLng({ lat, lng: lon })
       if (!staffQuote) trackQuoteAddressFound()
-
-      const map = mapRef.current
-      // Snap out to a wide, zoomed-out view over the address first (instant,
-      // no animation) so the flyTo below always starts from a wide shot and
-      // swoops in to the house — regardless of whatever zoom level the map
-      // was left at from a previous search.
-      map.jumpTo({ center: [lon, lat], zoom: 9 })
-      // Drive the "drawing" step off the animation actually finishing rather
-      // than a hardcoded timer, so it can never fire early/late if the
-      // duration below ever changes.
-      map.once('moveend', () => { startDraw(); setStep('drawing') })
-      map.flyTo({ center: [lon, lat], zoom: 18, duration: 4200 })
-
-      // Fetch parcel boundary in parallel with the fly animation
-      getParcel(address, lat, lon).then(parcel => {
-        if (parcel) drawParcelBoundary(parcel.coordinates)
-      })
+      showPropertyCandidate(hit, version)
     } catch {
-      setError('Search failed. Please try again.')
-      setStep('idle')
+      if (version !== searchVersion.current || request.signal.aborted) return
+      setError('Address lookup is temporarily unavailable. Try again, or use the location option below.'); setStep('idle')
     }
-  }, [staffQuote, address, startDraw, drawParcelBoundary])
+  }, [staffQuote, address, mapReady, invalidateSearch, closeSuggestions, stopDraw, showPropertyCandidate])
+
+  const confirmProperty = () => {
+    if (!jobLatLng) return
+    setPropertyConfirmation({ ...jobLatLng, address, contactAddress: contactAddressAtReview.current })
+    setError('')
+    if (sectionsCountRef.current > 0) setStep('done')
+    else { startDraw(); setStep('drawing') }
+  }
+
+  const locateManually = () => {
+    if (!mapReady || !mapRef.current) { setError('The map is loading. Try again in a moment.'); return }
+    const point = parseManualPropertyLocation(manualLocation)
+    if (!point || !address.trim()) { setError('Enter the full property address and a Google Maps place URL or latitude, longitude. A shortened link or map viewport alone cannot identify a house.'); return }
+    invalidateSearch(); closeSuggestions()
+    showPropertyCandidate({ label: address, lat: point.lat, lon: point.lng, precision: 'approximate' }, searchVersion.current)
+  }
 
   useEffect(() => {
     if (!staffQuote || !mapReady || restored.current) return
@@ -846,8 +965,10 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     if (draft?.jobLatLng) {
       mapRef.current?.jumpTo({ center: [draft.jobLatLng.lng, draft.jobLatLng.lat], zoom: 18 })
       setSections([...draft.sections])
-      setStep(draft.sections.length ? 'done' : 'idle')
-      if (draft.unfinishedPoints?.length) {
+      const confirmed = !staffQuote.addressNeedsReview || isPropertyConfirmed(draft.propertyConfirmation, draft.address, contactAddressAtReview.current, draft.jobLatLng)
+      setCandidateLabel(draft.address)
+      setStep(confirmed ? (draft.sections.length ? 'done' : 'confirming') : 'confirming')
+      if (confirmed && draft.unfinishedPoints?.length) {
         startDraw()
         drawRef.current.points = draft.unfinishedPoints
         setAddonDrawTarget(draft.unfinishedTarget ?? null)
@@ -855,12 +976,18 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
         setPtCount(draft.unfinishedPoints.length)
         updateDrawSource()
       }
-    } else if (draft?.address || staffQuote.address) {
+    } else if (!draft && seed.center) {
+      // Customer tracing, no saved quote: open on their shapes, same confirmation rule as a saved draft.
+      mapRef.current?.jumpTo({ center: [seed.center.lng, seed.center.lat], zoom: 18 })
+      setJobLatLng(seed.center)
+      setCandidateLabel(staffQuote.address ?? '')
+      setStep(staffQuote.addressNeedsReview ? 'confirming' : 'done')
+    } else if ((draft?.address || staffQuote.address) && !staffQuote.addressNeedsReview) {
       void handleSearch()
     }
     })
     return () => cancelAnimationFrame(frame)
-  }, [staffQuote, draft, mapReady, address, handleSearch, startDraw, updateDrawSource])
+  }, [staffQuote, draft, seed, mapReady, address, handleSearch, startDraw, updateDrawSource])
 
   /* ─── Cancel current trace (keep address/map position) ── */
   const cancelTrace = useCallback(() => {
@@ -897,6 +1024,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
   /* ─── Reset ──────────────────────────────────────────── */
   const handleReset = useCallback(() => {
+    invalidateSearch(); closeSuggestions(); pickedRef.current = null
+    setPropertyConfirmation(null); setCandidateLabel(''); setManualLocation(''); setWaitlistState('idle')
+    sessionStorage.removeItem('qg_submission_waitlist'); sessionStorage.removeItem('qg_waitlist_property')
     cancelAnimationFrame(rafRef.current)
     stopDraw()
     const map = mapRef.current
@@ -912,10 +1042,11 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     setOpenAddon(null); setAddonDrawTarget(null); setTeaserTip(null)
     setFertAreaChoice(null); setFertCustomSqFt(null); setFertIncluded(false)
     setMulchAreaChoice(null); setMulchCustomSqFt(null); setMulchDepthIn(MULCH_DEFAULT_DEPTH_IN); setMulchIncluded(false)
+    setLeafIncluded(false); setLeafHaulAway(false)
     setMaintenanceInterested(false)
     setYardAreaChoice(null); setYardCustomSqFt(null); setYardSeverity('moderate'); setYardHazards([]); setYardIncluded(false)
     scrollToNext(addressWrapRef, 'center')
-  }, [staffQuote, stopDraw, removeAddonPolygon])
+  }, [staffQuote, stopDraw, removeAddonPolygon, invalidateSearch, closeSuggestions])
 
   /* ─── Lead capture (unlock price) ───────────────────── */
   const captureMapScreenshot = useCallback((): Promise<string> => {
@@ -940,7 +1071,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     if (!leadConsent) { setLeadError('Please check the box to consent to being contacted.'); return }
     setLeadStatus('submitting'); setLeadError('')
     const screenshot = await captureMapScreenshot()
-    const result = await submitLead({ submission_id: submissionId('map'), phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined, ...getAttribution() })
+    const shown = shownQuote.current
+    const result = await submitLead({ submission_id: submissionId('map'), phone: leadPhone, address, sq_ft: lawnSqFt, consent: leadConsent, consentText: LEAD_CONSENT_TEXT, map_screenshot: screenshot || undefined,
+      website_price: shown?.price, lawn_tracing: shown?.tracing, ...getAttribution() })
       .catch(() => ({ success: false, error: 'Something went wrong. Please try again.', leadToken: undefined, eventId: undefined }))
     if (result.success) { trackWebsiteLead(result.eventId); setLeadToken(result.leadToken); if (result.leadToken) sessionStorage.setItem('qg_lead_token', result.leadToken); setLeadUnlocked(true); setLeadStatus('idle'); if (!staffQuote) trackQuoteShown() }
     else { setLeadStatus('idle'); setLeadError(result.error ?? 'Something went wrong.') }
@@ -965,19 +1098,41 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const ongoingPrice   = lawnSqFt ? Math.round(basePrice * (1 - discount / 100)) + distanceFee : 0
   const firstVisitFullPrice = ongoingPrice + overgrowthFee
   const firstVisitPrice = Math.round(firstVisitFullPrice * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
+  const mowingPriceCents = Math.round((overridePrice ?? ongoingPrice) * 100)
+  const staffTotalCents = (includeMowing ? mowingPriceCents : 0) + manualLines.reduce((sum, line) => sum + line.amountCents, 0) - discountCents
   const isDone         = step === 'done' || step === 'editing'
+
+  // Keep what the customer sees ready for the unlock submit, and once unlocked, save frequency/price changes to their lead.
+  const quoteKey = `${freq}:${ongoingPrice}:${firstVisitPrice}`
+  const sentQuote = useRef<string | null>(null)
+  useEffect(() => {
+    if (staffQuote) return
+    shownQuote.current = { price: { price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice, frequency: freq },
+      tracing: sections.map(({ name, sqFt, coords }) => ({ name, sqFt, coords })) }
+  }, [staffQuote, ongoingPrice, firstVisitPrice, freq, sections])
+  useEffect(() => {
+    if (!leadToken) sentQuote.current = null
+    if (staffQuote || !leadUnlocked || !leadToken || ongoingPrice <= 0) return
+    if (sentQuote.current === null) { sentQuote.current = quoteKey; return }
+    if (sentQuote.current === quoteKey) return
+    const timer = setTimeout(() => {
+      sentQuote.current = quoteKey
+      void updateWebsitePrice(leadToken, { price_per_visit: ongoingPrice, first_visit_price: firstVisitPrice, frequency: freq }).catch(() => {})
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [staffQuote, leadUnlocked, leadToken, quoteKey, ongoingPrice, firstVisitPrice, freq])
   // Once the price is unlocked the map shrinks to a preview and the quote takes over
-  const compact        = leadUnlocked && step === 'done' && !isDrawing
+  const compact        = !staffQuote && leadUnlocked && step === 'done' && !isDrawing
 
   // Lawn finished → phone box; price unlocked (or extra area added) → price
   useEffect(() => {
-    if (step !== 'done') return
+    if (step !== 'done' || (staffQuote && !staffUsed.current)) return
     if (leadUnlocked) { scrollToNext(priceTitleRef); return }
     scrollToNext(leadGateRef, 'center')
     // Only jump into the field with a mouse — on phones it would pop the keyboard over the map
     if (window.matchMedia('(pointer: fine)').matches)
       setTimeout(() => leadPhoneRef.current?.focus({ preventScroll: true }), 450)
-  }, [step, leadUnlocked])
+  }, [step, leadUnlocked, staffQuote])
 
   // Re-frame the traced lawn whenever the map changes size between full and preview
   useEffect(() => {
@@ -1001,6 +1156,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
   const mulchCuYd  = mulchSqFt ? calcMulchCuYd(mulchSqFt, mulchDepthIn) : 0
   const mulchPrice = mulchSqFt ? calcMulchPrice(mulchSqFt, mulchDepthIn) : 0
 
+  const leafPrice  = lawnSqFt ? calcLeafPrice(lawnSqFt, leafHaulAway) : 0
+
   const yardSqFt       = yardAreaChoice === 'same' ? lawnSqFt : yardAreaChoice === 'custom' ? yardCustomSqFt : null
   const yardBasePrice  = yardSqFt ? calcClearoutPrice(yardSqFt, yardSeverity) : 0
   const yardHasHazard  = yardHazards.length > 0
@@ -1011,6 +1168,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
     const obj: Record<string, unknown> = {}
     if (fertIncluded && fertSqFt) obj.fertilization = { included: true, sq_ft: fertSqFt, price: fertPrice, area: fertAreaChoice }
     if (mulchIncluded && mulchSqFt) obj.mulch = { included: true, sq_ft: mulchSqFt, depth_in: mulchDepthIn, cu_yd: Math.round(mulchCuYd * 10) / 10, price: mulchPrice, area: mulchAreaChoice }
+    if (leafIncluded && lawnSqFt) obj.leafCleanup = { included: true, sq_ft: lawnSqFt, haul_away: leafHaulAway, price: leafPrice }
     if (maintenanceInterested) obj.maintenance = { interested: true }
     if (yardIncluded && yardSqFt) obj.yardClearout = { included: true, sq_ft: yardSqFt, severity: yardSeverity, hazards: yardHazards, base_price: yardBasePrice, hazard_fee: yardHazardFee, price: yardPrice, area: yardAreaChoice }
     return Object.keys(obj).length ? obj : null
@@ -1039,34 +1197,42 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
       distance_miles: Math.round(jobMiles * 10) / 10, distance_fee: distanceFee,
       map_screenshot: mapScreenshot,
       addon_interest: addonInterest,
+      lawn_tracing: sections.map(({ name, sqFt, coords }) => ({ name, sqFt, coords })),
       ...getAttribution(),
     }).catch(() => ({ success: false, error: 'Something went wrong. Please try again.' }))
-    if (result.success) { setBookingStatus('success'); if (!staffQuote) trackBookingRequested() }
+    if (result.success) { setBookingStatus('success'); if (!staffQuote) trackBookingRequested(firstVisitPrice) }
     else { setBookingStatus('idle'); setBookingError(result.error ?? 'Something went wrong.') }
-  }, [leadToken, staffQuote, bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest])
+  }, [leadToken, staffQuote, bookingName, bookingPhone, bookingEmail, bookingDate, bookingTimeWindow, bookingNotes, address, lawnSqFt, freq, ongoingPrice, firstVisitPrice, overgrowthFee, lastMow, jobMiles, distanceFee, addonInterest, sections])
 
   async function saveStaffDraft(confirmed: boolean) {
     if (!staffQuote || saving) return
+    if (confirmed && staffQuote.addressNeedsReview && (jobLatLng || sections.length) && !isPropertyConfirmed(propertyConfirmation, address, contactAddressAtReview.current, jobLatLng)) { setSaveMessage('Confirm the property on the map before saving this measured quote as quoted.'); return }
     setSaving(true); setSaveMessage('')
     // Preserve unfinished trace points separately from finished/priced measurements.
     const points = drawRef.current.points
     const savedSections = sections
     const next: QuoteDraft = {
-      address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
+      contactAddressAtReview: contactAddressAtReview.current, propertyConfirmation, address, sections: savedSections, unfinishedPoints: points, unfinishedTarget: addonDrawTarget, jobLatLng, freq, lastMow,
       fertAreaChoice, fertCustomSqFt, fertIncluded, mulchAreaChoice, mulchCustomSqFt, mulchDepthIn, mulchIncluded,
-      maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
+      leafIncluded, leafHaulAway, maintenanceInterested, yardAreaChoice, yardCustomSqFt, yardSeverity, yardHazards, yardIncluded,
       addonInterest, overgrowthFee, calculatedPrice: ongoingPrice, calculatedFirstVisit: firstVisitPrice, overridePrice, notes: staffNotes,
+      includeMowing, manualLines, discountCents, totalCents: staffTotalCents,
     }
     try {
-      const result = await saveLeadQuote(staffQuote.id, next, confirmed)
-      setSaveMessage(result.error ?? (confirmed ? 'Quote confirmed. No booking or message was created.' : 'Draft saved.'))
+      const result = await saveLeadQuote(staffQuote.id, staffQuote.updated_at, next, confirmed)
+      if ('error' in result) setSaveMessage(result.error)
+      else {
+        staffQuote.onSaved?.(result.updatedAt, confirmed, next)
+        setSaveMessage(confirmed ? 'Saved as quoted. Nothing was sent to the customer.' : 'Price saved.')
+      }
     } catch { setSaveMessage('Could not save. Please retry.') }
     finally { setSaving(false) }
   }
 
   /* ─── JSX ────────────────────────────────────────────── */
   return (
-    <section className="mapq-section" id="map-quote">
+    <section className={`mapq-section${staffQuote ? ' crm-staff-map' : ''}${staffQuote && !showStaffMap ? ' crm-staff-map-hidden' : ''}${outsideArea ? ' mapq-outside' : ''}`} id="map-quote"
+      onPointerDownCapture={() => { staffUsed.current = true }} onKeyDownCapture={() => { staffUsed.current = true }}>
       <div className="mapq-blobs" aria-hidden="true">
         <div className="mapq-blob mapq-blob-a" />
         <div className="mapq-blob mapq-blob-b" />
@@ -1074,14 +1240,21 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
       <div className="mapq-inner">
         {staffQuote && <div className="staff-quote-controls">
-          <h2>Prepare this quote</h2>
-          <p>Trace the lawn and edit the estimate below. Saving does not contact the customer.</p>
-          <label>Staff price override per visit ($, optional)<input type="number" min="0" value={overridePrice ?? ''} onChange={e => setOverridePrice(e.target.value === '' ? null : Number(e.target.value))} /></label>
-          <label>Quote notes<textarea value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} /></label>
-          <button disabled={saving} onClick={() => void saveStaffDraft(false)}>Save draft</button>
-          <button disabled={saving || isDrawing} onClick={() => void saveStaffDraft(true)}>Confirm quote</button>
+          <h2>Price calculator</h2>
+          <p>Saving never contacts the customer.</p>
+          <QuotePriceEditor lines={manualLines} onLinesChange={setManualLines} discountCents={discountCents} onDiscountChange={setDiscountCents} includeMowing={includeMowing} onIncludeMowingChange={included => { setIncludeMowing(included); if (included) setShowStaffMap(true) }} mowingPriceCents={mowingPriceCents}
+            lawn={{ sqFt: lawnSqFt, freq, freqOptions: (Object.entries(FREQ) as [Frequency, typeof FREQ[Frequency]][]).map(([value, f]) => ({ value, label: `${FREQUENCY_LABEL[value]}${f.discount ? ` · ${f.discount}% off` : ''}` })),
+              onFreqChange: value => setFreq(value as Frequency), calculatedCents: Math.round(ongoingPrice * 100), overridePrice, onOverrideChange: setOverridePrice }} />
+          <label>Notes for this quote<textarea aria-label="Quote notes" value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} placeholder="Anything the price depends on" /></label>
+          <div className="staff-quote-actions">
+            <button disabled={saving || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(false)}>Save</button>
+            <button disabled={saving || (isDrawing && includeMowing) || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(true)}>Save as quoted</button>
+          </div>
+          <p className="staff-quote-hint">{isDrawing && includeMowing ? 'Finish the lawn trace on the map (or uncheck lawn care) before saving as quoted.' : '“Save as quoted” means you’ve given (or are about to give) the customer this price.'}</p>
+          {staffQuote.quote_status === 'accepted' && <p>This price was accepted and is locked.</p>}
           <p role="status">{saveMessage}</p>
         </div>}
+        {staffQuote && <div className="crm-map-heading"><span>Property map</span><button type="button" className="crm-map-toggle" onClick={() => setShowStaffMap(open => !open)}>{showStaffMap ? 'Hide map' : 'Open map'}</button></div>}
         <div className="mapq-header">
           <div className="section-label" style={{ color: 'var(--green-bright)' }}>Instant Quote</div>
           <h2 className="section-h2" style={{ color: '#fff', marginBottom: 0 }}>
@@ -1144,13 +1317,13 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
 
             {/* Step 1 — Address */}
             <div className="mapq-step">
-              <div className={`mapq-step-indicator ${step !== 'idle' && step !== 'searching' ? 'done' : 'active'}`}>
+              <div className={`mapq-step-indicator ${!['idle', 'searching', 'confirming'].includes(step) ? 'done' : 'active'}`}>
                 {step !== 'idle' && step !== 'searching' ? <CheckIcon /> : '1'}
               </div>
               <div className="mapq-step-line" style={{ opacity: step !== 'idle' && step !== 'searching' ? 1 : 0.2 }} />
               <div className="mapq-step-body">
-                <div className={`mapq-step-title ${step === 'idle' || step === 'searching' ? 'active' : ''}`}>Your address</div>
-                {(step === 'idle' || step === 'searching') && (
+                <div className={`mapq-step-title ${step === 'idle' || step === 'searching' ? 'active' : ''}`}>{staffQuote ? 'Property address' : 'Your address'}</div>
+                {(step === 'idle' || step === 'searching' || step === 'confirming') && (
                   <form onSubmit={handleSearch} style={{ marginTop: 14 }}>
                     <div className="mapq-input-wrap" ref={addressWrapRef}>
                       <svg className="mapq-input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1162,16 +1335,18 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                         placeholder="123 Main St, Austin TX…"
                         value={address}
                         autoComplete="off"
+                        ref={addressInputRef}
                         aria-label="Your street address"
                         aria-autocomplete="list"
                         aria-expanded={suggestions.length > 0}
-                        onChange={e => { setAddress(e.target.value); setActiveSug(-1); fetchSuggestions(e.target.value) }}
+                        onChange={e => editAddress(e.target.value)}
                         onKeyDown={e => {
+                          if (e.key === 'Escape') { closeSuggestions(); return }
                           if (!suggestions.length) return
                           if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSug(i => Math.min(i + 1, suggestions.length - 1)) }
                           else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSug(i => Math.max(i - 1, -1)) }
                           else if (e.key === 'Enter' && activeSug >= 0) { e.preventDefault(); pickSuggestion(suggestions[activeSug]) }
-                          else if (e.key === 'Escape') { setSuggestions([]); setActiveSug(-1) }
+                          else if (e.key === 'Escape') { closeSuggestions() }
                         }}
                       />
                       {suggestions.length > 0 && (
@@ -1191,12 +1366,46 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                       )}
                     </div>
                     <button type="submit" className="mapq-btn-primary" style={{ marginTop: 10, width: '100%' }} disabled={step === 'searching'}>
-                      {step === 'searching' ? <><span className="mapq-spinner" /> Flying there…</> : 'Find my property →'}
+                      {step === 'searching' ? <><span className="mapq-spinner" /> Finding property…</> : 'Find my property →'}
                     </button>
                     {error && <p className="mapq-error">{error}</p>}
                   </form>
                 )}
-                {step !== 'idle' && step !== 'searching' && (
+                {step === 'confirming' && jobLatLng && <div className="mapq-property-confirm" role="status">
+                  <strong>Check this is the right house</strong>
+                  <p>{candidateLabel || address}</p>
+                  <p>Compare the pin with the property before tracing. A road or nearby house is not a confirmed match.</p>
+                  <button type="button" className="mapq-btn-primary" onClick={confirmProperty}>Confirm this property</button>
+                </div>}
+                {staffQuote && <details className="mapq-location-help">
+                  <summary>Can’t find the property? Set its location</summary>
+                  <p>Open the submitted address in Google Maps. Copy the place URL from the browser address bar, or right-click the house to copy its latitude, longitude.</p>
+                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`} target="_blank" rel="noopener noreferrer">Open address in Google Maps ↗</a>
+                  <label>Place URL or latitude, longitude<input aria-label="Property location" value={manualLocation} onChange={event => setManualLocation(event.target.value)} placeholder="30.510755, -97.586527" /></label>
+                  <button type="button" className="mapq-btn-ghost" onClick={locateManually}>Show this location</button>
+                </details>}
+                {!staffQuote && error && !outsideArea && <p className="mapq-location-help"><a href="#service-inquiry">Send your address for a personal quote instead →</a></p>}
+                {outsideArea && !staffQuote && (waitlistState === 'saved' ? <p className="mapq-waitlist-success" role="status">You’re on the waitlist. We’ll reach out if service becomes available near this address.</p> :
+                  <form className="mapq-waitlist" onSubmit={async event => {
+                    event.preventDefault()
+                    if (waitlistState === 'saving') return
+                    setWaitlistState('saving'); setWaitlistError('')
+                    try {
+                      const result = await submitWaitlist({ submission_id: submissionId('waitlist'), name: waitlistName, phone: waitlistPhone,
+                        address, email: waitlistEmail, ...getAttribution() })
+                      if (result.success) setWaitlistState('saved')
+                      else { setWaitlistState('idle'); setWaitlistError(result.error ?? 'Could not save your request.') }
+                    } catch { setWaitlistState('idle'); setWaitlistError('Could not save your request. Please retry.') }
+                  }}>
+                    <h3>Join the service waitlist</h3>
+                    <label>Your name<input required autoComplete="name" value={waitlistName} onChange={event => setWaitlistName(event.target.value)} maxLength={150} /></label>
+                    <label>Phone number<input required type="tel" autoComplete="tel" value={waitlistPhone} onChange={event => setWaitlistPhone(event.target.value)} /></label>
+                    <label>Email (optional)<input type="email" autoComplete="email" value={waitlistEmail} onChange={event => setWaitlistEmail(event.target.value)} /></label>
+                    <p>Property: {address}</p>
+                    <button type="submit" className="mapq-btn-primary" disabled={waitlistState === 'saving'}>{waitlistState === 'saving' ? 'Saving…' : 'Join waitlist'}</button>
+                    {waitlistError && <p className="mapq-error" role="alert">{waitlistError}</p>}
+                  </form>)}
+                {step !== 'idle' && step !== 'searching' && step !== 'confirming' && (
                   <p className="mapq-step-done-text">{address}<button className="mapq-link" onClick={handleReset}> · new search</button></p>
                 )}
               </div>
@@ -1210,7 +1419,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
               <div className="mapq-step-line" style={{ opacity: isDone && !isDrawing ? 1 : 0.2 }} />
               <div className="mapq-step-body">
                 <div className={`mapq-step-title ${isDrawing ? 'active' : ''}`}>
-                  Trace your lawn
+                  {staffQuote ? 'Lawn trace' : 'Trace your lawn'}
                 </div>
 
                 <div className="mapq-first-visit-promo" style={{ marginTop: 12, marginBottom: 0 }}>
@@ -1280,13 +1489,14 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                 {!isDrawing && isDone && lawnSqFt && (
                   <p className="mapq-step-done-text">
                     {lawnSqFt.toLocaleString()} sq ft traced
+                    {staffQuote && <> · <button className="mapq-link" onClick={handleReset}>Start over</button></>}
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Step 3 — Quote */}
-            <div className="mapq-step mapq-step-last">
+            {/* Step 3 — Quote (customers only; staff price lives in the Price box) */}
+            {!staffQuote && <div className="mapq-step mapq-step-last">
               <div className={`mapq-step-indicator ${isDone ? 'active' : 'idle'}`}>
                 {isDone
                   ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -1372,7 +1582,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                               onChange={e => setLeadConsent(e.target.checked)}
                               required
                             />
-                            <span className="mapq-consent-text">{LEAD_CONSENT_TEXT}</span>
+                            <span className="mapq-consent-text">{LEAD_CONSENT_TEXT} <a href="/privacy#sms" target="_blank" rel="noopener">Privacy Policy</a></span>
                           </label>
                           <button type="submit" className="mapq-btn-primary" disabled={leadStatus === 'submitting'}>
                             {leadStatus === 'submitting' ? <span className="mapq-spinner" /> : 'Unlock price →'}
@@ -1474,9 +1684,9 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                         <div className="mapq-addons" ref={addonsRef}>
                           <div className="mapq-addons-title">Also available — add to this visit</div>
                           <div className="mapq-addons-chips">
-                            {(['fertilization', 'mulch', 'maintenance', 'yardClearout'] as AddonKey[]).map(key => {
+                            {(['fertilization', 'mulch', 'leafCleanup', 'maintenance', 'yardClearout'] as AddonKey[]).map(key => {
                               const meta = ADDON_META[key]
-                              const included = { fertilization: fertIncluded, mulch: mulchIncluded, maintenance: maintenanceInterested, yardClearout: yardIncluded }[key]
+                              const included = { fertilization: fertIncluded, mulch: mulchIncluded, leafCleanup: leafIncluded, maintenance: maintenanceInterested, yardClearout: yardIncluded }[key]
                               return (
                                 <button
                                   key={key}
@@ -1589,10 +1799,42 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                             </div>
                           )}
 
+                          {openAddon === 'leafCleanup' && (
+                            <div className="mapq-addon-panel">
+                              <p className="mapq-addon-blurb">{ADDON_META.leafCleanup.blurb}</p>
+
+                              <div className="mapq-addon-price-row">
+                                <span>Your {lawnSqFt?.toLocaleString()} sq ft yard</span>
+                                <span className="mapq-addon-price-val">${leafPrice}</span>
+                              </div>
+
+                              <label className="mapq-addon-include-row">
+                                <input
+                                  type="checkbox"
+                                  className="mapq-consent-checkbox"
+                                  checked={leafHaulAway}
+                                  onChange={e => setLeafHaulAway(e.target.checked)}
+                                />
+                                <span>Haul the leaves away (+${LEAF_HAUL_AWAY_FEE}) — otherwise bagged at the curb</span>
+                              </label>
+                              <p className="mapq-addon-disclaimer">Fixed price, confirmed before we start. Very deep or wet leaf piles may cost more. Austin&apos;s live oaks drop in spring, so we do leaf cleanups year-round.</p>
+
+                              <label className="mapq-addon-include-row">
+                                <input
+                                  type="checkbox"
+                                  className="mapq-consent-checkbox"
+                                  checked={leafIncluded}
+                                  onChange={e => { setLeafIncluded(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('leafCleanup') }}
+                                />
+                                <span>Include leaf cleanup with my booking request</span>
+                              </label>
+                            </div>
+                          )}
+
                           {openAddon === 'maintenance' && (
                             <div className="mapq-addon-panel">
                               <p className="mapq-addon-blurb">{ADDON_META.maintenance.blurb}</p>
-                              <p className="mapq-addon-disclaimer">Billed hourly, starting around $55/hr — we&apos;ll quote the exact time once we see your yard.</p>
+                              <p className="mapq-addon-disclaimer">Visits from $75 — we&apos;ll confirm the scope once we see your beds.</p>
                               <label className="mapq-addon-include-row">
                                 <input
                                   type="checkbox"
@@ -1600,7 +1842,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                                   checked={maintenanceInterested}
                                   onChange={e => { setMaintenanceInterested(e.target.checked); if (e.target.checked && !staffQuote) trackAddonInterest('maintenance') }}
                                 />
-                                <span>Include maintenance interest with my booking request</span>
+                                <span>Include bed maintenance interest with my booking request</span>
                               </label>
                             </div>
                           )}
@@ -1714,7 +1956,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
           </div>
 
@@ -1724,7 +1966,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
               {step === 'searching' && (
                 <div className="mapq-flying-pill">
                   <span className="mapq-spinner" style={{ width: 14, height: 14, borderWidth: 2, borderTopColor: 'var(--green-bright)' }} />
-                  Flying to your property…
+                  Finding your property…
                 </div>
               )}
 
@@ -1764,7 +2006,7 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                   <a href="https://www.mapbox.com/map-feedback/" target="_blank" rel="noopener noreferrer">Improve this map</a>{' '}
                   © Maxar · Labels © Esri
                 </>
-              ) : 'Satellite imagery © Esri'}
+              ) : <>Satellite imagery © Esri · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">Address data © OpenStreetMap</a></>}
             </p>
 
             {compact && lawnSqFt && (
@@ -1875,7 +2117,8 @@ export default function MapQuoteBuilder({ staffQuote }: { staffQuote?: StaffQuot
                     <div className="booking-summary-addons">
                       {fertIncluded && <span>+ Fertilization interest (${fertPrice} starting)</span>}
                       {mulchIncluded && <span>+ Mulch interest (${mulchPrice})</span>}
-                      {maintenanceInterested && <span>+ Maintenance interest</span>}
+                      {leafIncluded && <span>+ Leaf cleanup (${leafPrice}{leafHaulAway ? ', hauled away' : ''})</span>}
+                      {maintenanceInterested && <span>+ Bed maintenance interest</span>}
                       {yardIncluded && <span>+ Yard clearout interest (${yardPrice} starting)</span>}
                     </div>
                   )}

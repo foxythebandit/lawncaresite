@@ -1,7 +1,7 @@
-/** Only these internal paths may survive a staff login. No query strings/PII. */
+/** Only these internal paths may survive a staff login: admin pages and short lead links. No query strings/PII. */
 export function staffReturnTo(value: unknown): string {
-  return typeof value === 'string' && /^\/admin(?:\/[a-zA-Z0-9_-]+)*$/.test(value) && !value.startsWith('/admin/login')
-    ? value : '/admin'
+  return typeof value === 'string' && ((/^\/admin(?:\/[a-zA-Z0-9_-]+)*$/.test(value) && !value.startsWith('/admin/login'))
+    || /^\/l\/[23456789A-Z]{6}$/.test(value)) ? value : '/admin/leads'
 }
 
 export function isStaff(user: { email?: string; email_confirmed_at?: string; app_metadata?: Record<string, unknown> } | null, allowlist = process.env.STAFF_EMAILS ?? ''): boolean {

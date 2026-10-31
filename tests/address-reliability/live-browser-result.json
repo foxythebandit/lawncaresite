@@ -1,0 +1,11 @@
+{
+  "outcome": "property_candidate_or_trace",
+  "elapsed_ms": 906,
+  "errors": [],
+  "provider_receipts": [
+    {
+      "url": "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&street=162+Danish+dr&postalcode=78634&limit=1&countrycodes=us&viewbox=-98.3184,30.8049,-97.11840000000001,29.8049&bounded=0",
+      "status": 200
+    }
+  ]
+}

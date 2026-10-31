@@ -8,6 +8,8 @@ interface BookingPin {
   address: string
   status: string
   price_per_visit: number | null
+  confirmed_date?: string | null
+  confirmed_time?: string | null
 }
 
 interface GeocodedPin extends BookingPin {
@@ -136,11 +138,14 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
     }
   }, [pins, geocoding])
 
-  const confirmedAddresses = bookings
-    .filter(b => b.status === 'confirmed')
+  // Route only today's scheduled visits, in arrival-time order (not every date at once).
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  const todayStops = bookings
+    .filter(b => b.status === 'confirmed' && b.confirmed_date === today)
+    .sort((a, b) => (a.confirmed_time ?? '99:99').localeCompare(b.confirmed_time ?? '99:99'))
     .map(b => encodeURIComponent(b.address))
-    .join('/')
-  const googleMapsUrl = confirmedAddresses ? `https://www.google.com/maps/dir/${confirmedAddresses}` : null
+  const googleMapsUrl = todayStops.length > 1 ? `https://www.google.com/maps/dir/${todayStops.join('/')}`
+    : todayStops.length === 1 ? `https://maps.google.com/?q=${todayStops[0]}` : null
 
   const confirmedCount = pins.filter(p => p.status === 'confirmed').length
   const pendingCount   = pins.filter(p => p.status === 'pending').length
@@ -158,7 +163,8 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
       aria-label="Show client map"
       aria-expanded={open}
     >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span>Map</span>
       {!geocoding && pins.length > 0 && <span className="admin-map-fab-badge">{pins.length}</span>}
     </button>
 
@@ -176,15 +182,15 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
           {geocoding
             ? <span className="admin-map-locating">Locating…</span>
             : <>
-                <span className="admin-map-leg"><span className="admin-map-dot confirmed" />{confirmedCount} confirmed</span>
-                <span className="admin-map-leg"><span className="admin-map-dot pending" />{pendingCount} pending</span>
+                <span className="admin-map-leg"><span className="admin-map-dot confirmed" />{confirmedCount} scheduled</span>
+                <span className="admin-map-leg"><span className="admin-map-dot pending" />{pendingCount} to schedule</span>
               </>
           }
         </div>
         {googleMapsUrl && (
           <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="admin-map-route-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-            Route
+            Today’s route
           </a>
         )}
         <button

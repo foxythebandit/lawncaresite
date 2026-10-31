@@ -1,4 +1,7 @@
 import ReminderButtons from './ReminderButtons'
+import { formatMoney, jobPrice } from '@/lib/crm-jobs'
+import Icon from './icons'
+import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
 
 export function formatTime(t: string) {
   const [h, m] = t.split(':').map(Number)
@@ -17,6 +20,7 @@ interface Job {
   sq_ft: number | null
   frequency: string | null
   price_per_visit: number | null
+  job_total?: number | string | null
   notes: string | null
   last_reminder_sent_at?: string | null
 }
@@ -27,18 +31,20 @@ export default function DayJobs({ jobs, emptyLabel = 'No jobs confirmed.' }: { j
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="admin-route-list">
       {jobs.map((b, i) => (
         <div key={b.id} className="admin-route-card">
-          <div className="admin-route-stop">{i + 1}</div>
+          <div className="admin-route-stop">
+            <strong>{b.confirmed_time ? (/^\d{1,2}:\d{2}$/.test(b.confirmed_time) ? formatTime(b.confirmed_time) : b.confirmed_time) : '—'}</strong>
+            <span>Stop {i + 1}</span>
+          </div>
           <div className="admin-route-info">
             <div className="admin-route-name">{b.name}</div>
             <div className="admin-route-addr">{b.address}</div>
             <div className="admin-route-meta">
-              {b.confirmed_time && <span>{formatTime(b.confirmed_time)}</span>}
+              {jobPrice(b) > 0 && <strong>{formatMoney(jobPrice(b))} job value</strong>}
               {b.sq_ft        && <span>{b.sq_ft.toLocaleString()} sq ft</span>}
-              {b.frequency    && <span>{b.frequency}</span>}
-              {b.price_per_visit && <span style={{ fontWeight: 600, color: 'var(--green-mid)' }}>${b.price_per_visit}/visit</span>}
+              {b.frequency    && <span>{normalizeFrequency(b.frequency) ? FREQUENCY_LABEL[normalizeFrequency(b.frequency)!] : b.frequency}</span>}
             </div>
             {b.notes && <div className="admin-route-notes">{b.notes}</div>}
             <ReminderButtons
@@ -56,12 +62,12 @@ export default function DayJobs({ jobs, emptyLabel = 'No jobs confirmed.' }: { j
               href={`https://maps.google.com/?q=${encodeURIComponent(b.address)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="admin-route-nav-btn"
+              className="crm-button crm-button-primary"
             >
-              Navigate
+              <Icon name="navigation" size={15} />Navigate
             </a>
-            <a href={`tel:${b.phone}`} className="admin-route-call-btn">Call</a>
-            <a href={`sms:${b.phone}`} className="admin-route-sms-btn">Text</a>
+            <a href={`tel:${b.phone}`} className="crm-button"><Icon name="phone" size={15} />Call</a>
+            <a href={`sms:${b.phone}`} className="crm-button"><Icon name="message" size={15} />Text</a>
           </div>
         </div>
       ))}
