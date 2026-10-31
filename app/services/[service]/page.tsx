@@ -5,6 +5,7 @@ import Footer from '@/components/Footer'
 import GeneralInquiry from '@/components/GeneralInquiry'
 import ServiceIllustration from '@/components/ServiceIllustration'
 import { SERVICE_PAGES, servicePage } from '@/lib/service-pages'
+import { BUSINESS_ID, SITE_URL, jsonLd } from '@/lib/site'
 
 export async function generateStaticParams() {
   return SERVICE_PAGES.map(page => ({ service: page.slug }))
@@ -23,7 +24,7 @@ export async function generateMetadata({ params }: { params: Promise<{ service: 
     openGraph: {
       title,
       description,
-      url: `https://quietgreen.co/services/${service}`,
+      url: `${SITE_URL}/services/${service}`,
       siteName: 'QuietGreen',
       locale: 'en_US',
       type: 'website',
@@ -36,8 +37,41 @@ export default async function ServicePage({ params }: { params: Promise<{ servic
   const data = servicePage(service)
   if (!data) notFound()
 
+  const url = `${SITE_URL}/services/${service}`
+  const schema = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Service',
+        '@id': `${url}#service`,
+        name: data.name,
+        serviceType: data.name,
+        description: data.subheadline,
+        url,
+        provider: { '@id': BUSINESS_ID },
+        areaServed: { '@type': 'City', name: 'Austin', addressRegion: 'TX' },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'QuietGreen', item: SITE_URL },
+          { '@type': 'ListItem', position: 2, name: data.name, item: url },
+        ],
+      },
+      {
+        '@type': 'FAQPage',
+        mainEntity: data.faqs.map(faq => ({
+          '@type': 'Question',
+          name: faq.q,
+          acceptedAnswer: { '@type': 'Answer', text: faq.a },
+        })),
+      },
+    ],
+  }
+
   return (
     <main style={{ background: 'var(--off-white)', minHeight: '100vh', paddingTop: 68 }}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(schema)} />
 
       <Nav />
 
