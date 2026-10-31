@@ -83,10 +83,17 @@ for slug in AREAS:
     assert area.meta['og:title'] == area.title
     assert area.h1_count == 1
     assert 'noindex' not in area.meta.get('robots', '')
+    assert area.meta['og:image'].startswith(PUBLIC + '/areas/' + slug + '/opengraph-image')
+    graph = [node['@type'] for s in area.schemas for node in s.get('@graph', [])]
+    assert {'Service', 'BreadcrumbList', 'FAQPage'} <= set(graph), graph
+    assert any('/areas/' in link and slug not in link for link in area.links), 'sibling area links'
 
 business = next(s for s in home.schemas if s.get('@type') == 'LocalBusiness')
 assert 'geo' not in business and 'openingHoursSpecification' not in business
 assert business['telephone'] == '+16823528260'
+assert home.meta['og:image'].startswith(PUBLIC + '/opengraph-image')
+assert home.meta['twitter:card'] == 'summary_large_image'
+assert any(s.get('@type') == 'FAQPage' for s in home.schemas)
 
 robots_text = fetch('/robots.txt')
 robots = urllib.robotparser.RobotFileParser()
