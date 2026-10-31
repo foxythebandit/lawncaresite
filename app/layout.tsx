@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { DM_Serif_Display, DM_Sans } from 'next/font/google'
 import PublicAnalytics from '@/components/PublicAnalytics'
 import AttributionCapture from '@/components/AttributionCapture'
+import { AREAS } from '@/lib/areas'
+import { BUSINESS_ID, GOOGLE_MAPS_URL, SITE_URL, jsonLd } from '@/lib/site'
 import './globals.css'
 
 const dmSerifDisplay = DM_Serif_Display({
@@ -36,16 +38,17 @@ export const metadata: Metadata = {
   description:
     'Electric lawn mowing in Austin, TX. Get a mowing estimate online or request a quote for landscaping and other outdoor projects.',
   keywords: 'lawn care Austin TX, lawn mowing Austin, electric lawn service, quiet lawn mower Austin, lawn care near me',
-  metadataBase: new URL('https://quietgreen.co'),
+  metadataBase: new URL(SITE_URL),
   alternates: { canonical: '/' },
   openGraph: {
     title: 'QuietGreen — Electric Lawn Care in Austin, TX',
     description: 'Battery-powered lawn mowing in Austin, TX. Fixed pricing, instant quotes, no noise.',
-    url: 'https://quietgreen.co',
+    url: SITE_URL,
     siteName: 'QuietGreen',
     locale: 'en_US',
     type: 'website',
   },
+  twitter: { card: 'summary_large_image' },
 }
 
 export default function RootLayout({
@@ -64,22 +67,30 @@ export default function RootLayout({
         <PublicAnalytics pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          dangerouslySetInnerHTML={jsonLd({
             '@context': 'https://schema.org',
             '@type': 'LocalBusiness',
+            '@id': BUSINESS_ID,
             name: 'QuietGreen',
             description: 'Battery-powered lawn care in Austin, TX. No noise, no fumes, fixed pricing.',
-            url: 'https://quietgreen.co',
+            url: SITE_URL,
+            logo: `${SITE_URL}/icon-512.png`,
+            image: `${SITE_URL}/opengraph-image`,
             telephone: '+16823528260',
+            email: 'hello@quietgreen.co',
+            hasMap: GOOGLE_MAPS_URL,
             address: {
               '@type': 'PostalAddress',
               addressLocality: 'Austin',
               addressRegion: 'TX',
               addressCountry: 'US',
             },
-            areaServed: { '@type': 'City', name: 'Austin', addressRegion: 'TX' },
+            areaServed: [
+              { '@type': 'City', name: 'Austin', addressRegion: 'TX' },
+              ...Object.values(AREAS).map(area => ({ '@type': 'Place', name: `${area.name}, TX` })),
+            ],
             priceRange: '$$',
-          })}}
+          })}
         />
       </body>
     </html>
