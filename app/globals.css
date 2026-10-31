@@ -565,6 +565,7 @@ label.manualq-inline-size-label { display: block; }
 
 /* Vertical steps */
 .steps-v { display: flex; flex-direction: column; gap: 0; margin-top: 36px; }
+.how-cta { align-self: flex-start; width: fit-content; margin-top: 32px; }
 .step-v {
   display: flex; gap: 24px; align-items: flex-start;
   padding: 28px 0;
