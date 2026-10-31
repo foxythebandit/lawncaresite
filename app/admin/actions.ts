@@ -325,13 +325,19 @@ export async function addCustomerJob(input: {
   return { success: true, data: data as Record<string, unknown> }
 }
 
-/** Start a mowing plan for an existing customer: creates the first visit, then the recurring plan from it. */
+/**
+ * Start a mowing plan for an existing customer. The first visit is either a visit they already have
+ * booked at that property (a lead's booking, so it is not duplicated) or a new one; either way it is
+ * scheduled on its date so it can be marked done.
+ */
 export async function startCustomerPlan(input: {
-  jobOperationId: string; planOperationId: string; customerId: string; propertyId: string | null; newAddress: string | null
+  jobOperationId: string; planOperationId: string; confirmOperationId: string; customerId: string
+  propertyId: string | null; newAddress: string | null; existingBookingId?: string | null
   firstDate: string; intervalUnit: 'week' | 'month'; intervalCount: number; pricePerVisit: string
 }): Promise<ActionResult> {
   await requireStaff(`/admin/customers/${input.customerId}`)
-  if (![input.jobOperationId, input.planOperationId, input.customerId].every(v => UUID_RE.test(v)) || (input.propertyId && !UUID_RE.test(input.propertyId))) {
+  if (![input.jobOperationId, input.planOperationId, input.confirmOperationId, input.customerId].every(v => UUID_RE.test(v))
+    || (input.propertyId && !UUID_RE.test(input.propertyId)) || (input.existingBookingId && !UUID_RE.test(input.existingBookingId))) {
     return { success: false, error: 'Refresh this customer and try again.' }
   }
   if (!input.propertyId && !input.newAddress?.trim()) return { success: false, error: 'Choose a property or enter an address.' }
@@ -347,16 +353,32 @@ export async function startCustomerPlan(input: {
     ? (input.intervalCount === 1 ? 'Weekly' : input.intervalCount === 2 ? 'Bi-weekly' : `Every ${input.intervalCount} weeks`)
     : (input.intervalCount === 1 ? 'Monthly' : `Every ${input.intervalCount} months`)
   const db = getAdmin()
-  const created = await db.rpc('crm_create_customer_job', {
-    p_operation_id: input.jobOperationId, p_customer_id: input.customerId, p_property_id: input.propertyId,
-    p_property: input.propertyId ? null : { address: input.newAddress!.trim() },
-    p_job: { preferred_date: input.firstDate, notes: '', one_time: false, frequency: label }, p_items: items,
-  })
-  if (created.error) return { success: false, error: commandError(created.error) }
-  const bookingId = (created.data as { booking_id: string }).booking_id
-  const { data: job } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
+  let bookingId = input.existingBookingId ?? null
+  if (bookingId) {
+    const { data: existing } = await db.from('bookings').select('customer_id,property_id,status,agreement_id').eq('id', bookingId).single()
+    if (!existing || existing.customer_id !== input.customerId || existing.property_id !== input.propertyId
+      || existing.agreement_id || !['pending', 'confirmed'].includes(existing.status)) {
+      return { success: false, error: 'That visit can no longer start the plan. Refresh this customer.' }
+    }
+  } else {
+    const created = await db.rpc('crm_create_customer_job', {
+      p_operation_id: input.jobOperationId, p_customer_id: input.customerId, p_property_id: input.propertyId,
+      p_property: input.propertyId ? null : { address: input.newAddress!.trim() },
+      p_job: { preferred_date: input.firstDate, notes: '', one_time: false, frequency: label }, p_items: items,
+    })
+    if (created.error) return { success: false, error: commandError(created.error) }
+    bookingId = (created.data as { booking_id: string }).booking_id
+  }
+  // The plan's first visit is on the chosen date: schedule it (an existing visit moves to that date).
+  const { data: job } = await db.from('bookings').select('status,updated_at,confirmed_date,agreement_id').eq('id', bookingId).single()
+  if (job && !job.agreement_id && (job.status === 'pending' || job.confirmed_date !== input.firstDate)) {
+    const scheduled = await changeJob({ bookingId, expectedUpdatedAt: job.updated_at, operationId: input.confirmOperationId,
+      action: job.status === 'pending' ? 'confirm' : 'reschedule', date: input.firstDate })
+    if (!scheduled.success) return scheduled
+  }
+  const { data: fresh } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
   const { data, error } = await db.rpc('crm_start_agreement', {
-    p_booking_id: bookingId, p_expected_updated_at: job?.updated_at, p_operation_id: input.planOperationId,
+    p_booking_id: bookingId, p_expected_updated_at: fresh?.updated_at, p_operation_id: input.planOperationId,
     p_config: { anchor_on: input.firstDate, next_on: addInterval(input.firstDate, input.intervalUnit, input.intervalCount),
       end_on: null, interval_unit: input.intervalUnit, interval_count: input.intervalCount, items_template: items },
   })
@@ -421,19 +443,108 @@ export async function scheduleJobAndEmail(input: {
   if (result.data?.duplicate) {
     return { success: true, data: { warning: 'Visit was already saved. Check the customer email before sending again.' } }
   }
+  return emailVisitDate(input.bookingId, input.action, input.date, input.time, result)
+}
+
+/** Customer email after a visit date is set; a send failure leaves the saved date as is. */
+async function emailVisitDate(bookingId: string, action: 'confirm' | 'reschedule', date: string, time: string | undefined, result: ActionResult): Promise<ActionResult> {
   const { data: booking } = await getAdmin().from('bookings')
-    .select('name,email,address,job_total,first_visit_price,price_per_visit').eq('id', input.bookingId).single()
+    .select('name,email,address,job_total,first_visit_price,price_per_visit').eq('id', bookingId).single()
   if (!booking?.email || !process.env.RESEND_API_KEY) return result
-  const when = new Date(input.date + 'T12:00:00').toLocaleDateString('en-US', {
+  const when = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
   const email = await new Resend(process.env.RESEND_API_KEY).emails.send({
     from: 'QuietGreen <hello@quietgreen.co>', to: booking.email,
-    subject: input.action === 'confirm' ? 'Your QuietGreen visit is confirmed' : 'Your QuietGreen visit has a new date',
-    html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;color:#1a3a2a"><h1>QuietGreen visit</h1><p>Hi ${h(booking.name.split(' ')[0])}, your visit is scheduled for <strong>${h(when)}${input.time ? ` · ${h(input.time)}` : ''}</strong>.</p><p>${h(booking.address)}</p><p>Current job total: $${jobPrice(booking).toFixed(2)}. No payment is due until your service is complete.</p><p>Questions? Reply to this email.</p></div>`,
+    subject: action === 'confirm' ? 'Your QuietGreen visit is confirmed' : 'Your QuietGreen visit has a new date',
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;color:#1a3a2a"><h1>QuietGreen visit</h1><p>Hi ${h(booking.name.split(' ')[0])}, your visit is scheduled for <strong>${h(when)}${time ? ` · ${h(time)}` : ''}</strong>.</p><p>${h(booking.address)}</p><p>Current job total: $${jobPrice(booking).toFixed(2)}. No payment is due until your service is complete.</p><p>Questions? Reply to this email.</p></div>`,
   }).catch(() => ({ error: { message: 'Email delivery failed' } }))
   if (email.error) return { success: true, data: { warning: 'Visit saved, but the confirmation email could not be sent.' } }
   return { success: true, data: { email_sent: true } }
+}
+
+/**
+ * Log one visit from the customer page: mark it done (scheduling it on that date first if it was
+ * still "To schedule") and, when an amount is given, record the payment. A plan visit books the next one.
+ * Each step has its own operation ID, so a retry after a dropped connection repeats nothing.
+ */
+export async function finishVisit(input: {
+  bookingId: string; confirmOperationId: string; completeOperationId: string; paymentOperationId: string
+  completedOn: string; amount: string; method: string
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.bookingId, input.confirmOperationId, input.completeOperationId, input.paymentOperationId].every(v => UUID_RE.test(v))
+    || !/^\d{4}-\d{2}-\d{2}$/.test(input.completedOn)) {
+    return { success: false, error: 'Choose the date of the visit.' }
+  }
+  const db = getAdmin()
+  let { data: job } = await db.from('bookings').select('status,updated_at,completion_operation_id').eq('id', input.bookingId).single()
+  if (!job) return { success: false, error: 'Visit not found.' }
+  if (job.status === 'pending') {
+    const scheduled = await changeJob({ bookingId: input.bookingId, expectedUpdatedAt: job.updated_at,
+      operationId: input.confirmOperationId, action: 'confirm', date: input.completedOn })
+    if (!scheduled.success) return scheduled
+    job = (await db.from('bookings').select('status,updated_at,completion_operation_id').eq('id', input.bookingId).single()).data
+    if (!job) return { success: false, error: 'Visit not found.' }
+  }
+  let next: unknown = null
+  if (job.status !== 'completed' || job.completion_operation_id === input.completeOperationId) {
+    const done = await markComplete(input.bookingId, { completed_at: input.completedOn,
+      expected_updated_at: job.updated_at, operation_id: input.completeOperationId })
+    if (!done.success) return done
+    next = done.data?.next_booking_id ?? null
+  }
+  if (input.amount.trim() && Number(input.amount) > 0) {
+    const paid = await recordManualPayment({ bookingId: input.bookingId, operationId: input.paymentOperationId,
+      amount: input.amount.trim(), paidOn: input.completedOn, method: input.method })
+    if (!paid.success) return { success: false, error: `Visit marked done, but the payment was not saved: ${paid.error}` }
+  }
+  refreshJobs()
+  return { success: true, data: { next_booking_id: next } }
+}
+
+/** Move one upcoming visit, or (plan visits) the whole plan from this visit on, and optionally email the customer. */
+export async function moveVisit(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string; date: string; time?: string
+  wholePlan: boolean; email: boolean
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId) || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
+    return { success: false, error: 'Choose the new date.' }
+  }
+  let result: ActionResult
+  if (input.wholePlan) {
+    const { data, error } = await getAdmin().rpc('crm_shift_agreement', {
+      p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+      p_operation_id: input.operationId, p_date: input.date, p_time: input.time || null,
+    })
+    if (error) return { success: false, error: commandError(error) }
+    refreshJobs()
+    result = { success: true, data: data as Record<string, unknown> }
+  } else {
+    const { data: job } = await getAdmin().from('bookings').select('status').eq('id', input.bookingId).single()
+    result = await changeJob({ ...input, action: job?.status === 'pending' ? 'confirm' : 'reschedule' })
+    if (!result.success) return result
+  }
+  if (!input.email || result.data?.duplicate) return result
+  return emailVisitDate(input.bookingId, 'reschedule', input.date, input.time, result)
+}
+
+/** Fold a recurring visit that is not in a plan (booked from a lead) into the customer's plan at that property. */
+export async function addVisitToPlan(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string; agreementId: string
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.bookingId, input.operationId, input.agreementId].every(v => UUID_RE.test(v))) {
+    return { success: false, error: 'Refresh and try again.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_attach_to_agreement', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_agreement_id: input.agreementId,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
 }
 
 export async function changeAgreement(input: {

@@ -832,12 +832,22 @@
 .crm-plan-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; margin: 0 0 16px; border-radius: var(--r-card); background: var(--c-brand-tint); border: 1px solid #cfe5d8; }
 .crm-plan-card strong { display: block; font-size: 14.5px; }
 .crm-plan-card span { font-size: 13px; color: var(--c-text-2); }
+/* Customer page: each upcoming visit with Done / Move right on the row. */
+.crm-upcoming { margin: 0 0 16px; }
+.crm-visit { border-top: 1px solid var(--c-border); padding-bottom: 12px; }
+.crm-visit:first-of-type { border-top: 0; }
+.crm-visit .crm-customer-entry { border-top: 0; }
+.crm-visit-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.crm-visit-note { font-size: 12.5px; color: var(--c-text-2); line-height: 1.5; margin: 8px 0 0; }
+.crm-visit-form { margin: 12px 0 0; padding: 14px 16px; border-radius: var(--r-card); background: var(--c-bg); border: 1px solid var(--c-border); }
+.crm-visit-form .crm-visit-note { margin: 0 0 4px; }
 @media (max-width: 860px) {
   .crm-sheet { padding: 16px; }
   .crm-sheet-grid { grid-template-columns: 1fr; }
   .crm-line { grid-template-columns: minmax(0, 1fr) 96px 34px; }
   .crm-customer-actions .crm-button { flex: 1; }
   .crm-plan-card { flex-direction: column; align-items: flex-start; }
+  .crm-visit-actions .crm-button { flex: 1; }
 }
 .crm-field input:is([type="radio"], [type="checkbox"]) { width: auto; min-height: 0; padding: 0; border: 0; box-shadow: none; }
 @media (max-width: 860px) {

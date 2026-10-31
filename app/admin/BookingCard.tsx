@@ -3,7 +3,7 @@
 import { formatPhone } from '@/lib/format-phone'
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { changeAgreement, changeJob, createPaymentLink, linkJobIdentity, markComplete, recordManualPayment, saveJobItems, scheduleJobAndEmail, startJobAgreement, updateContactDetails, updateNotes } from './actions'
+import { addVisitToPlan, changeAgreement, changeJob, createPaymentLink, linkJobIdentity, markComplete, moveVisit, recordManualPayment, saveJobItems, scheduleJobAndEmail, startJobAgreement, updateContactDetails, updateNotes } from './actions'
 import { formatMoney, jobPrice, jobStatusLabel, type JobLine } from '@/lib/crm-jobs'
 import { formatAttributionLabel } from '@/lib/attribution'
 import ReminderButtons from './ReminderButtons'
@@ -42,6 +42,8 @@ type Payment = { id: string; amount: number | string; paid_on: string; method: s
 type Props = {
   booking: Booking; historyCount?: number; customers?: Customer[]; properties?: Property[]
   agreement?: Agreement | null; futureJobIds?: string[]; items?: JobLine[]; payments?: Payment[]
+  /** The customer's active plan at this visit's property, when this visit is not in it. */
+  customerPlan?: Agreement | null
   emailConfigured?: boolean; quotedVisit?: boolean
   /** The lead's website tracing, drawn when the visit has no saved map image. */
   shapes?: Shape[]
@@ -68,7 +70,7 @@ function addonDetails(addons: Record<string, unknown>) {
   }).join('; ')
 }
 
-export default function BookingCard({ booking, historyCount = 1, customers = [], properties = [], agreement, futureJobIds = [], items = [], payments = [], emailConfigured = false, quotedVisit = false, shapes = [] }: Props) {
+export default function BookingCard({ booking, historyCount = 1, customers = [], properties = [], agreement, futureJobIds = [], items = [], payments = [], emailConfigured = false, quotedVisit = false, shapes = [], customerPlan = null }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [expanded, setExpanded] = useState(false)
@@ -98,6 +100,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
   const [nextOn, setNextOn] = useState('')
   const [resumeOn, setResumeOn] = useState('')
   const [showAgreement, setShowAgreement] = useState(false)
+  const [movePlan, setMovePlan] = useState(false)
   const lawnLine = (items.length ? items : []).find(line => line.kind === 'service' && /(mow|lawn)/i.test(line.description))
   const [planPrice, setPlanPrice] = useState((lawnLine ? Number(lawnLine.amount) : jobPrice(booking)).toFixed(2))
   const [showPricing, setShowPricing] = useState(false)
@@ -227,7 +230,10 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
             <input aria-label="Visit date" type="date" value={visitDate} onChange={e => setVisitDate(e.target.value)} className="admin-confirm-date-input" />
             <input aria-label="Arrival time or window" value={visitTime} onChange={e => setVisitTime(e.target.value)} className="admin-confirm-date-input" placeholder="Morning, Afternoon, or HH:MM" />
           </div>
-          <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !visitDate} onClick={() => run('schedule:'+visitDate+visitTime, id => scheduleJobAndEmail({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: booking.status === 'pending' ? 'confirm' : 'reschedule', date: visitDate, time: visitTime }), booking.status === 'pending' ? 'Visit confirmed.' : 'Only this visit was rescheduled.')}>{emailConfigured && booking.email ? booking.status === 'pending' ? 'Confirm & email customer' : 'Reschedule & email customer' : 'Save visit date'}</button></div>
+          {agreement?.status === 'active' && <label className="crm-check"><input type="checkbox" checked={movePlan} onChange={e => setMovePlan(e.target.checked)} />Move the rest of the plan too</label>}
+          <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !visitDate} onClick={() => movePlan && agreement?.status === 'active'
+            ? run('move-plan:'+visitDate+visitTime, id => moveVisit({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, date: visitDate, time: visitTime, wholePlan: true, email: emailConfigured && Boolean(booking.email) }), 'Visit moved; the plan now runs from the new date.')
+            : run('schedule:'+visitDate+visitTime, id => scheduleJobAndEmail({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: booking.status === 'pending' ? 'confirm' : 'reschedule', date: visitDate, time: visitTime }), booking.status === 'pending' ? 'Visit confirmed.' : 'Only this visit was rescheduled.')}>{emailConfigured && booking.email ? booking.status === 'pending' ? 'Confirm & email customer' : 'Reschedule & email customer' : 'Save visit date'}</button></div>
           {booking.status === 'confirmed' && <ReminderButtons bookingId={booking.id} name={booking.name} phone={booking.phone} email={booking.email} confirmedDate={booking.confirmed_date} confirmedTime={booking.confirmed_time} lastReminderSentAt={booking.last_reminder_sent_at} />}
         </section>}
 
@@ -235,7 +241,11 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
           <h3>Complete this visit</h3>
           <input aria-label="Date completed" type="date" value={completedOn} onChange={e => setCompletedOn(e.target.value)} className="admin-confirm-date-input" />
           <p>{agreement?.status === 'active' ? 'The next visit will be created from the mowing plan.' : 'This is a one-off visit; no next visit will be created.'} Payment is recorded separately.</p>
-          {needsOneTimeDecision && <>
+          {needsOneTimeDecision && customerPlan && <>
+            <p role="alert">This visit is recurring but not in {booking.name.split(' ')[0]}&apos;s mowing plan (every {customerPlan.interval_count} {customerPlan.interval_unit}{customerPlan.interval_count === 1 ? '' : 's'}, {money(customerPlan.price_per_visit)}/visit). Add it to the plan; it keeps its {money(jobPrice(booking))} price and the plan continues from its date.</p>
+            <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending} onClick={() => run('join-plan', id => addVisitToPlan({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, agreementId: customerPlan.id }), 'Added to the mowing plan. You may complete it now.')}>Add to mowing plan</button></div>
+          </>}
+          {needsOneTimeDecision && !customerPlan && <>
             <p role="alert">This visit is marked recurring but has no mowing plan. Link its customer, start a mowing plan, or mark this visit one-time.</p>
             <div className="admin-btn-row"><button className="crm-button" disabled={pending} onClick={() => run('mark-one-time', id => changeJob({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: 'mark_one_time' }), 'Visit marked one-time. You may complete it now.')}>Mark this visit one-time</button></div>
           </>}
@@ -287,7 +297,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
           </>}
         </section>
 
-        {(current || booking.status === 'completed') && !agreement && linked && <section className="admin-edit-service-panel" aria-label="Start recurring agreement">
+        {(current || booking.status === 'completed') && !agreement && !customerPlan && linked && <section className="admin-edit-service-panel" aria-label="Start recurring agreement">
           <button className="admin-panel-toggle" aria-expanded={showAgreement} onClick={() => setShowAgreement(!showAgreement)}>Start mowing plan <Icon name="chevronDown" size={16} /></button>
           {showAgreement && <>
             <p>Repeats lawn care on a schedule. This visit keeps its own price and payments; one-off work like cleanups stays out of the plan.</p>
