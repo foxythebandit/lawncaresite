@@ -2,7 +2,9 @@ import { getAgreements, getBookings, getCustomers, getExtraCharges, getJobPaymen
 import CompletedJobRow from './CompletedJobRow'
 import RecurringClientRow from './RecurringClientRow'
 import ExtraCharges from './ExtraCharges'
+import GoogleAdsResults from './GoogleAdsResults'
 import { formatMoney, formatMoneyWhole, jobPrice, mowingForecast } from '@/lib/crm-jobs'
+import { customerKey, firstClicks, googleCustomers, paidVisits } from '@/lib/google-ads-revenue'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +43,19 @@ export default async function RevenuePage() {
 
   const expectedAnnualTotal = recurringClients.reduce((s, c) => s + c.annual, 0)
   const maxAnnual = Math.max(...recurringClients.map(c => c.annual), 1)
+
+  const visits = paidVisits(all, payments)
+  const adCustomers = googleCustomers(all, visits)
+  const adVisits = visits.filter(v => v.click)
+  const adKeys = new Set(firstClicks(all).keys())
+  // Forecast rows are keyed by agreement (customer) or by the legacy job they came from.
+  const forecastKey = (id: string) => {
+    const agreement = agreements.find(a => a.id === id)
+    if (agreement) return `c:${agreement.customer_id}`
+    const job = all.find(b => b.id === id)
+    return job ? customerKey(job) : null
+  }
+  const adForecast = recurringClients.filter(c => adKeys.has(forecastKey(c.id) ?? '')).reduce((s, c) => s + c.annual, 0)
 
   // Keep same-phone properties distinct for staff review in the legacy charge picker.
   const clientByProperty = new Map<string, { key: string; name: string; phone: string; address: string }>()
@@ -84,6 +99,14 @@ export default async function RevenuePage() {
       {legacyRecorded > 0 && <p className="admin-revenue-sub">Paid all time includes {formatMoney(legacyRecorded)} recorded on older jobs and extra charges before payments had dates, so it isn’t in the monthly chart.</p>}
 
       <div className="admin-revenue-stack">
+        <GoogleAdsResults
+          customers={adCustomers}
+          paidPlan={adVisits.filter(v => v.plan).reduce((s, v) => s + v.amount, 0)}
+          paidOneTime={adVisits.filter(v => !v.plan).reduce((s, v) => s + v.amount, 0)}
+          annualForecast={adForecast}
+          planCount={adCustomers.filter(c => c.plan).length}
+        />
+
         <section className="admin-revenue-card">
           <div className="admin-revenue-card-title">Monthly job payments recorded by paid date</div>
           {monthly.length === 0 ? (
