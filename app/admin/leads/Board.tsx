@@ -6,7 +6,7 @@ import { useEffect, useOptimistic, useRef, useState, useTransition } from 'react
 import { BOARD_COLUMNS, CLOSED_REASONS, CLOSED_REASON_LABEL, COLUMN_LABEL, QUOTED_REASONS, QUOTED_REASON_LABEL,
   type BoardColumn, type ClosedReason, type QuotedReason } from '@/lib/lead-board'
 import { groupBoard, matchesSearch, sortColumn, type BoardCard } from './board-cards'
-import { moveLead } from './board-actions'
+import { addStaffLead, moveLead } from './board-actions'
 import Sheet from './Sheet'
 import { CheckBack, Choices } from './pickers'
 import Icon from '../icons'
@@ -195,6 +195,7 @@ export default function Board({ cards, initialView, initialColumn, children }: {
   return <div className="crm-board" ref={boardRef} data-view={listed ? 'list' : 'board'}>
     <div className="crm-page-heading crm-board-heading">
       <h1>Leads</h1>
+      <AddLeadButton />
       <div className="admin-view-toggle crm-board-toggle" role="group" aria-label="Board view">
         <button type="button" className={`admin-view-btn${view === 'board' ? ' active' : ''}`} aria-pressed={view === 'board'}
           onClick={() => { setView('board'); remember({ view: 'board' }) }}><Icon name="columns" size={15} />Board</button>
@@ -258,4 +259,38 @@ export default function Board({ cards, initialView, initialColumn, children }: {
 
     {error && <div className="crm-toast crm-toast-error" role="alert"><span>{error}</span><button type="button" aria-label="Dismiss" onClick={() => setError('')}>×</button></div>}
   </div>
+}
+
+/** "Add lead" for someone who phoned or texted: saves quietly (no alert calls) and opens the lead. */
+function AddLeadButton() {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState('')
+  const [pending, startTransition] = useTransition()
+  return <>
+    <button type="button" className="crm-button crm-button-sm crm-button-primary" onClick={() => { setError(''); setOpen(true) }}><Icon name="plus" size={15} />Add lead</button>
+    <Sheet open={open} onClose={() => setOpen(false)} title="Add lead">
+      <form onSubmit={event => {
+        event.preventDefault()
+        const form = new FormData(event.currentTarget)
+        startTransition(async () => {
+          const result = await addStaffLead(form).catch(() => ({ ok: false as const, error: 'Could not save the lead' }))
+          if (!result.ok) { setError(result.error); return }
+          setOpen(false); router.push(`/admin/leads/${result.id}`)
+        })
+      }}>
+        <label className="crm-field">Name<input name="name" maxLength={150} autoComplete="off" /></label>
+        <label className="crm-field">Phone<input name="phone" type="tel" required maxLength={30} autoComplete="off" /></label>
+        <label className="crm-field">Property address<input name="address" required maxLength={500} autoComplete="off" /></label>
+        <label className="crm-field">Email (optional)<input name="email" type="email" maxLength={254} autoComplete="off" /></label>
+        <label className="crm-field">Mowing plan<select name="frequency" defaultValue="">
+          <option value="">Not sure yet</option><option value="weekly">Weekly</option><option value="biweekly">Every 2 weeks</option>
+          <option value="monthly">Monthly</option><option value="onetime">One time</option></select></label>
+        <label className="crm-field">What they said<textarea name="notes" maxLength={2000} rows={3} /></label>
+        {error && <p className="crm-hint" role="alert">{error}</p>}
+        <p className="crm-hint">Saving doesn’t text, call or email anyone.</p>
+        <div className="crm-dialog-actions"><button type="submit" className="crm-button crm-button-primary crm-button-lg" disabled={pending}>Add lead</button></div>
+      </form>
+    </Sheet>
+  </>
 }

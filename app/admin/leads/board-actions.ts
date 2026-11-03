@@ -165,3 +165,26 @@ function cleanDetail(outcome: CallOutcome, detail: CallDetail): Record<string, s
   if (note) out.note = note
   return out
 }
+
+/**
+ * A lead that phoned or texted in, typed in by staff. Saved straight to the lead table: no intake
+ * event, so no staff alert calls or texts, and nothing is sent to the customer.
+ */
+export async function addStaffLead(form: FormData): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const user = await requireStaff('/admin/leads')
+  const text = (key: string, max: number) => String(form.get(key) ?? '').trim().slice(0, max)
+  const name = text('name', 150), phone = text('phone', 30), email = text('email', 254), address = text('address', 500), notes = text('notes', 2000)
+  const frequency = text('frequency', 20)
+  if (!/^[\d\s()+.-]{7,30}$/.test(phone) || phone.replace(/\D/g, '').length < 10) return { ok: false, error: 'Enter a 10-digit phone number' }
+  if (!address) return { ok: false, error: 'Enter the property address' }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Enter a valid email or leave it blank' }
+  if (frequency && !(FREQUENCIES as readonly string[]).includes(frequency)) return { ok: false, error: 'Pick a frequency' }
+  const db = adminDb()
+  const { data, error } = await db.from('leads').insert({ name: name || null, phone, email: email || null, address, source: 'staff',
+    services: ['mowing'], frequency: frequency || null, answers: notes ? { notes } : {} }).select('id').single()
+  if (error || !data) return { ok: false, error: 'Could not save the lead' }
+  await db.from('lead_activities').insert({ lead_id: data.id, kind: 'note', outcome: 'staff_added', actor_email: user.email,
+    body: 'Added by staff (phoned or texted in).' })
+  revalidatePath('/admin/leads')
+  return { ok: true, id: data.id }
+}

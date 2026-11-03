@@ -1,5 +1,15 @@
 # QuietGreen CRM revamp — project spine
 
+### Quote email with lawn map + Add lead — 3 November 2026
+
+- Owner asked to email a phoned-in lead (6404 Night Chinook Dr, Buda, TX 78610; Census geocoder 30.105215, -97.778884; Photon/Nominatim only know the street, so use the map's "Set its location") a quote with a picture of the traced lawn and a website-style breakdown: weekly spring–early summer, bi-weekly after, bagging add-on. Branch `claude/quote-email-map`. No migration, no production reads or writes, nothing emailed.
+- **Add lead** (board header): name, phone, address, optional email, plan, notes. Inserts the lead directly (source `staff`, shown as "Phone or text"), so no intake event, no staff alert calls/texts, and no customer contact.
+- **Email quote** now goes compose → **Preview** (the exact email in a sandboxed frame, with the map picture) → **Send to …**. Nothing is sent before that click. Staff choose which plans to show (weekly / every 2 weeks / monthly) with a "when" note each, and per-visit add-ons with a price. Mowing prices come from the saved quote (`quoteOffer`: 15%/10% plan discounts, 30% off the first visit); add-ons are full price and not part of any booking/plan price. `lib/quote-email.ts` builds subject/text/HTML for both preview and send; the server rebuilds from the stored draft and refuses if the lead changed since the preview.
+- Map picture: drawn in the browser from Esri tiles plus the staff tracing (`app/admin/leads/lawn-map-image.ts`, same projection as `TracingMap`), 960×560 JPEG, sent as an inline Resend attachment (`cid:lawn-map`), so it never expires. Not stored in Storage.
+- `scripts/dev-pglite-api.mjs`: inserts/updates now work (CTE wrap) and `not.is.null` filters are supported.
+- Verified: `tests/quote-email.test.ts` (6), full `npm test` 102/102, typecheck, scoped lint. Local browser run on the PGlite stand-in with a local Resend mock: added the lead, set location, traced, saved as quoted, previewed, sent; mock received the subject, plans, bagging, first visit and a valid 960×560 inline JPEG; history logged "Emailed quote to …". Not checked against real Resend or a real inbox.
+- Next: owner merges/deploys, then adds the real lead, traces the lawn, sets the bagging price, previews and sends. Needs the customer's name and email.
+
 ### Google Ads revenue feed and report — 2 November 2026
 
 - Owner asked to send CRM money (price, recurring or not) back to Google Ads and compare it with ad results. Branch `claude/google-ads-revenue`. No migration and no production writes. Production was read only, with the owner's authorization, to size the data: 20/29 leads and 12/38 jobs carry a gclid; 11 customers trace to a Google click; $856 of $1,241 recorded money is credited to them; 6 active plans.
