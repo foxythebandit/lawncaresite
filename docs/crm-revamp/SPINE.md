@@ -1,5 +1,12 @@
 # QuietGreen CRM revamp — project spine
 
+### Google Ads revenue feed and report — 2 November 2026
+
+- Owner asked to send CRM money (price, recurring or not) back to Google Ads and compare it with ad results. Branch `claude/google-ads-revenue`. No migration and no production writes. Production was read only, with the owner's authorization, to size the data: 20/29 leads and 12/38 jobs carry a gclid; 11 customers trace to a Google click; $856 of $1,241 recorded money is credited to them; 6 active plans.
+- `lib/google-ads-revenue.ts` credits each recorded payment (dated `job_payments` + legacy `amount_charged`) to the job's gclid, else the customer's earliest gclid (D13 first-touch reporting, not causal). `app/api/google-ads/conversions` serves a Basic-auth CSV for a Google Ads scheduled upload (two actions: mowing plan / one-time, actual amounts, no PII). Revenue page "Google Ads results" card shows customers, paid plan vs one-time and forecast share; spend is typed in and kept in localStorage only. Actual money and forecast stay separate (D12).
+- Verified: `tests/google-ads-revenue.test.ts` (6 tests), typecheck, scoped lint, and a local dev request against production data returned 401 without credentials and 10 rows ($856) with them. `tests/visit-flow.test.mjs` can't run in this worktree (pglite not installed), which is unrelated. Revenue card not browser-checked: local staff sign-in needs `STAFF_EMAILS`.
+- Next: owner sets `GOOGLE_ADS_FEED_USER`/`GOOGLE_ADS_FEED_PASSWORD` in Vercel, merges, then creates the two conversion actions (Secondary) and the daily HTTPS upload schedule. Steps are in `docs/google-ads-revenue.md`. Plan visits marked Done without a recorded payment are not sent.
+
 ### Address reliability repair — 27 October 2026
 
 - User authorized a focused, thorough repair after a real ConviFlo Hutto address produced no autocomplete and CRM required a selection. Work is isolated on codex/address-reliability, based on origin/main145bb15.
