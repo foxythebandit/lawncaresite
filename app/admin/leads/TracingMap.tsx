@@ -1,8 +1,7 @@
 import { ESRI_IMAGERY } from '@/lib/map-imagery'
+import { COLORS, TILE, project } from './lawn-map-image'
 
 export type Shape = { name?: string; sqFt?: number; coords: [number, number][] }
-const TILE = 256
-const COLORS = ['#52b788', '#f4a261', '#4cc9f0', '#e76f51', '#c77dff']
 
 /** Traced shapes that have coordinates, from the lead's tracing or the saved staff quote. */
 export function tracedShapes(...sources: unknown[]): Shape[] {
@@ -13,11 +12,6 @@ export function tracedShapes(...sources: unknown[]): Shape[] {
     if (shapes.length) return shapes
   }
   return []
-}
-
-const project = (lng: number, lat: number, z: number) => {
-  const scale = TILE * 2 ** z, rad = lat * Math.PI / 180
-  return [(lng + 180) / 360 * scale, (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * scale]
 }
 
 /**

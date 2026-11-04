@@ -10,6 +10,8 @@ import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { tracedShapes } from './TracingMap'
 import type { QuoteDraft } from '@/lib/quote-draft'
 import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
+import { MAP_CID, quoteEmailContent, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
+import { renderLawnMapImage } from './lawn-map-image'
 import { formatMoney } from '@/lib/crm-jobs'
 import { addLeadNote, bookLeadVisit, cancelLeadBooking, emailLeadQuote, previewLeadBookingCancellation, setLeadQuoteDecision, updateLeadContact } from './quote-actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
@@ -134,7 +136,6 @@ export function QuotePanel() {
   const { lead, bookings, customerMatches, quoteUrl, version, setVersion, draft, setQuoteStatus, propertyChanged, setFeedback } = useQuote()
   const { run, pending, startTransition, router } = useRun()
   const [emailOpen, setEmailOpen] = useState(false)
-  const [emailTo, setEmailTo] = useState(lead.email ?? '')
   const [emailBody, setEmailBody] = useState('')
   const bookingOps = useRef<{ bookingOperationId: string; linkOperationId: string; planOperationId: string } | null>(null)
   const [bookingOpen, setBookingOpen] = useState(false)
@@ -229,21 +230,7 @@ export function QuotePanel() {
       <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />Text price</a>
       <button type="button" className="crm-button" onClick={openEmail}><Icon name="mail" size={15} />Email quote</button>
     </div>}
-    {draft && emailOpen && <div className="crm-booking-request">
-      <h3>Email quote</h3>
-      <label className="crm-field">To<input type="email" value={emailTo} maxLength={254} onChange={event => setEmailTo(event.target.value)} placeholder="customer@example.com" /></label>
-      <label className="crm-field">Message<textarea value={emailBody} maxLength={4000} rows={6} onChange={event => setEmailBody(event.target.value)} /></label>
-      <div className="crm-action-row">
-        <button type="button" className="crm-button crm-button-primary" disabled={pending || !emailTo.trim()} onClick={() => { setFeedback(''); startTransition(async () => {
-          try {
-            const result = await emailLeadQuote(lead.id, version, emailTo, emailBody)
-            if ('error' in result) setFeedback(result.error)
-            else { setVersion(result.updatedAt); setEmailOpen(false); setFeedback(`Quote emailed to ${emailTo.trim()}.`); router.refresh() }
-          } catch { setFeedback('The email could not be sent. Please try again.') }
-        }) }}><Icon name="mail" size={15} />Send quote</button>
-        <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => setEmailOpen(false)}>Cancel</button>
-      </div>
-    </div>}
+    {draft && emailOpen && <QuoteEmail draft={draft} message={emailBody} onClose={() => setEmailOpen(false)} />}
 
     {(quoteState === 'quoted' || quoteState === 'accepted' || quoteState === 'canceled') && !bookingOpen && !propertyChanged && <div className="crm-action-row">
       <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={() => setBookingOpen(true)}>{quoteState === 'canceled' ? 'Book again' : 'Book visit'}</button>
@@ -299,6 +286,95 @@ export function QuotePanel() {
         {b.completed_at && ` · completed ${dateText(b.completed_at)}`}
         {b.payment_recorded_at && ` · paid ${dateText(b.payment_recorded_at)}: $${b.amount_charged ?? 0} (${b.payment_method})`}</p>)}
     </details>}
+  </div>
+}
+
+const EMAIL_PLANS: QuoteDraft['freq'][] = ['weekly', 'biweekly', 'monthly']
+
+/**
+ * Email quote: write it, preview the exact email (map picture, prices by plan, add-ons, first visit),
+ * then send. Nothing reaches the customer until "Send" on the preview.
+ */
+function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteDraft; message: string; onClose: () => void }) {
+  const { lead, quoteUrl, version, setVersion, setFeedback } = useQuote()
+  const { pending, startTransition, router } = useRun()
+  const recurring = quoteOffer(draft).recurring
+  const [to, setTo] = useState(lead.email ?? '')
+  const [message, setMessage] = useState(initialMessage)
+  const [plans, setPlans] = useState<Partial<Record<QuoteDraft['freq'], string>>>({ [draft.freq === 'onetime' ? 'weekly' : draft.freq]: '' })
+  const [addOns, setAddOns] = useState<{ id: string; label: string; price: string }[]>([])
+  const [preview, setPreview] = useState<{ options: QuoteEmailOptions; image: string | null; mapNote: string } | null>(null)
+  const [error, setError] = useState('')
+  const shapes = tracedShapes(draft.sections, lead.lawn_tracing)
+  const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
+
+  function options(): QuoteEmailOptions {
+    return { message, plans: EMAIL_PLANS.filter(freq => plans[freq] !== undefined).map(freq => ({ freq, when: plans[freq]! })),
+      addOns: addOns.map(a => ({ label: a.label, cents: Math.round(Number(a.price) * 100) })) }
+  }
+  function showPreview() {
+    const next = options()
+    const invalid = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to.trim()) ? 'Enter a valid email address.'
+      : recurring && !next.plans.length ? 'Choose at least one plan.' : validateQuoteEmailOptions(next)
+    setError(invalid ?? '')
+    if (invalid) return
+    startTransition(async () => {
+      if (!shapes.length) { setPreview({ options: next, image: null, mapNote: 'No traced lawn, so no map picture. Trace it with Edit price to include one.' }); return }
+      try { setPreview({ options: next, image: await renderLawnMapImage(shapes, sqFt || null), mapNote: '' }) }
+      catch { setPreview({ options: next, image: null, mapNote: 'The satellite picture could not load. Try Preview again, or send without it.' }) }
+    })
+  }
+  function send() {
+    if (!preview) return
+    setFeedback('')
+    startTransition(async () => {
+      try {
+        const result = await emailLeadQuote(lead.id, version, to, preview.options, preview.image)
+        if ('error' in result) setFeedback(result.error)
+        else { setVersion(result.updatedAt); onClose(); setFeedback(`Quote emailed to ${to.trim()}.`); router.refresh() }
+      } catch { setFeedback('The email could not be sent. Please try again.') }
+    })
+  }
+
+  if (preview) {
+    const email = quoteEmailContent({ draft, address: lead.address, options: preview.options, bookUrl: quoteUrl, hasMap: !!preview.image })
+    return <div className="crm-booking-request crm-email-preview">
+      <h3>Preview · not sent yet</h3>
+      <dl className="crm-kv"><div><dt>To</dt><dd>{to.trim()}</dd></div><div><dt>Subject</dt><dd>{email.subject}</dd></div></dl>
+      {preview.mapNote && <p className="crm-hint">{preview.mapNote}</p>}
+      <iframe title="Email preview" sandbox="" srcDoc={preview.image ? email.html.replace(`cid:${MAP_CID}`, preview.image) : email.html} />
+      <div className="crm-action-row">
+        <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={send}><Icon name="mail" size={15} />Send to {to.trim()}</button>
+        <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => setPreview(null)}>Back to edit</button>
+      </div>
+    </div>
+  }
+  return <div className="crm-booking-request">
+    <h3>Email quote</h3>
+    <label className="crm-field">To<input type="email" value={to} maxLength={254} onChange={event => setTo(event.target.value)} placeholder="customer@example.com" /></label>
+    <label className="crm-field">Message<textarea value={message} maxLength={4000} rows={6} onChange={event => setMessage(event.target.value)} /></label>
+    {recurring && <div className="crm-field" role="group" aria-label="Plans to show">Plans to show
+      {EMAIL_PLANS.map(freq => <div className="crm-email-plan" key={freq}>
+        <label className="crm-check"><input type="checkbox" checked={plans[freq] !== undefined}
+          onChange={event => setPlans(current => { const next = { ...current }; if (event.target.checked) next[freq] = ''; else delete next[freq]; return next })} />
+          <span>{FREQUENCY_LABEL[freq]}</span></label>
+        {plans[freq] !== undefined && <input aria-label={`When ${FREQUENCY_LABEL[freq].toLowerCase()}`} value={plans[freq]} maxLength={80} placeholder="When, e.g. Spring to early summer"
+          onChange={event => setPlans(current => ({ ...current, [freq]: event.target.value }))} />}
+      </div>)}
+    </div>}
+    <div className="crm-field" role="group" aria-label="Add-ons">{recurring ? 'Add-ons (per visit)' : 'Add-ons'}
+      {addOns.map(addOn => <div className="crm-email-addon" key={addOn.id}>
+        <input aria-label="Add-on" value={addOn.label} maxLength={60} placeholder="Bagging clippings" onChange={event => setAddOns(list => list.map(a => a.id === addOn.id ? { ...a, label: event.target.value } : a))} />
+        <input aria-label="Add-on price" inputMode="decimal" value={addOn.price} placeholder="$" onChange={event => setAddOns(list => list.map(a => a.id === addOn.id ? { ...a, price: event.target.value.replace(/[^\d.]/g, '') } : a))} />
+        <button type="button" className="crm-icon-button" aria-label="Remove add-on" onClick={() => setAddOns(list => list.filter(a => a.id !== addOn.id))}>×</button>
+      </div>)}
+      {addOns.length < 6 && <button type="button" className="crm-button crm-button-sm" onClick={() => setAddOns(list => [...list, { id: uuid(), label: '', price: '' }])}>+ Add-on</button>}
+    </div>
+    {error && <p className="crm-hint" role="alert">{error}</p>}
+    <div className="crm-action-row">
+      <button type="button" className="crm-button crm-button-primary" disabled={pending || !to.trim()} onClick={showPreview}>{pending ? 'Drawing map…' : 'Preview email'}</button>
+      <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={onClose}>Cancel</button>
+    </div>
   </div>
 }
 
