@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
 import GeneralInquiry from '@/components/GeneralInquiry'
@@ -66,6 +67,28 @@ export default async function ServicePage({ params }: { params: Promise<{ servic
         <section style={{ padding: '52px 0 40px' }}>
           <p style={{ fontSize: 17, lineHeight: 1.8, color: 'var(--ink-soft)' }}>{data.intro}</p>
         </section>
+
+        {/* Before and after */}
+        {data.beforeAfter && (
+          <section style={{ paddingBottom: 52 }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--green-deep)', marginBottom: 8 }}>
+              Before and after
+            </h2>
+            <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--ink-soft)', marginBottom: 20 }}>{data.beforeAfter.caption}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              {([['Before', data.beforeAfter.before], ['After', data.beforeAfter.after]] as const).map(([label, src]) => (
+                <figure key={label} style={{ position: 'relative', margin: 0 }}>
+                  <Image src={src} alt={`Garden bed ${label.toLowerCase()} QuietGreen's cleanup`} width={960} height={1200}
+                    sizes="(max-width: 800px) 45vw, 360px"
+                    style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: '4 / 5', objectFit: 'cover', borderRadius: 16 }} />
+                  <figcaption style={{ position: 'absolute', top: 10, left: 10, background: label === 'After' ? 'var(--green-bright)' : 'rgba(17,28,23,.75)', color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', padding: '5px 10px', borderRadius: 100 }}>
+                    {label}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Job video */}
         {data.video && (

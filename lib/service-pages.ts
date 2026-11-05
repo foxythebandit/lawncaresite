@@ -12,6 +12,8 @@ export interface ServicePage {
   faqs: { q: string; a: string }[]
   // Vertical (9:16) job video shown under the intro
   video?: { src: string; poster: string; title: string; caption: string }
+  // Real job photos (4:5), shown side by side under the intro
+  beforeAfter?: { before: string; after: string; caption: string }
 }
 
 export const SERVICE_PAGES: ServicePage[] = [
@@ -53,6 +55,11 @@ export const SERVICE_PAGES: ServicePage[] = [
     slug: 'garden-beds-mulch',
     name: 'Garden Beds & Mulch',
     inquiryService: 'Landscaping',
+    beforeAfter: {
+      before: '/images/services/garden-beds-before.jpg',
+      after: '/images/services/garden-beds-after.jpg',
+      caption: 'A recent job: weeds and dead grass pulled, beds edged, new shrubs planted and fresh mulch laid.',
+    },
     tagline: 'Garden bed cleanup and mulch installation in Austin',
     subheadline: 'QuietGreen weeds and clears your garden beds, edges them cleanly, and lays fresh mulch. Tell us about your beds and we\'ll call with a quote.',
     intro: 'Fresh mulch keeps moisture in through Austin summers, holds back weeds, and makes the whole yard look finished. QuietGreen clears weeds and old debris from your beds, sharpens the bed edges, and installs mulch at an even depth.',
