@@ -330,8 +330,8 @@ export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: 
   // The booking page needs an address to show the measured property.
   const bookUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
   const { subject, text, html, breakdown } = quoteEmailContent({ draft, address: lead.address, options, bookUrl, hasMap: !!mapImage })
-  const { Resend } = await import('resend')
-  const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
+  const { sendEmail } = await import('@/lib/email')
+  const { error } = await sendEmail({
     from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co', subject, text, html,
     ...(mapImage ? { attachments: [{ filename: 'your-lawn.jpg', content: mapImage.split(',')[1], contentType: 'image/jpeg', contentId: MAP_CID }] } : {}),
   })

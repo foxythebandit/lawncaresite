@@ -6,7 +6,7 @@ import { requireStaff } from '@/lib/staff'
 import { isStaff, staffReturnTo } from '@/lib/staff-policy'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { Resend } from 'resend'
+import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
 import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
@@ -111,12 +111,11 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
   if (!booking.confirmed_date) return { success: false, error: 'No confirmed date to remind about.' }
   if (!process.env.RESEND_API_KEY) return { success: false, error: 'Email not configured.' }
 
-  const resend = new Resend(process.env.RESEND_API_KEY)
   const firstName = booking.name.split(' ')[0]
   const scheduledDate = new Date(booking.confirmed_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
   const scheduledTime = booking.confirmed_time
 
-  const { error } = await resend.emails.send({
+  const { error } = await sendEmail({
     from: 'QuietGreen <hello@quietgreen.co>',
     to: booking.email,
     subject: `Reminder: your QuietGreen visit is ${scheduledDate}`,
@@ -454,7 +453,7 @@ async function emailVisitDate(bookingId: string, action: 'confirm' | 'reschedule
   const when = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
-  const email = await new Resend(process.env.RESEND_API_KEY).emails.send({
+  const email = await sendEmail({
     from: 'QuietGreen <hello@quietgreen.co>', to: booking.email,
     subject: action === 'confirm' ? 'Your QuietGreen visit is confirmed' : 'Your QuietGreen visit has a new date',
     html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;color:#1a3a2a"><h1>QuietGreen visit</h1><p>Hi ${h(booking.name.split(' ')[0])}, your visit is scheduled for <strong>${h(when)}${time ? ` · ${h(time)}` : ''}</strong>.</p><p>${h(booking.address)}</p><p>Current job total: $${jobPrice(booking).toFixed(2)}. No payment is due until your service is complete.</p><p>Questions? Reply to this email.</p></div>`,

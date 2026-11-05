@@ -3,12 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/db.mjs guard && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --import ./tests/ts-resolve.mjs --test tests/*.test.ts tests/*.test.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:fast": "npm run typecheck && npm run lint && npm test && node scripts/check-migrations.mjs && node scripts/check-repo.mjs",
+    "check": "npm run check:fast && npm run db:reset && npm run test:db && npm run db:types -- --check",
+    "db:start": "node scripts/db.mjs start",
+    "db:stop": "node scripts/db.mjs stop",
+    "db:reset": "node scripts/db.mjs reset",
+    "db:env": "node scripts/db.mjs env",
+    "db:status": "node scripts/db.mjs status",
+    "db:types": "node scripts/db.mjs types",
+    "db:destroy": "node scripts/db.mjs destroy",
+    "test:db": "supabase test db",
+    "doctor": "node scripts/doctor.mjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -34,7 +46,30 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
+    "squawk-cli": "2.70.0",
+    "supabase": "2.122.0",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "kit": {
+    "prodProjectRef": "juwvyquorsxulajrchjv",
+    "prodUrl": "https://quietgreen.co",
+    "envFile": ".env.local",
+    "envNames": {
+      "API_URL": "NEXT_PUBLIC_SUPABASE_URL",
+      "PUBLISHABLE_KEY": "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+      "SECRET_KEY": "SUPABASE_SECRET_KEY"
+    },
+    "libDirs": [
+      "lib"
+    ],
+    "docsStrict": false,
+    "approver": "Paxton",
+    "localOff": [
+      "TWILIO_AUTH_TOKEN"
+    ],
+    "deploy": {
+      "type": "vercel-git"
+    }
   }
 }
