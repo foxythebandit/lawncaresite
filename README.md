@@ -11,14 +11,14 @@ This gives you a private copy of the site with its own practice database. Nothin
 3. Run `npm run db:start`. The first run downloads a lot, so give it a while.
 4. Run `npm run dev` and open [http://localhost:3000](http://localhost:3000).
 
-**After that:** `npm run db:start`, then `npm run dev`. If the database is already running, `db:start` does nothing, so it's always safe.
+**After that:** `npm run db:start`, then `npm run dev`. If the database is already running, `db:start` only refreshes the settings, so it's always safe.
 
 **Practice logins** (password `password123`):
 
 | Login | What it's for |
 |---|---|
 | `staff@example.test` | The staff side, at [/admin](http://localhost:3000/admin) |
-| `customer@example.test` | The customer portal, at [/portal](http://localhost:3000/portal). It signs in with an emailed link instead of the password. Run `npx supabase status`, open the "Mailpit" address, and click the link in the email |
+| `customer@example.test` | The customer portal, at [/portal](http://localhost:3000/portal). It signs in with an emailed link instead of the password. Run `npm run db:status`, open the "Mail" address, and click the link in the email |
 | `outsider@example.test` | Someone who should be refused at /admin |
 
 ### If your Mac needs Docker
@@ -37,10 +37,11 @@ Run `npm run doctor`. It fixes what it can and tells you what to do about the re
 
 Good to know:
 
-- `npm run db:start` rewrites the Supabase lines in `.env.local` to point at the practice database. Your other lines stay. The real values are still in Vercel.
+- If your `.env.local` points at the real database, `npm run db:start` renames it to `.env.local.before-kit`, keeps it as it was, and makes a new `.env.local` from `.env.example`. It tells you when it does this. Copy over any setting you still need, but never the Supabase lines. Git ignores the old file, so it can't be published.
+- If your `.env.local` already points at the practice database, `db:start` updates its Supabase lines and blanks `TWILIO_AUTH_TOKEN`. Your other lines stay.
 - `npm run dev` refuses to start if `.env.local` points at the real database or holds a live Stripe key.
 - `npm run dev` also refuses if `RESEND_API_KEY` is set without `EMAIL_DEV_RECIPIENT`. Set it to your own address, and every email from your Mac goes there instead of to customers. Texts and calls are always off locally.
-- `npm run db:reset` wipes the practice database and starts it fresh. `node scripts/seed-demo-leads.mjs` fills it with fake leads.
+- `npm run db:reset` wipes the practice database and starts it fresh. So do `npm run check` and `npm run release`, demo leads included. `node scripts/seed-demo-leads.mjs` fills it with fake leads.
 
 ## Checking your work
 
@@ -55,7 +56,7 @@ It needs two things, set up once:
 - The GitHub command line tool: install it from [cli.github.com](https://cli.github.com), then run `gh auth login`.
 - A Supabase token: make one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens). In each new Terminal window, before releasing, run `export SUPABASE_ACCESS_TOKEN=your-token`. Don't commit the token or paste it into a file in this repo, except the git-ignored `.envrc` if you use direnv.
 
-**Merging on GitHub still works.** A merge there doesn't update the real database, so if the branch had a database change, run this right after: `git checkout main`, `git pull`, then `npm run release`.
+**Merging on GitHub still works.** A merge there doesn't update the real database, so if the branch had a database change, run this right after: `git checkout main`, `git pull`, then `npm run release`. Until you do, the new code is live without its database change, and the site can show errors.
 
 AI agents can't merge or push database changes any other way than `npm run release`. That rule is only for them. Nothing stops you.
 

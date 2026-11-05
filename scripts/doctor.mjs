@@ -179,7 +179,7 @@ const localChecks = [
       wrong.push(...(kit.localOff ?? []).filter((name) => file[name]));
       return wrong.length ? `out of date: ${wrong.join(', ')}. Run \`npm run db:env\`.` : '';
     },
-    fix: () => run(process.execPath, ['scripts/db.mjs', 'env']),
+    fix: () => run(process.execPath, ['scripts/db.mjs', 'env'], { stdio: 'inherit' }),
   },
 ];
 

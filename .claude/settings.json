@@ -1,7 +1,49 @@
 {
   "permissions": {
-    "deny": ["Bash(gh pr merge*)", "Bash(git push origin main*)", "Bash(git push --force*)", "Bash(git push -f*)",
-             "Bash(supabase db push*)", "Bash(npx supabase db push*)"],
-    "allow": ["Bash(npm run release)", "Bash(npm run release *)"]
+    "deny": [
+      "Bash(gh pr merge*)",
+      "Bash(git push origin main*)",
+      "Bash(git push origin HEAD:main*)",
+      "Bash(git push -u origin main*)",
+      "Bash(git push -u origin HEAD:main*)",
+      "Bash(git push --set-upstream origin main*)",
+      "Bash(git push --set-upstream origin HEAD:main*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(supabase db push*)",
+      "Bash(supabase db reset --linked*)",
+      "Bash(supabase db query --linked*)",
+      "Bash(supabase migration up --linked*)",
+      "Bash(supabase migration repair*)",
+      "Bash(npx supabase db push*)",
+      "Bash(npx supabase db reset --linked*)",
+      "Bash(npx supabase db query --linked*)",
+      "Bash(npx supabase migration up --linked*)",
+      "Bash(npx supabase migration repair*)",
+      "Bash(npm exec supabase db push*)",
+      "Bash(npm exec supabase db reset --linked*)",
+      "Bash(npm exec supabase db query --linked*)",
+      "Bash(npm exec supabase migration up --linked*)",
+      "Bash(npm exec supabase migration repair*)",
+      "Bash(npm exec -- supabase db push*)",
+      "Bash(npm exec -- supabase db reset --linked*)",
+      "Bash(npm exec -- supabase db query --linked*)",
+      "Bash(npm exec -- supabase migration up --linked*)",
+      "Bash(npm exec -- supabase migration repair*)",
+      "Bash(./node_modules/.bin/supabase db push*)",
+      "Bash(./node_modules/.bin/supabase db reset --linked*)",
+      "Bash(./node_modules/.bin/supabase db query --linked*)",
+      "Bash(./node_modules/.bin/supabase migration up --linked*)",
+      "Bash(./node_modules/.bin/supabase migration repair*)",
+      "Bash(node_modules/.bin/supabase db push*)",
+      "Bash(node_modules/.bin/supabase db reset --linked*)",
+      "Bash(node_modules/.bin/supabase db query --linked*)",
+      "Bash(node_modules/.bin/supabase migration up --linked*)",
+      "Bash(node_modules/.bin/supabase migration repair*)"
+    ],
+    "allow": [
+      "Bash(npm run release)",
+      "Bash(npm run release *)"
+    ]
   }
 }

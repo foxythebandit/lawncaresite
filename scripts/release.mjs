@@ -32,7 +32,8 @@ const POLL_MS = 15_000;
 const CI_APPEAR_MS = 5 * 60_000;
 const DEPLOY_TIMEOUT_MS = 30 * 60_000;
 
-const dryRun = process.argv.includes('--dry-run');
+// `npm run release --dry-run` doesn't reach argv: npm keeps the flag and sets npm_config_dry_run.
+const dryRun = process.argv.includes('--dry-run') || process.env.npm_config_dry_run === 'true';
 
 // ---------- helpers
 
