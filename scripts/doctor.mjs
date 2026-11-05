@@ -203,8 +203,8 @@ function isLinkedToProd() {
   return refs.length > 0 && refs.every((ref) => ref === kit.prodProjectRef) && !hasOldLink();
 }
 
-// A .temp with no .link.json came from a CLI older than stack mode. It breaks prod reads even when its ref is right.
-const hasOldLink = () => existsSync(TEMP_DIR) && !existsSync(LINK_FILE);
+// A project-ref with no .link.json came from a CLI older than stack mode. It breaks prod reads even when its ref is right.
+const hasOldLink = () => existsSync(REF_FILE) && !existsSync(LINK_FILE);
 
 const prodChecks = [
   {
