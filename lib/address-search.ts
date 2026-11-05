@@ -15,13 +15,22 @@ type PhotonFeature = {
   properties: { name?: string; housenumber?: string; street?: string; city?: string; state?: string; postcode?: string; countrycode?: string }
 }
 
-const WORDS: Record<string, string> = {
+// USPS street suffixes (full word → abbreviation), so "Calabash Cv" matches OSM's "Calabash Cove".
+const SUFFIXES: Record<string, string> = {
   street: 'st', drive: 'dr', avenue: 'ave', road: 'rd', lane: 'ln', court: 'ct',
   boulevard: 'blvd', circle: 'cir', parkway: 'pkwy', place: 'pl', terrace: 'ter',
+  cove: 'cv', trail: 'trl', loop: 'lp', bend: 'bnd', crossing: 'xing', hollow: 'holw', ridge: 'rdg',
+  point: 'pt', highway: 'hwy', square: 'sq', creek: 'crk', canyon: 'cyn', valley: 'vly', meadow: 'mdw',
+  meadows: 'mdws', heights: 'hts', glen: 'gln', hill: 'hl', hills: 'hls', view: 'vw', trace: 'trce',
+  expressway: 'expy', freeway: 'fwy', alley: 'aly', pass: 'pass', path: 'path', run: 'run', way: 'way',
+}
+const WORDS: Record<string, string> = {
+  ...SUFFIXES,
   north: 'n', south: 's', east: 'e', west: 'w', northwest: 'nw', northeast: 'ne', southwest: 'sw', southeast: 'se',
 }
 const DIRECTION = /^(n|s|e|w|ne|nw|se|sw)$/
-const STREET_END = /^(.+\s+(?:street|st|drive|dr|avenue|ave|road|rd|lane|ln|court|ct|boulevard|blvd|circle|cir|parkway|pkwy|place|pl|terrace|ter)\b\.?(?:\s+(?:northwest|northeast|southwest|southeast|north|south|east|west|nw|ne|sw|se|n|s|e|w)\b)?)/i
+const SUFFIX_WORDS = [...new Set(Object.entries(SUFFIXES).flat())].join('|')
+const STREET_END = new RegExp(`^(.+\\s+(?:${SUFFIX_WORDS})\\b\\.?(?:\\s+(?:northwest|northeast|southwest|southeast|north|south|east|west|nw|ne|sw|se|n|s|e|w)\\b)?)`, 'i')
 function normalized(value: string): string {
   const words = value.toLowerCase().replace(/[.,]/g, '').trim().split(/\s+/).map(word => WORDS[word] ?? word)
   // Postal street directions may appear before or after the street name.
