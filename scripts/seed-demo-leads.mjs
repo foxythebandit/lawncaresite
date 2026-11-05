@@ -251,17 +251,11 @@ const LEADS = [
 
 /* ── Wipe ─────────────────────────────────────────────── */
 // The API role cannot delete from the append-only tables (activities, calls, texts), so the wipe runs
-// in the local Supabase Postgres container: the one publishing the API port + 1 (the CLI's layout).
+// through this repo's Supabase CLI, against this folder's local database.
 const WIPE = ['staff_texts', 'staff_alerts', 'lead_calls', 'lead_activities', 'job_payments', 'job_items', 'intake_events', 'bookings',
   'recurring_agreements', 'leads', 'properties', 'customers', 'crm_operations']
-const dbPort = Number(new URL(url).port) + 1
-const container = execFileSync('docker', ['ps', '--filter', `publish=${dbPort}`, '--format', '{{.Names}}'], { encoding: 'utf8' }).trim()
-if (!/^supabase_db_[\w-]+$/.test(container)) {
-  console.error(`No local Supabase Postgres container publishes port ${dbPort} (found: ${container || 'none'}).`)
-  process.exit(1)
-}
-execFileSync('docker', ['exec', container, 'psql', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1', '-qc',
-  `truncate ${WIPE.map(t => `public.${t}`).join(', ')}`], { stdio: 'inherit' })
+execFileSync(new URL('../node_modules/.bin/supabase', import.meta.url).pathname, ['db', 'query', '--local',
+  `truncate ${WIPE.map(t => `public.${t}`).join(', ')}`], { stdio: 'ignore' })
 async function must(promise, what) {
   const { data, error } = await promise
   if (error) throw new Error(`${what}: ${error.message}`)
