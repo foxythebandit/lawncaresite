@@ -4,8 +4,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { networkInterfaces, release } from 'node:os';
-import { dirname, join } from 'node:path';
+import { homedir, networkInterfaces, release } from 'node:os';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -49,6 +49,11 @@ function runtime() {
   if (process.platform === 'linux') return 'native';
   if (process.platform === 'darwin' && process.arch === 'arm64' && parseInt(release(), 10) >= 23) return 'native';
   return 'docker';
+}
+
+// Docker Desktop's tools, including the credential helper image pulls need, aren't always on PATH.
+if (process.platform === 'darwin' && runtime() === 'docker') {
+  process.env.PATH = ['/Applications/Docker.app/Contents/Resources/bin', join(homedir(), '.docker/bin'), process.env.PATH].join(delimiter);
 }
 
 function isRunning() {
