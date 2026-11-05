@@ -10,6 +10,7 @@ do $$ begin
 end $$;
 alter table public.bookings add column if not exists status text not null default 'pending';
 alter table public.bookings add column if not exists map_screenshot_url text;
+alter table public.bookings add column if not exists payment_link text; -- legacy-migrations/004 ran on prod outside this history; needed to replay on a fresh database
 grant select, insert, update, delete on public.leads, public.bookings, public.extra_charges, public.quotes to service_role;
 revoke all on public.leads, public.quotes from anon, authenticated;
 revoke all on public.bookings from public, anon, authenticated;

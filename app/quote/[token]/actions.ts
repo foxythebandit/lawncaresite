@@ -85,8 +85,8 @@ async function sendBookingConfirmation(to: string, b: { firstName: string | null
     : `${usd(b.price)}${b.every ? ` ${b.every}` : ''}`
   const rows: [string, string][] = [['Plan', b.plan], ['First visit', b.start], ['Price', priceLine], ['Address', b.address],
     ...(b.sqFt ? [['Lawn', `${b.sqFt.toLocaleString('en-US')} sq ft`] as [string, string]] : []), ...(b.notes ? [['Your notes', b.notes] as [string, string]] : [])]
-  const { Resend } = await import('resend')
-  const { error } = await new Resend(process.env.RESEND_API_KEY).emails.send({
+  const { sendEmail } = await import('@/lib/email')
+  const { error } = await sendEmail({
     from: 'QuietGreen <hello@quietgreen.co>', to, replyTo: 'hello@quietgreen.co',
     subject: `You’re booked: ${b.plan.toLowerCase()} at ${b.address}`,
     text: `Hi${b.firstName ? ` ${b.firstName}` : ''}, you’re all set!\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\nNeed to change anything? Just reply to this email.\n\nQuietGreen · quietgreen.co`,
