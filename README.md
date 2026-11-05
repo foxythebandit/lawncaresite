@@ -1,3 +1,66 @@
+# QuietGreen
+
+## Running the site on your Mac
+
+This gives you a private copy of the site with its own practice database. Nothing you do here touches the real site or real customers.
+
+**The first time:**
+
+1. Install [Node.js](https://nodejs.org) version 24 if you don't have it.
+2. In Terminal, in this folder, run `npm install`.
+3. Run `npm run db:start`. The first run downloads a lot, so give it a while.
+4. Run `npm run dev` and open [http://localhost:3000](http://localhost:3000).
+
+**After that:** `npm run db:start`, then `npm run dev`. If the database is already running, `db:start` does nothing, so it's always safe.
+
+**Practice logins** (password `password123`):
+
+| Login | What it's for |
+|---|---|
+| `staff@example.test` | The staff side, at [/admin](http://localhost:3000/admin) |
+| `customer@example.test` | The customer portal, at [/portal](http://localhost:3000/portal). It signs in with an emailed link instead of the password. Run `npx supabase status`, open the "Mailpit" address, and click the link in the email |
+| `outsider@example.test` | Someone who should be refused at /admin |
+
+### If your Mac needs Docker
+
+The database runs by itself on an Apple-chip Mac (M1 or newer) with macOS 14 or newer. Any other Mac, such as an older Intel one, needs Docker. The scripts work this out for you. You only do this once:
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and open it.
+2. Wait until it says it's running.
+3. Run `npm run db:start` as usual. The first time can take 10 minutes or more.
+
+Docker Desktop must be open whenever you use the database. To see which kind your Mac is: Apple menu, About This Mac.
+
+### If something breaks
+
+Run `npm run doctor`. It fixes what it can and tells you what to do about the rest.
+
+Good to know:
+
+- `npm run db:start` rewrites the Supabase lines in `.env.local` to point at the practice database. Your other lines stay. The real values are still in Vercel.
+- `npm run dev` refuses to start if `.env.local` points at the real database or holds a live Stripe key.
+- `npm run dev` also refuses if `RESEND_API_KEY` is set without `EMAIL_DEV_RECIPIENT`. Set it to your own address, and every email from your Mac goes there instead of to customers. Texts and calls are always off locally.
+- `npm run db:reset` wipes the practice database and starts it fresh. `node scripts/seed-demo-leads.mjs` fills it with fake leads.
+
+## Checking your work
+
+`npm run check` runs the type check, lint, tests and a fresh rebuild of the practice database. GitHub runs the same check on every push and shows a green tick or a red cross. A red cross doesn't stop you merging; it just warns you.
+
+## Shipping to the real site
+
+**The easy way:** from your branch, run `npm run release`. It checks everything, updates the real database if the branch has a database change, merges the branch, and waits for the site to go live. It's safe to run again if it stops.
+
+It needs two things, set up once:
+
+- The GitHub command line tool: install it from [cli.github.com](https://cli.github.com), then run `gh auth login`.
+- A Supabase token: make one at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens). In each new Terminal window, before releasing, run `export SUPABASE_ACCESS_TOKEN=your-token`. Don't commit the token or paste it into a file in this repo, except the git-ignored `.envrc` if you use direnv.
+
+**Merging on GitHub still works.** A merge there doesn't update the real database, so if the branch had a database change, run this right after: `git checkout main`, `git pull`, then `npm run release`.
+
+AI agents can't merge or push database changes any other way than `npm run release`. That rule is only for them. Nothing stops you.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

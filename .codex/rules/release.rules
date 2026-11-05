@@ -1,0 +1,7 @@
+R = "Merge and migrate prod only with npm run release."
+prefix_rule(pattern=["gh", "pr", "merge"], decision="forbidden", justification=R)
+prefix_rule(pattern=["git", "push", "origin", ["main", "HEAD:main"]], decision="forbidden", justification=R)
+prefix_rule(pattern=["git", "push", ["--force", "-f", "--force-with-lease"]], decision="forbidden", justification=R)
+prefix_rule(pattern=["supabase", "db", "push"], decision="forbidden", justification=R)
+prefix_rule(pattern=["npx", "supabase", "db", "push"], decision="forbidden", justification=R)
+prefix_rule(pattern=["npm", "run", "release"], decision="allow", justification="The one path to prod.")

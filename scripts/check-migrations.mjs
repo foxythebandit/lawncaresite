@@ -4,6 +4,7 @@
 // --strict: exits 1 unless each destructive file has this line:
 //   -- destructive-ok: <what>, approved by <name> <YYYY-MM-DD>
 // --list: prints new files and their status.
+// Exit 1 means a bad name or a refused file. Exit 2 means the check itself couldn't run.
 // --strict --prod: checks the files prod is missing, not the git diff (for catching up on main).
 // Known blind spot: Squawk doesn't see SQL inside DO $$ blocks.
 
@@ -35,7 +36,7 @@ function run(cmd, cmdArgs) {
 
 function die(message) {
   console.error(message);
-  process.exit(1);
+  process.exit(2);
 }
 
 function newFiles() {
@@ -55,7 +56,8 @@ function filesMissingOnProd() {
   const start = r.out.indexOf('{');
   let migrations;
   try { migrations = JSON.parse(r.out.slice(start, r.out.lastIndexOf('}') + 1)).migrations; } catch { /* handled below */ }
-  if (!migrations) die(`Could not read prod's migrations: ${r.err.trim().split('\n')[0]}`);
+  // The last line is the CLI's error; the first can be direnv saying what it loaded.
+  if (!migrations) die(`Could not read prod's migrations: ${r.err.trim().split('\n').filter((l) => !/new version of Supabase|recommend updating/.test(l)).pop()}`);
   const missing = new Set(migrations.filter((m) => m.local && !m.remote).map((m) => m.local));
   return run('git', ['ls-files', '--', MIGRATIONS]).out.split('\n')
     .filter((f) => missing.has(basename(f).match(/^(\d+)[_.]/)?.[1]));

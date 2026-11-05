@@ -5,7 +5,7 @@
 // detect() returns '' when fine, or a line saying what's wrong and what to do.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { release } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +77,12 @@ const localChecks = [
     name: 'Packages installed',
     detect: () => (existsSync(bin) ? '' : 'node_modules/.bin/supabase is missing: run `npm ci`.'),
     fix: () => run('npm', ['ci'], { stdio: 'inherit' }),
+  },
+  {
+    name: 'Docker is running (this Mac uses Docker for the local database)',
+    detect: () => (expectedRuntime() !== 'docker' || run('docker', ['info']).ok
+      ? ''
+      : 'Docker isn\'t running. Install Docker Desktop from docker.com if you don\'t have it, open it, wait for it to say "running", then run this again.'),
   },
   {
     name: 'Pinned CLI in use',
@@ -177,7 +183,8 @@ const localChecks = [
 const hasEnvToken = Boolean(process.env.SUPABASE_ACCESS_TOKEN);
 const hasToken = () => hasEnvToken || Boolean(run('direnv', ['exec', '.', 'printenv', 'SUPABASE_ACCESS_TOKEN']).out.trim());
 const linked = (...args) => (hasEnvToken ? run(bin, args) : run('direnv', ['exec', '.', bin, ...args]));
-const REF_FILE = join(root, 'supabase/.temp/project-ref');
+const TEMP_DIR = join(root, 'supabase/.temp');
+const REF_FILE = join(TEMP_DIR, 'project-ref');
 const LINK_FILE = join(root, 'supabase/.link.json');
 
 // The CLI keeps the link in supabase/.temp, and in supabase/.link.json in stack mode. Every place found must agree.
@@ -188,8 +195,11 @@ function isLinkedToProd() {
     const link = JSON.parse(readFileSync(LINK_FILE, 'utf8'));
     refs.push(link.project?.ref, link.active_branch?.ref);
   }
-  return refs.length > 0 && refs.every((ref) => ref === kit.prodProjectRef);
+  return refs.length > 0 && refs.every((ref) => ref === kit.prodProjectRef) && !hasOldLink();
 }
+
+// A .temp with no .link.json came from a CLI older than stack mode. It breaks prod reads even when its ref is right.
+const hasOldLink = () => existsSync(TEMP_DIR) && !existsSync(LINK_FILE);
 
 const prodChecks = [
   {
@@ -198,6 +208,7 @@ const prodChecks = [
     // `supabase link` also records prod's versions and a timestamp in supabase.lock, which would dirty the tree. Nothing uses them (services are bundled).
     fix: () => {
       const lock = existsSync(LOCK) ? readFileSync(LOCK) : null;
+      if (hasOldLink()) rmSync(TEMP_DIR, { recursive: true, force: true });
       linked('link', '--project-ref', kit.prodProjectRef);
       if (lock) writeFileSync(LOCK, lock);
     },
@@ -255,7 +266,7 @@ if (!process.argv.includes('--local')) {
   else for (const check of prodChecks) runCheck(check, false);
 }
 
-if (localBroken) console.log('Last resort, only if native truly can\'t work: `KIT_DB_RUNTIME=docker npm run db:start`.');
+if (localBroken && expectedRuntime() === 'native') console.log('Last resort, only if native truly can\'t work: `KIT_DB_RUNTIME=docker npm run db:start`.');
 if (broken) {
   console.log('Not fixed. Fixed a new problem? Add a check to `scripts/doctor.mjs`: detect, fix, detect again.');
   process.exit(1);
