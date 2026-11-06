@@ -1,4 +1,4 @@
-// `npm run release --dry-run` must stay a dry run. Runs the real script and real npm in a scratch repo.
+// `npm run release --dry-run` must stay a dry run, and step 7 must give up in time. Runs the real script and real npm in a scratch repo.
 // gh and the Supabase CLI are stand-ins that only record their arguments, so nothing can reach GitHub or prod.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
@@ -66,6 +66,32 @@ test('npm run release --dry-run stops before the merge and never changes prod', 
     assert.equal(pushes.length, 1)
     assert.match(pushes[0], /--dry-run/)
     assert.ok(!calls.some(call => call.startsWith('gh pr merge') || call.startsWith('gh pr create')), 'no PR opened or merged')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('step 7 stops after its time limit when the deploy never shows up', () => {
+  const { dir, repo, log, env } = scratchRepo()
+  try {
+    // A rerun after the merge: the PR is merged at HEAD, so the script goes straight to step 7. No deploy ever appears.
+    const gh = join(dir, 'stubs/gh')
+    writeFileSync(gh, `#!/bin/sh
+echo "gh $*" >> "$CALLS_LOG"
+case "$1 $2" in
+  "pr list") echo "[{\\"number\\":1,\\"url\\":\\"http://pr\\",\\"state\\":\\"MERGED\\",\\"headRefOid\\":\\"$(git rev-parse HEAD)\\",\\"mergeCommit\\":{\\"oid\\":\\"abc\\"}}]" ;;
+  "repo view") echo '{"nameWithOwner":"o/r","url":"http://repo"}' ;;
+  api*) echo '[]' ;;
+esac
+`)
+    chmodSync(gh, 0o755)
+    const r = spawnSync('npm', ['run', 'release'], { cwd: repo, env: { ...env, KIT_DEPLOY_WAIT_MS: '1' }, encoding: 'utf8', timeout: 60_000 })
+    assert.equal(r.status, 1, r.stdout + r.stderr)
+    assert.match(r.stderr, /deploy not seen\. The merge already happened\./)
+    assert.match(r.stderr, /check Vercel\/EAS .*then rerun/)
+    const calls = readFileSync(log, 'utf8').split('\n')
+    assert.ok(calls.some(call => call.startsWith('gh api repos/o/r/deployments')), 'it looked for the deploy')
+    assert.ok(!calls.some(call => call.startsWith('gh pr merge') || call.startsWith('supabase db push')), 'nothing merged or migrated')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
