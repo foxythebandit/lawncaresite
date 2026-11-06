@@ -43,9 +43,10 @@ function expectedRuntime() {
 
 // Codex shells set LC_ALL=C.UTF-8, which macOS doesn't have, and Postgres's initdb then fails ("invalid locale settings").
 // db.mjs has the same fix.
+const LOCALE_NAMES = ['LANG', 'LC_ALL', 'LC_COLLATE', 'LC_CTYPE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME'];
 const hasLocale = (value) => !value || value === 'C' || value === 'POSIX' || existsSync(`/usr/share/locale/${value}`);
 const missingLocales = () => (process.platform === 'darwin'
-  ? Object.keys(process.env).filter((name) => (name === 'LANG' || name.startsWith('LC_')) && !hasLocale(process.env[name]))
+  ? LOCALE_NAMES.filter((name) => !hasLocale(process.env[name]))
   : []);
 const badLocales = () => missingLocales().map((name) => `${name}=${process.env[name]}`).join(', ');
 
@@ -97,9 +98,17 @@ const localChecks = [
       return '';
     },
     fix: () => {
+      if (!missingLocales().length) return;
       console.log(`note: this Mac has no ${badLocales()}. Using en_US.UTF-8 instead; \`npm run db:*\` does the same on its own.`);
       for (const name of missingLocales()) process.env[name] = 'en_US.UTF-8';
     },
+  },
+  {
+    // Codex's sandbox doesn't let Postgres create shared memory. Nothing in this shell can fix that.
+    name: 'This shell may run the database',
+    detect: () => (/could not create shared memory segment/.test(process.env.KIT_DB_START_ERROR ?? '')
+      ? `Codex's sandbox blocks the database ("could not create shared memory segment"). This needs the Codex allow rule for the DB commands; ask ${kit.approver ?? 'Caelan'}.`
+      : ''),
   },
   {
     name: 'Packages installed',
@@ -111,7 +120,7 @@ const localChecks = [
     name: `Database runtime: ${expectedRuntime()}`,
     detect: () => (expectedRuntime() !== 'docker' || run('docker', ['info']).ok
       ? ''
-      : 'Docker isn\'t running. Install Docker Desktop from docker.com if you don\'t have it, open it, wait for it to say "running", then run this again.'),
+      : 'Docker isn\'t running, and this machine\'s database needs it. A person opens Docker Desktop (from docker.com), waits for "running", then runs this again. AI agents: stop and say so; never open Docker yourself.'),
   },
   {
     name: 'Pinned CLI in use',

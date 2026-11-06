@@ -58,9 +58,10 @@ if (process.platform === 'darwin' && runtime() === 'docker') {
 
 // Codex shells set LC_ALL=C.UTF-8, which macOS doesn't have, and Postgres's initdb then fails ("invalid locale settings").
 // The doctor has the same check.
+const LOCALE_NAMES = ['LANG', 'LC_ALL', 'LC_COLLATE', 'LC_CTYPE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME'];
 const hasLocale = (value) => !value || value === 'C' || value === 'POSIX' || existsSync(`/usr/share/locale/${value}`);
 const missingLocales = () => (process.platform === 'darwin'
-  ? Object.keys(process.env).filter((name) => (name === 'LANG' || name.startsWith('LC_')) && !hasLocale(process.env[name]))
+  ? LOCALE_NAMES.filter((name) => !hasLocale(process.env[name]))
   : []);
 for (const name of missingLocales()) process.env[name] = 'en_US.UTF-8';
 

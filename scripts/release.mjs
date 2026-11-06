@@ -4,7 +4,7 @@
 //   5 migrate prod      6 merge the PR   7 confirm the deploy
 // --dry-run: steps 1-4 (these do commit and push the branch), step 5 as `db push --dry-run`, then stops.
 // On main: steps 1, 2, 3, 5 only ("catch up prod").
-// Step 7 waits up to 15 minutes (75 for EAS). After that, rerun: a merged branch skips straight to step 7.
+// Each step 7 wait (the deploy, then the site) stops after 15 minutes (75 for EAS). After that, rerun: a merged branch skips straight to step 7.
 //
 // Not verified on a real project when written (no prod was touched while building the kit).
 // Check these on each repo's first dry run:
@@ -35,7 +35,6 @@ const CI_APPEAR_MS = 5 * 60_000;
 const DEPLOY_WAIT_MINUTES = { 'eas-workflow': 75 };
 const DEPLOY_MINUTE_MS = Number(process.env.KIT_DEPLOY_MINUTE_MS) || 60_000;
 let deployMinutes = 15;
-let deployDeadline = 0;
 
 // `npm run release --dry-run` doesn't reach argv: npm keeps the flag and sets npm_config_dry_run.
 const dryRun = process.argv.includes('--dry-run') || process.env.npm_config_dry_run === 'true';
@@ -274,11 +273,13 @@ function merge(branch, sha) {
 
 // ---------- step 7: confirm the deploy
 
-async function poll(link, check) {
+// Each wait gets its own limit, so a green deploy whose site is slow isn't reported as "not seen".
+async function poll(link, check, what = 'deploy not seen') {
+  const deadline = Date.now() + deployMinutes * DEPLOY_MINUTE_MS;
   for (;;) {
     const result = await check();
     if (result) return result;
-    if (Date.now() > deployDeadline) stop(`deploy not seen after ${deployMinutes} minutes. The merge already happened.`, `check Vercel/EAS (${link}), then rerun; the rerun only checks the deploy.`);
+    if (Date.now() > deadline) stop(`${what} after ${deployMinutes} minutes. The merge already happened.`, `check Vercel/EAS (${link}), then rerun; the rerun only checks the deploy.`);
     await sleep(POLL_MS);
   }
 }
@@ -306,7 +307,7 @@ async function confirmVercel(sha) {
   if (kit.prodUrl) {
     const live = await poll(kit.prodUrl, async () => {
       try { return (await fetch(kit.prodUrl)).status === 200; } catch { return false; }
-    });
+    }, `deployed, but ${kit.prodUrl} isn't answering`);
     if (!live) stop(`${kit.prodUrl} isn't answering.`);
   }
   return `Deploy live: ${link}`;
@@ -330,7 +331,6 @@ async function confirmEas(sha, workflow) {
 async function confirmDeploy(sha) {
   const deploy = kit.deploy ?? {};
   deployMinutes = DEPLOY_WAIT_MINUTES[deploy.type] ?? 15;
-  deployDeadline = Date.now() + deployMinutes * DEPLOY_MINUTE_MS;
   if (deploy.type === 'github-actions') return confirmGithubActions(sha, deploy.workflow);
   if (deploy.type === 'vercel-git') return confirmVercel(sha);
   if (deploy.type === 'eas-workflow') return confirmEas(sha, deploy.workflow);

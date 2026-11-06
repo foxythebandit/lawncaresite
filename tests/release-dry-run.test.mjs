@@ -71,35 +71,41 @@ test('npm run release --dry-run stops before the merge and never changes prod', 
   }
 })
 
-// A rerun after the merge: the PR is merged at HEAD, so the script goes straight to step 7. No deploy ever appears.
+// A rerun after the merge: the PR is merged at HEAD, so the script goes straight to step 7. Nothing ever finishes.
 // A minute is shortened to 1 ms, so the message shows which limit was used.
-for (const [deploy, minutes, lookup] of [
-  [{ type: 'vercel-git' }, 15, 'gh api repos/o/r/deployments'],
-  [{ type: 'eas-workflow', workflow: 'deploy.yml' }, 75, 'npx eas-cli workflow:runs'],
+for (const c of [
+  { deploy: { type: 'vercel-git' }, stop: 'deploy not seen after 15 minutes', lookup: 'gh api repos/o/r/deployments' },
+  { deploy: { type: 'vercel-git' }, deployed: true, prodUrl: 'http://127.0.0.1:9', stop: "deployed, but http://127.0.0.1:9 isn't answering after 15 minutes", lookup: 'gh api repos/o/r/deployments/1/statuses' },
+  { deploy: { type: 'eas-workflow', workflow: 'deploy.yml' }, stop: 'deploy not seen after 75 minutes', lookup: 'npx eas-cli workflow:runs' },
 ]) {
-  test(`step 7 gives up after ${minutes} minutes for ${deploy.type} when the deploy never shows up`, () => {
+  test(`step 7 for ${c.deploy.type} stops with "${c.stop}"`, () => {
     const { dir, repo, log, env } = scratchRepo()
     try {
       const pkg = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'))
-      pkg.kit.deploy = deploy
+      pkg.kit.deploy = c.deploy
+      if (c.prodUrl) pkg.kit.prodUrl = c.prodUrl
       writeFileSync(join(repo, 'package.json'), JSON.stringify(pkg))
       assert.equal(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', 'commit', '-qam', 'deploy type', '--allow-empty'], { cwd: repo }).status, 0)
       const stub = (name, body) => {
         writeFileSync(join(dir, 'stubs', name), `#!/bin/sh\necho "${name} $*" >> "$CALLS_LOG"\n${body}\n`)
         chmodSync(join(dir, 'stubs', name), 0o755)
       }
+      // A green deploy has one deployment whose latest status is success.
+      const api = c.deployed
+        ? `case "$2" in *statuses*) echo '[{"state":"success","environment_url":"http://x"}]' ;; *) echo '[{"id":1}]' ;; esac`
+        : `echo '[]'`
       stub('gh', `case "$1 $2" in
   "pr list") echo "[{\\"number\\":1,\\"url\\":\\"http://pr\\",\\"state\\":\\"MERGED\\",\\"headRefOid\\":\\"$(git rev-parse HEAD)\\",\\"mergeCommit\\":{\\"oid\\":\\"abc\\"}}]" ;;
   "repo view") echo '{"nameWithOwner":"o/r","url":"http://repo"}' ;;
-  api*) echo '[]' ;;
+  api*) ${api} ;;
 esac`)
       stub('npx', `echo '[]'`)
       const r = spawnSync('npm', ['run', 'release'], { cwd: repo, env: { ...env, KIT_DEPLOY_MINUTE_MS: '0.001' }, encoding: 'utf8', timeout: 60_000 })
       assert.equal(r.status, 1, r.stdout + r.stderr)
-      assert.match(r.stderr, new RegExp(`deploy not seen after ${minutes} minutes\\. The merge already happened\\.`))
+      assert.ok(r.stderr.includes(`${c.stop}. The merge already happened.`), r.stderr)
       assert.match(r.stderr, /check Vercel\/EAS .*then rerun/)
       const calls = readFileSync(log, 'utf8').split('\n')
-      assert.ok(calls.some(call => call.startsWith(lookup)), 'it looked for the deploy')
+      assert.ok(calls.some(call => call.startsWith(c.lookup)), 'it looked for the deploy')
       assert.ok(!calls.some(call => call.startsWith('gh pr merge') || call.startsWith('supabase db push')), 'nothing merged or migrated')
     } finally {
       rmSync(dir, { recursive: true, force: true })
