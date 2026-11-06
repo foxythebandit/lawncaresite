@@ -114,7 +114,8 @@ function start() {
     if (!r.ok) {
       show(r);
       console.log('Start failed. Running the doctor.');
-      run(process.execPath, ['scripts/doctor.mjs', '--local'], { stdio: 'inherit', env: { ...process.env, KIT_DB_START_ERROR: `${r.out}\n${r.err}` } });
+      // The doctor only looks for known phrases; the end of the output is enough, and env size is limited.
+      run(process.execPath, ['scripts/doctor.mjs', '--local'], { stdio: 'inherit', env: { ...process.env, KIT_DB_START_ERROR: `${r.out}\n${r.err}`.slice(-10_000) } });
       r = once();
       if (!r.ok) { show(r); die(STUCK); }
       if (hasPendingMigrations()) die(STUCK);
@@ -236,8 +237,9 @@ function isLocalUrl(url) {
 const effectiveEnv = () => ({ ...parseEnv('.env'), ...parseEnv(envFile), ...process.env });
 
 // A stopped database, or one that came back on another port, doesn't answer: the site loads but sign-in fails.
+// Idle services take up to about 7 s to wake, so the limit is well above that.
 async function answers(url) {
-  try { return (await fetch(new URL('/auth/v1/health', url), { signal: AbortSignal.timeout(5000) })).ok; } catch { return false; }
+  try { return (await fetch(new URL('/auth/v1/health', url), { signal: AbortSignal.timeout(20_000) })).ok; } catch { return false; }
 }
 
 async function guard() {
