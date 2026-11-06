@@ -3,24 +3,28 @@
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { addCustomerJob, startCustomerPlan } from '../../actions'
-import type { JobLine } from '@/lib/crm-jobs'
+import { PLAN_SERVICES, planName, type JobLine } from '@/lib/crm-jobs'
 import Icon from '../../icons'
 import { uuid } from '@/lib/uuid'
+import PlanEditor, { type EditablePlan } from './PlanEditor'
 
 type OpenVisit = { id: string; date: string | null; price: number; recurring: boolean }
-type Property = { id: string; address: string; hasActivePlan: boolean; openVisits: OpenVisit[] }
+/** `plans`: names of the property's active or paused plans (a property can have mowing and maintenance). */
+type Property = { id: string; address: string; plans: string[]; openVisits: OpenVisit[] }
 type Line = { key: string; description: string; amount: string }
 
 const blankLine = (): Line => ({ key: uuid(), description: '', amount: '' })
 
-/** Where all later work for an existing customer starts: extra one-off jobs and mowing plans. */
-export default function CustomerActions({ customerId, properties }: { customerId: string; properties: Property[] }) {
+/** Where all later work for an existing customer starts: extra one-off jobs, and starting or editing plans. */
+export default function CustomerActions({ customerId, properties, plans, firstName, canEmail }: {
+  customerId: string; properties: Property[]; plans: EditablePlan[]; firstName: string; canEmail: boolean
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState<'job' | 'plan' | null>(null)
+  const [open, setOpen] = useState<'job' | 'plan' | 'edit' | null>(null)
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
   const ops = useRef<Record<string, string>>({})
-  const planProperties = properties.filter(p => !p.hasActivePlan)
+  const planProperties = properties
 
   const [jobProperty, setJobProperty] = useState(properties[0]?.id ?? 'new')
   const [jobAddress, setJobAddress] = useState('')
@@ -35,7 +39,10 @@ export default function CustomerActions({ customerId, properties }: { customerId
   const [planEvery, setPlanEvery] = useState('2-week')
   const [planDate, setPlanDate] = useState('')
   const [planFrom, setPlanFrom] = useState('new')
+  const [planService, setPlanService] = useState(plans.length ? '' : 'Lawn care')
   const planVisits = properties.find(p => p.id === planProperty)?.openVisits ?? []
+  const newPlanName = planName([{ kind: 'service', description: planService || 'Lawn care' }])
+  const samePlanHere = properties.find(p => p.id === planProperty)?.plans.includes(newPlanName)
 
   /** A visit already booked at the property (a lead's recurring booking) becomes the first plan visit. */
   function choosePlanProperty(id: string) {
@@ -89,10 +96,15 @@ export default function CustomerActions({ customerId, properties }: { customerId
         const result = await startCustomerPlan({ jobOperationId: op('plan-job'), planOperationId: op('plan'), confirmOperationId: op('plan-confirm'), customerId,
           propertyId: planProperty === 'new' ? null : planProperty, newAddress: planProperty === 'new' ? planAddress : null,
           existingBookingId: planProperty !== 'new' && planFrom !== 'new' ? planFrom : null,
-          firstDate: planDate, intervalUnit: unit, intervalCount: Number(count), pricePerVisit: planPrice.trim() })
-        finish(result, 'Mowing plan started. The first visit is under Upcoming visits.')
+          firstDate: planDate, intervalUnit: unit, intervalCount: Number(count), pricePerVisit: planPrice.trim(), service: planService.trim() })
+        if (finish(result, `${newPlanName} started. The first visit is under Upcoming visits.`)) setPlanService('')
       } catch { setMessage({ text: 'Could not start the plan. Retry to check the same request.', error: true }) }
     })
+  }
+
+  function openStartPlan() {
+    if (open !== 'plan') choosePlanProperty(planProperty)
+    setOpen(open === 'plan' ? null : 'plan'); setMessage(null)
   }
 
   const propertyPicker = (value: string, onChange: (v: string) => void, address: string, onAddress: (v: string) => void, list: Property[]) => <>
@@ -108,8 +120,14 @@ export default function CustomerActions({ customerId, properties }: { customerId
   return <>
     <div className="crm-customer-actions">
       <button type="button" className={`crm-button${open === 'job' ? ' crm-button-primary' : ''}`} onClick={() => { setOpen(open === 'job' ? null : 'job'); setMessage(null) }}>+ Add job</button>
-      <button type="button" className={`crm-button${open === 'plan' ? ' crm-button-primary' : ''}`} onClick={() => { if (open !== 'plan') choosePlanProperty(planProperty); setOpen(open === 'plan' ? null : 'plan'); setMessage(null) }}><Icon name="calendar" size={15} />Start mowing plan</button>
+      {plans.length > 0 && <button type="button" className={`crm-button${open === 'edit' ? ' crm-button-primary' : ''}`}
+        onClick={() => { setOpen(open === 'edit' ? null : 'edit'); setMessage(null) }}><Icon name="calendar" size={15} />Edit plan</button>}
+      <button type="button" className={`crm-button${open === 'plan' ? ' crm-button-primary' : plans.length ? ' crm-button-ghost' : ''}`} onClick={openStartPlan}>
+        {plans.length ? '+ Another plan' : <><Icon name="calendar" size={15} />Start plan</>}</button>
     </div>
+
+    {open === 'edit' && <PlanEditor plans={plans} firstName={firstName} canEmail={canEmail} onMessage={setMessage}
+      onClose={() => setOpen(null)} onAddPlan={() => { setOpen(null); openStartPlan() }} />}
 
     {open === 'job' && <section className="crm-sheet" aria-label="Add job">
       <h2>Add a job</h2>
@@ -136,10 +154,14 @@ export default function CustomerActions({ customerId, properties }: { customerId
       </div>
     </section>}
 
-    {open === 'plan' && <section className="crm-sheet" aria-label="Start mowing plan">
-      <h2>Start a mowing plan</h2>
-      <p>Repeats lawn care on a schedule. Each visit you mark done books the next one. Extra work stays separate — use Add job.</p>
+    {open === 'plan' && <section className="crm-sheet" aria-label="Start plan">
+      <h2>Start a plan</h2>
+      <p>Repeats a service on a schedule — mowing, maintenance, anything regular. Each visit you mark done books the next one.
+        A property can have more than one plan. One-off work stays separate — use Add job. Nothing is sent to the customer.</p>
+      <datalist id="start-plan-services">{PLAN_SERVICES.map(s => <option key={s} value={s} />)}</datalist>
       <div className="crm-sheet-grid">
+        <label className="crm-field">Service<input value={planService} maxLength={120} list="start-plan-services" placeholder="Lawn care, Maintenance…"
+          onChange={e => setPlanService(e.target.value)} /></label>
         {propertyPicker(planProperty, choosePlanProperty, planAddress, setPlanAddress, planProperties)}
         {planVisits.length > 0 && <label className="crm-field">First visit
           <select value={planFrom} onChange={e => choosePlanFrom(e.target.value)}>
@@ -156,8 +178,9 @@ export default function CustomerActions({ customerId, properties }: { customerId
         </label>
         <label className="crm-field">First visit<input type="date" value={planDate} onChange={e => setPlanDate(e.target.value)} /></label>
       </div>
+      {samePlanHere && <p className="crm-visit-note">This property already has a {newPlanName.toLowerCase()}. To change it, use Edit plan instead.</p>}
       <div className="crm-action-row">
-        <button type="button" className="crm-button crm-button-primary" disabled={pending || !planDate || !planPrice} onClick={savePlan}>Start plan</button>
+        <button type="button" className="crm-button crm-button-primary" disabled={pending || !planDate || !planPrice || !planService.trim()} onClick={savePlan}>Start {newPlanName.toLowerCase()}</button>
         <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => setOpen(null)}>Cancel</button>
       </div>
     </section>}

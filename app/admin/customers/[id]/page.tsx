@@ -2,10 +2,11 @@ import { formatPhone } from '@/lib/format-phone'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getAgreements, getBookings, getCustomers, getJobPayments, getLeads } from '../../actions'
-import { formatMoney, jobPrice, jobStatusLabel } from '@/lib/crm-jobs'
+import { cadenceText, formatMoney, isMowingPlan, jobPrice, jobStatusLabel, planName, type JobLine } from '@/lib/crm-jobs'
 import { requireStaff } from '@/lib/staff'
 import Icon from '../../icons'
 import CustomerActions from './CustomerActions'
+import type { EditablePlan } from './PlanEditor'
 import UpcomingVisits, { type UpcomingVisit } from './UpcomingVisits'
 
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const payments = allPayments.filter(row => jobIds.has(row.booking_id))
   const historicalAmounts = jobs.filter(row => row.amount_charged != null)
   const agreements = allAgreements.filter(row => row.customer_id === id)
+    .sort((x, y) => String(x.created_at).localeCompare(String(y.created_at)))
   const addressById = new Map(ownProperties.map(row => [row.id, row.address]))
 
   // Open visits first, soonest (and overdue) on top; everything else is history, newest first.
@@ -45,16 +47,41 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const pastJobs = jobs.filter(job => !isOpen(job))
     .sort((a, b) => (visitDate(b) ?? b.created_at).localeCompare(visitDate(a) ?? a.created_at))
   const activePlans = agreements.filter(agreement => agreement.status === 'active')
+  const nameOf = (agreementId: string | null) => {
+    const agreement = agreements.find(row => row.id === agreementId)
+    return agreement ? planName(agreement.items_template) : null
+  }
+  // A lead's recurring booking is mowing, so it joins the mowing plan when the property has several.
+  const joinPlanFor = (propertyId: string | null) => {
+    const here = activePlans.filter(plan => plan.property_id === propertyId)
+    return here.find(plan => isMowingPlan(plan.items_template)) ?? here[0] ?? null
+  }
   const needsPlan = (job: (typeof jobs)[number]) => !job.agreement_id && !job.one_time
     && Boolean(job.frequency?.trim()) && !/^(one[ -]?time|single|once)$/i.test(job.frequency.trim())
   const upcomingVisits: UpcomingVisit[] = openJobs.map(job => ({
     id: job.id, updatedAt: job.updated_at, status: job.status, date: visitDate(job), time: job.confirmed_time ?? null,
-    address: job.address, price: jobPrice(job), inPlan: Boolean(job.agreement_id),
-    joinPlanId: needsPlan(job) ? activePlans.find(plan => plan.property_id === job.property_id)?.id ?? null : null,
+    address: job.address, price: jobPrice(job), inPlan: Boolean(job.agreement_id), planName: nameOf(job.agreement_id),
+    joinPlanId: needsPlan(job) ? joinPlanFor(job.property_id)?.id ?? null : null,
+    joinPlanName: needsPlan(job) ? nameOf(joinPlanFor(job.property_id)?.id ?? null) : null,
     needsPlan: needsPlan(job),
   }))
   const nextPlanVisit = (agreementId: string) => openJobs.find(job => job.agreement_id === agreementId)
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
+  // Plans staff can still change (ended plans are history). The pause/end preview matches the
+  // server's: unfinished plan visits dated today or later, or with no date.
+  const editablePlans: EditablePlan[] = agreements.filter(agreement => agreement.status !== 'ended').map(agreement => {
+    const next = nextPlanVisit(agreement.id)
+    const items = (Array.isArray(agreement.items_template) ? agreement.items_template : []) as JobLine[]
+    return {
+      id: agreement.id, updatedAt: agreement.updated_at, status: agreement.status, name: planName(items),
+      address: addressById.get(agreement.property_id) || 'Property', items, price: Number(agreement.price_per_visit ?? 0),
+      intervalUnit: agreement.interval_unit, intervalCount: agreement.interval_count,
+      next: next ? { id: next.id, updatedAt: next.updated_at, date: visitDate(next), occurrenceOn: next.occurrence_on ?? visitDate(next),
+        time: next.confirmed_time ?? null, price: jobPrice(next) } : null,
+      futureVisits: openJobs.filter(job => job.agreement_id === agreement.id && (!visitDate(job) || visitDate(job)! >= today))
+        .map(job => ({ id: job.id, date: visitDate(job) })),
+    }
+  })
 
   const nameParts: string[] = String(customer.name ?? '').trim().split(/\s+/).filter(Boolean)
   const initials = nameParts.map(part => part[0]).filter((_, i) => i === 0 || i === nameParts.length - 1).join('').toUpperCase() || '?'
@@ -73,20 +100,21 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         {customer.email && <a className="crm-button" href={`mailto:${customer.email}`}><Icon name="mail" size={15} />Email</a>}
       </div>
     </div>
-    <CustomerActions customerId={id} properties={ownProperties.map(property => ({ id: property.id, address: property.address,
-      hasActivePlan: agreements.some(agreement => agreement.property_id === property.id && ['active', 'paused'].includes(agreement.status)),
+    <CustomerActions customerId={id} plans={editablePlans} firstName={String(customer.name ?? '').trim().split(/\s+/)[0] || 'the customer'}
+      canEmail={Boolean(customer.email) && Boolean(process.env.RESEND_API_KEY)}
+      properties={ownProperties.map(property => ({ id: property.id, address: property.address,
+      plans: editablePlans.filter(plan => agreements.find(a => a.id === plan.id)?.property_id === property.id).map(plan => plan.name),
       // A recurring visit already booked here (from a lead) can be the plan's first visit instead of a duplicate.
       openVisits: openJobs.filter(job => job.property_id === property.id && !job.agreement_id)
         .map(job => ({ id: job.id, date: visitDate(job), price: Number(job.price_per_visit ?? jobPrice(job)), recurring: needsPlan(job) })) }))} />
-    {activePlans.map(agreement => {
-      const next = nextPlanVisit(agreement.id)
-      const nextDate = next ? visitDate(next) : null
-      return <div className="crm-plan-card" key={agreement.id}>
+    {editablePlans.map(plan => {
+      const nextDate = plan.next?.date ?? null
+      return <div className="crm-plan-card" key={plan.id}>
         <div>
-          <strong>Mowing plan · every {agreement.interval_count === 1 ? '' : `${agreement.interval_count} `}{agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {money(agreement.price_per_visit)}/visit</strong>
-          <span>{addressById.get(agreement.property_id) || 'Property'} · {next
+          <strong>{plan.name} · {cadenceText(plan.intervalUnit, plan.intervalCount)} · {money(plan.price)}/visit{plan.status === 'paused' ? ' · Paused' : ''}</strong>
+          <span>{plan.address} · {plan.status === 'paused' ? 'no visits until it resumes (Edit plan → Resume)' : plan.next
             ? `next visit ${dateText(nextDate)}${nextDate && nextDate < today ? ' (overdue — mark it done or move it)' : ''}`
-            : 'no visit booked'}</span>
+            : 'no visit booked (Edit plan → Book the next visit)'}</span>
         </div>
       </div>
     })}
@@ -112,14 +140,14 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           </div>
         </div>) : <p className="crm-muted">No property linked yet.</p>}
       </section>
-      <section className="crm-panel"><h2>Mowing plans ({agreements.length})</h2>
+      <section className="crm-panel"><h2>Plans ({agreements.length})</h2>
         {agreements.length ? agreements.map(agreement => <div className="crm-customer-entry" key={agreement.id}>
           <div>
-            <strong>{addressById.get(agreement.property_id) || 'Property'}</strong>
-            <span>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {agreement.status === 'active' ? `Next ${nextPlanVisit(agreement.id) ? dateText(visitDate(nextPlanVisit(agreement.id)!)) : 'not booked'} · ` : ''}{money(agreement.price_per_visit)} per visit</span>
+            <strong>{planName(agreement.items_template)} · {addressById.get(agreement.property_id) || 'Property'}</strong>
+            <span>{cadenceText(agreement.interval_unit, agreement.interval_count).replace(/^e/, 'E')} · {agreement.status === 'active' ? `Next ${nextPlanVisit(agreement.id) ? dateText(visitDate(nextPlanVisit(agreement.id)!)) : 'not booked'} · ` : ''}{money(agreement.price_per_visit)} per visit</span>
           </div>
           <span className={`admin-badge admin-badge-${agreement.status === 'active' ? 'confirmed' : agreement.status === 'paused' ? 'pending' : 'canceled'}`}>{agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span>
-        </div>) : <p className="crm-muted">No mowing plan.</p>}
+        </div>) : <p className="crm-muted">No plan yet.</p>}
       </section>
       <section className="crm-panel"><h2>Payments ({payments.length + historicalAmounts.length})</h2>
         {payments.length ? payments.map(payment => <div className="crm-customer-entry" key={payment.id}>

@@ -10,8 +10,11 @@ import { uuid } from '@/lib/uuid'
 export type UpcomingVisit = {
   id: string; updatedAt: string; status: string; date: string | null; time: string | null
   address: string; price: number; inPlan: boolean
+  /** "Mowing plan", "Maintenance plan"… for a visit in a plan. */
+  planName: string | null
   /** Active plan at this visit's property that the visit could join (a lead's recurring booking). */
   joinPlanId: string | null
+  joinPlanName: string | null
   /** Recurring but in no plan: completing it needs a plan or an explicit one-time decision. */
   needsPlan: boolean
 }
@@ -29,7 +32,7 @@ export default function UpcomingVisits({ visits, firstName, hasEmail, emailConfi
     <h2>Upcoming visits ({visits.length})</h2>
     {visits.length ? visits.map(visit => <VisitRow key={visit.id} visit={visit} firstName={firstName}
       canEmail={hasEmail && emailConfigured} setMessage={setMessage} />)
-      : <p className="crm-muted">Nothing booked. Use + Add job or Start mowing plan.</p>}
+      : <p className="crm-muted">Nothing booked. Use + Add job or Start plan.</p>}
     {message && <div className={`crm-toast${message.error ? ' crm-toast-error' : ''}`} role={message.error ? 'alert' : 'status'}>
       <span>{message.text}</span><button type="button" aria-label="Dismiss" onClick={() => setMessage(null)}>×</button>
     </div>}
@@ -51,7 +54,7 @@ function VisitRow({ visit, firstName, canEmail, setMessage }: {
   const [moveTo, setMoveTo] = useState(visit.date ?? '')
   const [moveTime, setMoveTime] = useState(visit.time ?? '')
   const [wholePlan, setWholePlan] = useState(false)
-  const [email, setEmail] = useState(canEmail)
+  const [email, setEmail] = useState(false) // customer email is an explicit opt-in
 
   const overdue = visit.date != null && visit.date < today()
   const shift = visit.date && moveTo ? daysBetween(visit.date, moveTo) : 0
@@ -80,7 +83,7 @@ function VisitRow({ visit, firstName, canEmail, setMessage }: {
     <div className="crm-customer-entry">
       <div>
         <strong>{visit.date ? dateLabel(visit.date) : 'No date yet'}{visit.time ? ` · ${visit.time}` : ''}</strong>
-        <span>{formatMoney(visit.price)} · {visit.inPlan ? 'Mowing plan visit' : visit.needsPlan ? 'Recurring, not in a plan' : 'One-off'} · {visit.address}</span>
+        <span>{formatMoney(visit.price)} · {visit.inPlan ? `${visit.planName ?? 'Plan'} visit` : visit.needsPlan ? 'Recurring, not in a plan' : 'One-off'} · {visit.address}</span>
       </div>
       <span className={`admin-badge admin-badge-${overdue ? 'pending' : visit.status}`}>{overdue ? 'Overdue' : jobStatusLabel(visit.status)}</span>
     </div>
@@ -88,7 +91,7 @@ function VisitRow({ visit, firstName, canEmail, setMessage }: {
       {visit.needsPlan && visit.joinPlanId
         ? <button type="button" className="crm-button crm-button-sm crm-button-primary" disabled={pending}
             onClick={() => run(() => addVisitToPlan({ bookingId: visit.id, expectedUpdatedAt: visit.updatedAt, operationId: op('join'), agreementId: visit.joinPlanId! }),
-              'Added to the mowing plan. Mark it done when the visit happens.')}>Add to mowing plan</button>
+              `Added to the ${(visit.joinPlanName ?? 'plan').toLowerCase()}. Mark it done when the visit happens.`)}>Add to {(visit.joinPlanName ?? 'plan').toLowerCase()}</button>
         : <button type="button" className={`crm-button crm-button-sm${open === 'done' ? ' crm-button-primary' : ''}`} disabled={pending || visit.needsPlan}
             onClick={() => { setOpen(open === 'done' ? null : 'done'); setMessage(null) }}><Icon name="check" size={14} />Done</button>}
       <button type="button" className={`crm-button crm-button-sm${open === 'move' ? ' crm-button-primary' : ''}`} disabled={pending}
@@ -100,8 +103,8 @@ function VisitRow({ visit, firstName, canEmail, setMessage }: {
         onClick={() => { if (window.confirm('Cancel this visit? It stays in history.')) run(() => changeJob({ bookingId: visit.id, expectedUpdatedAt: visit.updatedAt, operationId: op('cancel'), action: 'cancel' }), 'Visit canceled.') }}>Cancel visit</button>
     </div>
     {visit.needsPlan && <p className="crm-visit-note">{visit.joinPlanId
-      ? 'Booked as recurring but not in the mowing plan. Add it to the plan; it keeps its own price and the plan continues from its date.'
-      : 'Booked as recurring but there is no mowing plan. Start one above (it can begin from this visit) or mark this visit one-time.'}</p>}
+      ? `Booked as recurring but not in the ${(visit.joinPlanName ?? 'plan').toLowerCase()}. Add it to the plan; it keeps its own price and the plan continues from its date.`
+      : 'Booked as recurring but there is no plan here. Start one above (it can begin from this visit) or mark this visit one-time.'}</p>}
 
     {open === 'done' && <div className="crm-visit-form" aria-label="Mark visit done">
       <div className="crm-sheet-grid">
@@ -111,7 +114,7 @@ function VisitRow({ visit, firstName, canEmail, setMessage }: {
         <label className="crm-field">Paid by<select value={method} onChange={e => setMethod(e.target.value)}>
           <option>Cash</option><option>Stripe</option><option>Venmo</option><option>Zelle</option><option>Other</option></select></label>
       </div>
-      <p className="crm-visit-note">{visit.inPlan ? 'The mowing plan books the next visit automatically.' : 'One-off visit; nothing repeats.'} Leave Paid empty if they have not paid yet.</p>
+      <p className="crm-visit-note">{visit.inPlan ? `The ${(visit.planName ?? 'plan').toLowerCase()} books the next visit automatically.` : 'One-off visit; nothing repeats.'} Leave Paid empty if they have not paid yet.</p>
       <div className="crm-action-row">
         <button type="button" className="crm-button crm-button-primary" disabled={pending || !doneOn}
           onClick={() => run(() => finishVisit({ bookingId: visit.id, confirmOperationId: op('confirm'), completeOperationId: op('complete'),

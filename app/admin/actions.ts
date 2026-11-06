@@ -8,7 +8,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
-import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
+import { addInterval, centsAmount, commandError, frequencyLabel, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -325,14 +325,17 @@ export async function addCustomerJob(input: {
 }
 
 /**
- * Start a mowing plan for an existing customer. The first visit is either a visit they already have
- * booked at that property (a lead's booking, so it is not duplicated) or a new one; either way it is
- * scheduled on its date so it can be marked done.
+ * Start a plan (mowing, maintenance or any repeating service) for an existing customer. The first
+ * visit is either a visit they already have booked at that property (a lead's booking, so it is not
+ * duplicated) or a new one; either way it is scheduled on its date so it can be marked done.
+ * A property can have more than one plan (mowing and maintenance).
  */
 export async function startCustomerPlan(input: {
   jobOperationId: string; planOperationId: string; confirmOperationId: string; customerId: string
   propertyId: string | null; newAddress: string | null; existingBookingId?: string | null
   firstDate: string; intervalUnit: 'week' | 'month'; intervalCount: number; pricePerVisit: string
+  /** What the plan does each visit; defaults to lawn care (mowing). */
+  service?: string
 }): Promise<ActionResult> {
   await requireStaff(`/admin/customers/${input.customerId}`)
   if (![input.jobOperationId, input.planOperationId, input.confirmOperationId, input.customerId].every(v => UUID_RE.test(v))
@@ -345,12 +348,11 @@ export async function startCustomerPlan(input: {
     return { success: false, error: 'Choose how often to visit.' }
   }
   let items: JobLine[]
-  try { items = cleanJobLines([{ kind: 'service', description: 'Lawn care', amount: input.pricePerVisit }]) }
+  const service = (input.service ?? '').trim().slice(0, 120) || 'Lawn care'
+  try { items = cleanJobLines([{ kind: 'service', description: service, amount: input.pricePerVisit }]) }
   catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
   if (moneyCents(items[0].amount) <= 0) return { success: false, error: 'Enter the price per visit.' }
-  const label = input.intervalUnit === 'week'
-    ? (input.intervalCount === 1 ? 'Weekly' : input.intervalCount === 2 ? 'Bi-weekly' : `Every ${input.intervalCount} weeks`)
-    : (input.intervalCount === 1 ? 'Monthly' : `Every ${input.intervalCount} months`)
+  const label = frequencyLabel(input.intervalUnit, input.intervalCount)
   const db = getAdmin()
   let bookingId = input.existingBookingId ?? null
   if (bookingId) {
@@ -571,6 +573,84 @@ export async function changeAgreement(input: {
   if (error) return { success: false, error: commandError(error) }
   refreshJobs()
   return { success: true, data: data as Record<string, unknown> }
+}
+
+/**
+ * Edit plan: what each visit is and costs. Later visits use the new items; the booked next visit
+ * changes only when staff tick it (its own price may include a first-visit discount).
+ */
+export async function savePlanItems(input: {
+  agreementId: string; expectedUpdatedAt: string; operationId: string; items: JobLine[]
+  visit?: { bookingId: string; expectedUpdatedAt: string; operationId: string } | null
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (input.visit && ![input.visit.bookingId, input.visit.operationId].every(v => UUID_RE.test(v))) {
+    return { success: false, error: 'Refresh and try again.' }
+  }
+  let items: JobLine[]
+  try { items = cleanJobLines(input.items.filter(item => item.description.trim() || Number(item.amount))) }
+  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
+  if (!items.some(item => item.kind === 'service')) return { success: false, error: 'Add the service and its price.' }
+  const db = getAdmin()
+  // A retry reuses the operation IDs, so a step that already saved replays instead of repeating.
+  const saved = await changeAgreement({ agreementId: input.agreementId, expectedUpdatedAt: input.expectedUpdatedAt,
+    operationId: input.operationId, action: 'price_template', itemsTemplate: items })
+  if (!saved.success) return saved
+  if (input.visit) {
+    const { data: visit } = await db.from('bookings').select('agreement_id').eq('id', input.visit.bookingId).single()
+    if (visit?.agreement_id !== input.agreementId) return { success: false, error: 'Plan saved, but that visit is not in this plan. Refresh.' }
+    const { error } = await db.rpc('crm_replace_job_items', {
+      p_booking_id: input.visit.bookingId, p_expected_updated_at: input.visit.expectedUpdatedAt,
+      p_operation_id: input.visit.operationId, p_items: items,
+    })
+    if (error) return { success: false, error: `Plan saved, but the next visit kept its price: ${commandError(error)}` }
+  }
+  refreshJobs()
+  return { success: true }
+}
+
+/** Edit plan: how often. The next visit keeps its date; later open visits re-space from it. */
+export async function changePlanSchedule(input: {
+  agreementId: string; expectedUpdatedAt: string; operationId: string; intervalUnit: 'week' | 'month'; intervalCount: number
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.agreementId, input.operationId].every(v => UUID_RE.test(v))) return { success: false, error: 'Refresh and try again.' }
+  if (!['week', 'month'].includes(input.intervalUnit) || !Number.isInteger(input.intervalCount) || input.intervalCount < 1 || input.intervalCount > 52) {
+    return { success: false, error: 'Choose how often to visit.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_change_agreement_interval', {
+    p_agreement_id: input.agreementId, p_expected_updated_at: input.expectedUpdatedAt, p_operation_id: input.operationId,
+    p_unit: input.intervalUnit, p_count: input.intervalCount, p_label: frequencyLabel(input.intervalUnit, input.intervalCount),
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
+}
+
+/**
+ * Edit plan: pause. Upcoming unfinished visits (the reviewed preview) are canceled and kept in
+ * history. With a resume date the plan starts again right away from that date, so the next visit
+ * is booked on it; without one it stays paused until Resume.
+ */
+export async function pausePlan(input: {
+  agreementId: string; expectedUpdatedAt: string; pauseOperationId: string; resumeOperationId: string
+  futureJobIds: string[]; resumeOn?: string | null
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.agreementId, input.pauseOperationId, input.resumeOperationId, ...input.futureJobIds].every(v => UUID_RE.test(v))
+    || (input.resumeOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.resumeOn))) {
+    return { success: false, error: 'Refresh and try again.' }
+  }
+  // A retry reuses the operation IDs, so a pause that already saved replays instead of repeating.
+  const paused = await changeAgreement({ agreementId: input.agreementId, expectedUpdatedAt: input.expectedUpdatedAt,
+    operationId: input.pauseOperationId, action: 'pause', futureJobIds: input.futureJobIds })
+  if (!paused.success) return paused
+  if (!input.resumeOn) return { success: true }
+  const { data: agreement } = await getAdmin().from('recurring_agreements').select('updated_at').eq('id', input.agreementId).single()
+  const resumed = await changeAgreement({ agreementId: input.agreementId, expectedUpdatedAt: agreement?.updated_at ?? '',
+    operationId: input.resumeOperationId, action: 'resume', nextOn: input.resumeOn })
+  if (!resumed.success) return { success: false, error: `Plan paused, but it did not restart on that date: ${resumed.error} Use Resume.` }
+  return resumed
 }
 
 export async function getJobPayments() {

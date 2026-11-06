@@ -53,6 +53,38 @@ export function jobStatusLabel(status: string) {
 
 export type JobLine = { kind: 'service' | 'discount'; description: string; amount: string }
 
+/** Plan cadence as staff say it; also stored on each plan visit as its frequency label. */
+export function frequencyLabel(unit: 'week' | 'month' | string, count: number) {
+  return unit === 'week'
+    ? (count === 1 ? 'Weekly' : count === 2 ? 'Bi-weekly' : `Every ${count} weeks`)
+    : (count === 1 ? 'Monthly' : `Every ${count} months`)
+}
+
+/** "every 2 weeks", "every month": for plan summaries. */
+export function cadenceText(unit: string, count: number) {
+  return `every ${count === 1 ? '' : `${count} `}${unit}${count === 1 ? '' : 's'}`
+}
+
+const MOWING = /(mow|lawn care|lawn cut|grass cut)/i
+
+/**
+ * A plan is named after what it does (owner, 6 Nov: "there's also maintenance plans"): any mowing
+ * line makes it a mowing plan, otherwise its first service ("Maintenance" → "Maintenance plan").
+ */
+export function planName(items: { kind: string; description: string }[] | null | undefined) {
+  const services = (items ?? []).filter(item => item.kind === 'service').map(item => item.description.trim()).filter(Boolean)
+  if (!services.length || services.some(s => MOWING.test(s))) return 'Mowing plan'
+  const first = services[0].replace(/\s+plan$/i, '')
+  return `${first.charAt(0).toUpperCase()}${first.slice(1)} plan`
+}
+
+export function isMowingPlan(items: { kind: string; description: string }[] | null | undefined) {
+  return planName(items) === 'Mowing plan'
+}
+
+/** Services the plan sheets suggest; staff can type any other. */
+export const PLAN_SERVICES = ['Lawn care', 'Maintenance', 'Bed maintenance', 'Fertilization', 'Leaf cleanup', 'Shrub trimming']
+
 /**
  * Items for a first visit booked by phone (Caelan, 29 Oct): recurring plans charge the first visit
  * 30% off, like a website booking, as the plan price plus a discount line. `plan` is what later
@@ -101,7 +133,7 @@ export function mowingForecast(jobs: ForecastJob[], agreements: ForecastAgreemen
   for (const agreement of activeAgreements) {
     const related = jobs.find(job => job.agreement_id === agreement.id)
     if (!agreement.items_template.some(item => item.kind === 'service'
-      && /(mow|lawn care|grass cut)/i.test(item.description))) continue
+      && MOWING.test(item.description))) continue
     const perVisit = Number(agreement.price_per_visit ?? 0)
     if (perVisit <= 0) continue
     rows.push({ id: agreement.id, href: `/admin/customers/${agreement.customer_id}`,

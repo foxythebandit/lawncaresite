@@ -1,5 +1,16 @@
 # QuietGreen CRM revamp — project spine
 
+### Edit plan + maintenance plans — 6 November 2026
+
+- Owner asked for "Edit plan" on a customer with a plan, and said "theres also maintanence plans as well". Branch `claude/sleepy-ptolemy-5946cc`. Details and deploy order: `docs/plan-edit/README.md`.
+- How non-mowing recurring work was stored: the same `recurring_agreements` table; what a plan does is only its `items_template` lines (free-text service + price, D07). Nothing in the schema says "mowing" — the customer page hard-coded "Mowing plan", Start plan always wrote "Lawn care", and one plan per property was a UI rule only (no DB constraint). The quote builder's "Bed maintenance" add-on (`components/MapQuoteBuilder.tsx`) and ConviFlo's `regular_maintenance_plan` answer are interest flags, not plans; no $300 maintenance price exists in code, so it is staff-entered. `mowingForecast` keeps counting mowing plans only.
+- Customer page: **Edit plan** replaces Start mowing plan when the customer has an active or paused plan (`+ Another plan` / `Start plan` otherwise). One sheet (`app/admin/customers/[id]/PlanEditor.tsx`), plan picker when several: service lines + price (later visits; the booked next visit only when an unticked box is ticked), how often (weekly / 2 / 3 weeks / monthly, re-spaced from the next visit), next date (moves the whole plan via `moveVisit`/`crm_shift_agreement`; email box starts unticked), pause with optional restart date, resume, end (same preview rule as `crm_agreement_command`), book the next visit when none is booked. Changing property/customer is explained and skipped: bookings reference `(agreement, customer, property)`, so moving a plan would rewrite past visits.
+- Plans are named from their items (`planName`: any mowing line → "Mowing plan", else "<first service> plan"). Start plan takes a service (suggestions + free text) and allows several plans per property; a lead's recurring visit joins the property's mowing plan.
+- Move visit's "Email the customer" box now starts unticked (it started ticked).
+- Migration `20261106120000_crm_plan_edit.sql`: new `crm_change_agreement_interval`; `crm_agreement_command` resume now restarts the rhythm from the resume date (before, the visit after a resume followed the old start date and could land days later). **Not pushed to prod — needs the owner's OK, then `npm run release`.**
+- Verified: `tests/plan-edit.test.mjs` (7, PGlite, all migrations) + full `npm test` 113/113, typecheck, lint 0 errors, `check-migrations`. Local browser run on the PGlite stand-in (new seed customer Rosa with mowing + $300 maintenance): price incl. next visit, weekly, move plan, pause until a date, pause → resume, end, start a maintenance plan, Liz's Add to mowing plan. No production reads or writes; nothing emailed.
+- Next: owner reviews the PR, OKs the migration, runs `npm run release`.
+
 ### Quote email with lawn map + Add lead — 3 November 2026
 
 - Owner asked to email a phoned-in lead (6404 Night Chinook Dr, Buda, TX 78610; Census geocoder 30.105215, -97.778884; Photon/Nominatim only know the street, so use the map's "Set its location") a quote with a picture of the traced lawn and a website-style breakdown: weekly spring–early summer, bi-weekly after, bagging add-on. Branch `claude/quote-email-map`. No migration, no production reads or writes, nothing emailed.
