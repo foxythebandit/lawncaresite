@@ -4,7 +4,7 @@
 //   5 migrate prod      6 merge the PR   7 confirm the deploy
 // --dry-run: steps 1-4 (these do commit and push the branch), step 5 as `db push --dry-run`, then stops.
 // On main: steps 1, 2, 3, 5 only ("catch up prod").
-// Step 7 waits up to 15 minutes. After that, rerun: a merged branch skips straight to step 7.
+// Step 7 waits up to 15 minutes (75 for EAS). After that, rerun: a merged branch skips straight to step 7.
 //
 // Not verified on a real project when written (no prod was touched while building the kit).
 // Check these on each repo's first dry run:
@@ -31,8 +31,10 @@ const FUNCTIONS = 'supabase/functions';
 const LOCK_POLL_MS = 10_000;
 const POLL_MS = 15_000;
 const CI_APPEAR_MS = 5 * 60_000;
-// KIT_DEPLOY_WAIT_MS is for tests.
-const DEPLOY_WAIT_MS = Number(process.env.KIT_DEPLOY_WAIT_MS) || 15 * 60_000;
+// Bread's EAS runs have taken 52 minutes. KIT_DEPLOY_MINUTE_MS shortens the minute, for tests.
+const DEPLOY_WAIT_MINUTES = { 'eas-workflow': 75 };
+const DEPLOY_MINUTE_MS = Number(process.env.KIT_DEPLOY_MINUTE_MS) || 60_000;
+let deployMinutes = 15;
 let deployDeadline = 0;
 
 // `npm run release --dry-run` doesn't reach argv: npm keeps the flag and sets npm_config_dry_run.
@@ -276,7 +278,7 @@ async function poll(link, check) {
   for (;;) {
     const result = await check();
     if (result) return result;
-    if (Date.now() > deployDeadline) stop('deploy not seen. The merge already happened.', `check Vercel/EAS (${link}), then rerun; the rerun only checks the deploy.`);
+    if (Date.now() > deployDeadline) stop(`deploy not seen after ${deployMinutes} minutes. The merge already happened.`, `check Vercel/EAS (${link}), then rerun; the rerun only checks the deploy.`);
     await sleep(POLL_MS);
   }
 }
@@ -326,8 +328,9 @@ async function confirmEas(sha, workflow) {
 }
 
 async function confirmDeploy(sha) {
-  deployDeadline = Date.now() + DEPLOY_WAIT_MS;
   const deploy = kit.deploy ?? {};
+  deployMinutes = DEPLOY_WAIT_MINUTES[deploy.type] ?? 15;
+  deployDeadline = Date.now() + deployMinutes * DEPLOY_MINUTE_MS;
   if (deploy.type === 'github-actions') return confirmGithubActions(sha, deploy.workflow);
   if (deploy.type === 'vercel-git') return confirmVercel(sha);
   if (deploy.type === 'eas-workflow') return confirmEas(sha, deploy.workflow);

@@ -71,28 +71,38 @@ test('npm run release --dry-run stops before the merge and never changes prod', 
   }
 })
 
-test('step 7 stops after its time limit when the deploy never shows up', () => {
-  const { dir, repo, log, env } = scratchRepo()
-  try {
-    // A rerun after the merge: the PR is merged at HEAD, so the script goes straight to step 7. No deploy ever appears.
-    const gh = join(dir, 'stubs/gh')
-    writeFileSync(gh, `#!/bin/sh
-echo "gh $*" >> "$CALLS_LOG"
-case "$1 $2" in
+// A rerun after the merge: the PR is merged at HEAD, so the script goes straight to step 7. No deploy ever appears.
+// A minute is shortened to 1 ms, so the message shows which limit was used.
+for (const [deploy, minutes, lookup] of [
+  [{ type: 'vercel-git' }, 15, 'gh api repos/o/r/deployments'],
+  [{ type: 'eas-workflow', workflow: 'deploy.yml' }, 75, 'npx eas-cli workflow:runs'],
+]) {
+  test(`step 7 gives up after ${minutes} minutes for ${deploy.type} when the deploy never shows up`, () => {
+    const { dir, repo, log, env } = scratchRepo()
+    try {
+      const pkg = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'))
+      pkg.kit.deploy = deploy
+      writeFileSync(join(repo, 'package.json'), JSON.stringify(pkg))
+      assert.equal(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', 'commit', '-qam', 'deploy type', '--allow-empty'], { cwd: repo }).status, 0)
+      const stub = (name, body) => {
+        writeFileSync(join(dir, 'stubs', name), `#!/bin/sh\necho "${name} $*" >> "$CALLS_LOG"\n${body}\n`)
+        chmodSync(join(dir, 'stubs', name), 0o755)
+      }
+      stub('gh', `case "$1 $2" in
   "pr list") echo "[{\\"number\\":1,\\"url\\":\\"http://pr\\",\\"state\\":\\"MERGED\\",\\"headRefOid\\":\\"$(git rev-parse HEAD)\\",\\"mergeCommit\\":{\\"oid\\":\\"abc\\"}}]" ;;
   "repo view") echo '{"nameWithOwner":"o/r","url":"http://repo"}' ;;
   api*) echo '[]' ;;
-esac
-`)
-    chmodSync(gh, 0o755)
-    const r = spawnSync('npm', ['run', 'release'], { cwd: repo, env: { ...env, KIT_DEPLOY_WAIT_MS: '1' }, encoding: 'utf8', timeout: 60_000 })
-    assert.equal(r.status, 1, r.stdout + r.stderr)
-    assert.match(r.stderr, /deploy not seen\. The merge already happened\./)
-    assert.match(r.stderr, /check Vercel\/EAS .*then rerun/)
-    const calls = readFileSync(log, 'utf8').split('\n')
-    assert.ok(calls.some(call => call.startsWith('gh api repos/o/r/deployments')), 'it looked for the deploy')
-    assert.ok(!calls.some(call => call.startsWith('gh pr merge') || call.startsWith('supabase db push')), 'nothing merged or migrated')
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
+esac`)
+      stub('npx', `echo '[]'`)
+      const r = spawnSync('npm', ['run', 'release'], { cwd: repo, env: { ...env, KIT_DEPLOY_MINUTE_MS: '0.001' }, encoding: 'utf8', timeout: 60_000 })
+      assert.equal(r.status, 1, r.stdout + r.stderr)
+      assert.match(r.stderr, new RegExp(`deploy not seen after ${minutes} minutes\\. The merge already happened\\.`))
+      assert.match(r.stderr, /check Vercel\/EAS .*then rerun/)
+      const calls = readFileSync(log, 'utf8').split('\n')
+      assert.ok(calls.some(call => call.startsWith(lookup)), 'it looked for the deploy')
+      assert.ok(!calls.some(call => call.startsWith('gh pr merge') || call.startsWith('supabase db push')), 'nothing merged or migrated')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+}
