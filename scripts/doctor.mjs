@@ -41,6 +41,15 @@ function expectedRuntime() {
   return 'docker';
 }
 
+// Codex shells set LC_ALL=C.UTF-8, which macOS doesn't have, and Postgres's initdb then fails ("invalid locale settings").
+// db.mjs has the same fix.
+const LOCALE_NAMES = ['LANG', 'LC_ALL', 'LC_COLLATE', 'LC_CTYPE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME'];
+const hasLocale = (value) => !value || value === 'C' || value === 'POSIX' || existsSync(`/usr/share/locale/${value}`);
+const missingLocales = () => (process.platform === 'darwin'
+  ? LOCALE_NAMES.filter((name) => !hasLocale(process.env[name]))
+  : []);
+const badLocales = () => missingLocales().map((name) => `${name}=${process.env[name]}`).join(', ');
+
 // Docker Desktop's tools, including the credential helper image pulls need, aren't always on PATH.
 if (process.platform === 'darwin' && expectedRuntime() === 'docker') {
   process.env.PATH = ['/Applications/Docker.app/Contents/Resources/bin', join(homedir(), '.docker/bin'), process.env.PATH].join(delimiter);
@@ -79,15 +88,39 @@ function parseEnv(file) {
 
 const localChecks = [
   {
+    // db.mjs passes KIT_DB_START_ERROR when its start failed.
+    name: 'Locale is one this machine has',
+    detect: () => {
+      if (missingLocales().length) return `this Mac has no ${badLocales()}, so Postgres can't start ("invalid locale settings").`;
+      if (/invalid locale settings/.test(process.env.KIT_DB_START_ERROR ?? '')) {
+        return 'Postgres refused this shell\'s locale ("invalid locale settings"). Set LANG and LC_ALL to one `locale -a` lists, like en_US.UTF-8.';
+      }
+      return '';
+    },
+    fix: () => {
+      if (!missingLocales().length) return;
+      console.log(`note: this Mac has no ${badLocales()}. Using en_US.UTF-8 instead; \`npm run db:*\` does the same on its own.`);
+      for (const name of missingLocales()) process.env[name] = 'en_US.UTF-8';
+    },
+  },
+  {
+    // Codex's sandbox doesn't let Postgres create shared memory. Nothing in this shell can fix that.
+    name: 'This shell may run the database',
+    detect: () => (/could not create shared memory segment/.test(process.env.KIT_DB_START_ERROR ?? '')
+      ? `Codex's sandbox blocks the database ("could not create shared memory segment"). This needs the Codex allow rule for the DB commands; ask ${kit.approver ?? 'Caelan'}.`
+      : ''),
+  },
+  {
     name: 'Packages installed',
     detect: () => (existsSync(bin) ? '' : 'node_modules/.bin/supabase is missing: run `npm ci`.'),
     fix: () => run('npm', ['ci'], { stdio: 'inherit' }),
   },
   {
-    name: 'Docker is running (this Mac uses Docker for the local database)',
+    // The doctor never starts Docker.
+    name: `Database runtime: ${expectedRuntime()}`,
     detect: () => (expectedRuntime() !== 'docker' || run('docker', ['info']).ok
       ? ''
-      : 'Docker isn\'t running. Install Docker Desktop from docker.com if you don\'t have it, open it, wait for it to say "running", then run this again.'),
+      : 'Docker isn\'t running, and this machine\'s database needs it. A person opens Docker Desktop (from docker.com), waits for "running", then runs this again. AI agents: stop and say so; never open Docker yourself.'),
   },
   {
     name: 'Pinned CLI in use',
@@ -271,7 +304,7 @@ if (!process.argv.includes('--local')) {
   else for (const check of prodChecks) runCheck(check, false);
 }
 
-if (localBroken && expectedRuntime() === 'native') console.log('Last resort, only if native truly can\'t work: `KIT_DB_RUNTIME=docker npm run db:start`.');
+if (localBroken && expectedRuntime() === 'native') console.log('Last resort, only if native truly can\'t work and a person says so (agents never switch runtimes): `KIT_DB_RUNTIME=docker npm run db:start`.');
 if (broken) {
   console.log('Not fixed. Fixed a new problem? Add a check to `scripts/doctor.mjs`: detect, fix, detect again.');
   process.exit(1);

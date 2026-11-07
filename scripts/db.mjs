@@ -12,7 +12,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const kit = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).kit ?? {};
 const envFile = kit.envFile ?? '.env.local';
 const TYPES_FILE = 'supabase/database.types.ts';
-const STUCK = 'Stuck: environment broken. See the doctor output above.';
+const STUCK = 'Stuck: environment broken. See the doctor output above. Don\'t start Docker or another runtime by hand.';
 
 function die(message) {
   console.error(message);
@@ -55,6 +55,15 @@ function runtime() {
 if (process.platform === 'darwin' && runtime() === 'docker') {
   process.env.PATH = ['/Applications/Docker.app/Contents/Resources/bin', join(homedir(), '.docker/bin'), process.env.PATH].join(delimiter);
 }
+
+// Codex shells set LC_ALL=C.UTF-8, which macOS doesn't have, and Postgres's initdb then fails ("invalid locale settings").
+// The doctor has the same check.
+const LOCALE_NAMES = ['LANG', 'LC_ALL', 'LC_COLLATE', 'LC_CTYPE', 'LC_MESSAGES', 'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME'];
+const hasLocale = (value) => !value || value === 'C' || value === 'POSIX' || existsSync(`/usr/share/locale/${value}`);
+const missingLocales = () => (process.platform === 'darwin'
+  ? LOCALE_NAMES.filter((name) => !hasLocale(process.env[name]))
+  : []);
+for (const name of missingLocales()) process.env[name] = 'en_US.UTF-8';
 
 function isRunning() {
   const r = supabase('stack', 'status', '--output-format', 'json');
@@ -105,7 +114,8 @@ function start() {
     if (!r.ok) {
       show(r);
       console.log('Start failed. Running the doctor.');
-      run(process.execPath, ['scripts/doctor.mjs', '--local'], { stdio: 'inherit' });
+      // The doctor only looks for known phrases; the end of the output is enough, and env size is limited.
+      run(process.execPath, ['scripts/doctor.mjs', '--local'], { stdio: 'inherit', env: { ...process.env, KIT_DB_START_ERROR: `${r.out}\n${r.err}`.slice(-10_000) } });
       r = once();
       if (!r.ok) { show(r); die(STUCK); }
       if (hasPendingMigrations()) die(STUCK);
@@ -224,16 +234,31 @@ function isLocalUrl(url) {
 }
 
 // Same order as the app: the shell's env wins, then the env file, then .env.
-function guard() {
-  const effective = { ...parseEnv('.env'), ...parseEnv(envFile), ...process.env };
+const effectiveEnv = () => ({ ...parseEnv('.env'), ...parseEnv(envFile), ...process.env });
+
+// A stopped database, or one that came back on another port, doesn't answer: the site loads but sign-in fails.
+// Idle services take up to about 7 s to wake, so the limit is well above that.
+async function answers(url) {
+  try { return (await fetch(new URL('/auth/v1/health', url), { signal: AbortSignal.timeout(20_000) })).ok; } catch { return false; }
+}
+
+async function guard() {
+  const effective = effectiveEnv();
   if (!isLocalUrl(effective[kit.envNames?.API_URL])) die('This points at a non-local database. Run `npm run db:start`.');
   if (/^[sr]k_live_/.test(effective.STRIPE_SECRET_KEY ?? '')) die(`STRIPE_SECRET_KEY in ${envFile} is a live key. Use a test key (sk_test_...) or leave it blank.`);
   if (effective.RESEND_API_KEY && !effective.EMAIL_DEV_RECIPIENT) {
     die(`RESEND_API_KEY is set but EMAIL_DEV_RECIPIENT isn't, so local email could reach real people. Set EMAIL_DEV_RECIPIENT in ${envFile}.`);
+  }
+  if (await answers(effective[kit.envNames.API_URL])) return;
+  console.log('The local database isn\'t answering. Running `npm run db:start`.');
+  start();
+  if (!(await answers(effectiveEnv()[kit.envNames.API_URL]))) {
+    run(process.execPath, ['scripts/doctor.mjs', '--local'], { stdio: 'inherit' });
+    die(STUCK);
   }
 }
 
 const [command, ...args] = process.argv.slice(2);
 const commands = { start, stop, destroy, reset, env: () => env(args), status, types: () => types(args), guard };
 if (!commands[command]) die('Usage: node scripts/db.mjs start|stop|destroy|reset|env|status|types|guard');
-commands[command]();
+await commands[command]();
