@@ -16,15 +16,17 @@ export default function Home() {
     <>
       <ScrollReveal />
       <Nav />
-      <Hero />
-      <TrustBar />
-      <MapQuoteBuilder />
-      <GeneralInquiry />
-      <Founder />
-      <Testimonials />
-      <HowItWorks />
-      <WhyElectric />
-      <FAQ />
+      <main>
+        <Hero />
+        <TrustBar />
+        <MapQuoteBuilder />
+        <GeneralInquiry />
+        <Founder />
+        <Testimonials />
+        <HowItWorks />
+        <WhyElectric />
+        <FAQ />
+      </main>
       <Footer />
     </>
   )
