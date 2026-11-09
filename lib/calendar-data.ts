@@ -85,6 +85,7 @@ export type CalendarAttentionRow = {
   job_total: number | null
   reason: string | null
   service?: string
+  requested?: boolean
 }
 
 export async function getCalendarAttentionPage(today: string, kind: CalendarAttentionRow['kind'], page: number, returnTo = CALENDAR_PATH) {
@@ -109,7 +110,7 @@ export async function getVisitSearch(search: string, page: number, filter?: 'con
   if (filter === 'confirmed') query = query.eq('status', 'confirmed')
   if (filter === 'week' && bounds) query = query.gte('confirmed_date', bounds.first).lte('confirmed_date', bounds.last)
   const offset = (page - 1) * ATTENTION_PAGE_SIZE
-  const { data, error } = await query.order('created_at', { ascending: false }).order('id').range(offset, offset + ATTENTION_PAGE_SIZE)
+  const { data, error } = await query.order('crm_calendar_search_date', { nullsFirst: false }).order('id').range(offset, offset + ATTENTION_PAGE_SIZE)
   if (error) throw new Error('Could not search visits.')
   return { rows: data.slice(0, ATTENTION_PAGE_SIZE), more: data.length > ATTENTION_PAGE_SIZE }
 }

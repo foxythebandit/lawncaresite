@@ -137,6 +137,24 @@ def fixture():
     request("leads", "POST", {"id": lead_id, "phone": unnamed["phone"], "address": unnamed_addr, "source": "staff"})
     return mowing, cleanup, unnamed_visit, overdue, pending, moved, plan, customer, unlinked
 
+def search_fixture():
+    rows = []
+    for offset in [*range(26, 0, -1), 25, None]:
+        on = day(40 + offset) if offset is not None else None
+        requested = offset is None or offset % 2 == 1
+        id_ = str(uuid4())
+        visit_ids.append(id_)
+        rows.append({
+            "id": id_, "name": "Casey Quinn", "phone": "5125550186",
+            "address": "28 Marigold Hollow, Austin, TX 78748",
+            "status": "pending" if requested else "confirmed",
+            "created_at": f"{TODAY.isoformat()}T13:00:00Z",
+            "confirmed_date": None if requested else on,
+            "preferred_date": on if requested else day(2),
+        })
+    request("bookings", "POST", rows)
+    return sorted(rows, key=lambda row: (row["confirmed_date"] or row["preferred_date"] or "9999-12-31", row["id"]))
+
 def local_browser(browser, width, height):
     context = browser.new_context(viewport={"width": width, "height": height},
                                   timezone_id="America/Chicago", service_workers="block")
@@ -458,6 +476,18 @@ try:
         expect(page.get_by_text("71 Willowbank Walk, Apt 4, Austin, TX 78744", exact=True)).to_be_visible()
         expect(page.get_by_text("(512) 555-0183", exact=True)).to_be_visible()
         shot(page, "leads-identity-desktop")
+        ordered_search = search_fixture()
+        page.goto(calendar(search="Casey Quinn"))
+        results = page.get_by_role("region", name="Search results")
+        search_links = results.get_by_role("link", name=re.compile("Casey Quinn"))
+        expect(search_links).to_have_count(25)
+        first_page = search_links.evaluate_all("(links) => links.map(link => new URL(link.href).pathname.split('/').pop())")
+        assert first_page == [row["id"] for row in ordered_search[:25]]
+        page.get_by_role("link", name="Next page", exact=True).click()
+        expect(search_links).to_have_count(3)
+        next_page = search_links.evaluate_all("(links) => links.map(link => new URL(link.href).pathname.split('/').pop())")
+        assert next_page == [row["id"] for row in ordered_search[25:]]
+        expect(search_links.last).to_contain_text("No date set")
         assert not errors, errors
         desktop.close()
         browser.close()

@@ -27,12 +27,15 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     : first === last ? dateLabel(first, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     : `${dateLabel(first, { month: 'short', day: 'numeric', ...(first.slice(0, 4) !== last.slice(0, 4) && { year: 'numeric' }) })} – ${dateLabel(last, { month: 'short', day: 'numeric', year: 'numeric' })}`
   const resultsTitle = attention ? ATTENTION[attention] : 'Search results'
-  const rows = attention ? attentionPage.rows : (search?.rows ?? []).map(row => ({
-    booking_id: row.id, agreement_id: null, revision_id: null, cadence_on: null, customer_id: null,
-    name: row.name, address: row.address, phone: row.phone, visit_status: row.status, job_total: row.job_total,
-    service_on: row.status === 'pending' ? row.preferred_date : row.confirmed_date,
-    visit_time: row.status === 'pending' ? row.preferred_time : row.confirmed_time, reason: null, service: undefined,
-  }))
+  const rows = attention ? attentionPage.rows : (search?.rows ?? []).map(row => {
+    const requested = row.status === 'pending' || !row.confirmed_date
+    return {
+      booking_id: row.id, agreement_id: null, revision_id: null, cadence_on: null, customer_id: null,
+      name: row.name, address: row.address, phone: row.phone, visit_status: row.status, job_total: row.job_total,
+      service_on: requested ? row.preferred_date : row.confirmed_date,
+      visit_time: requested ? row.preferred_time : row.confirmed_time, reason: null, service: undefined, requested,
+    }
+  })
   const more = attention ? page * ATTENTION_PAGE_SIZE < attentionPage.counts[attention] : search?.more
   const visibleVisits = context.filter === 'confirmed' ? visits.filter(visit => visit.visit_status === 'confirmed') : visits
 
@@ -84,8 +87,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <small>{[row.address !== name ? row.address : null, row.phone ? formatPhone(row.phone) : null].filter(Boolean).join(' · ')}</small>
               {row.reason && <small>{row.reason}</small>}</span>
             <span><strong>{attention === 'needs_scheduling' ? row.service ?? 'Service not specified'
-              : row.reason ? 'Review schedule' : visitStatus(row.visit_status ?? '', row.service_on, today)}</strong>
-              {!row.reason && <small>{row.visit_status === 'pending' && row.service_on ? 'Requested ' : ''}{when}{row.visit_time ? ` · ${visitTime(row.visit_time)}` : ''}{row.job_total != null ? ` · ${formatMoney(row.job_total)}` : ''}</small>}</span>
+              : row.reason ? 'Review schedule' : visitStatus(row.visit_status ?? '', row.requested ? null : row.service_on, today)}</strong>
+              {!row.reason && <small>{(row.visit_status === 'pending' || row.requested) && row.service_on ? 'Requested ' : ''}{when}{row.visit_time ? ` · ${visitTime(row.visit_time)}` : ''}{row.job_total != null ? ` · ${formatMoney(row.job_total)}` : ''}</small>}</span>
             <Icon name="chevronRight" size={16} />
           </Link>
         })}
