@@ -383,45 +383,11 @@ begin
   return v_result || '{"duplicate":false}'::jsonb;
 end $$;
 
--- An individual line-item edit protects the visit even if its total stays the same.
-create or replace function public.crm_replace_job_items(p_booking_id uuid,p_expected_updated_at timestamptz,
-  p_operation_id uuid,p_items jsonb) returns jsonb language plpgsql security invoker
-  set search_path = '' as $$
-declare v_booking public.bookings; v_item jsonb; v_total numeric; v_result jsonb;
-begin
-  v_result := public.crm_operation_reply(p_operation_id,'replace_job_items',p_booking_id,p_items);
-  if v_result is not null then return v_result; end if;
-  select * into v_booking from public.bookings where id = p_booking_id for update;
-  if not found then raise exception 'Job not found' using errcode = 'P0002'; end if;
-  if v_booking.updated_at is distinct from p_expected_updated_at then
-    raise exception 'Job changed since it was opened' using errcode = 'PT409';
-  end if;
-  if v_booking.status in ('completed','canceled','skipped','declined') then
-    raise exception 'Finished job prices cannot be changed' using errcode = '23514';
-  end if;
-  v_total := public.crm_validate_items(p_items);
-  delete from public.job_items where booking_id = p_booking_id;
-  for v_item in select value from jsonb_array_elements(p_items) loop
-    insert into public.job_items(booking_id,kind,description,amount)
-      values(p_booking_id,v_item->>'kind',btrim(v_item->>'description'),(v_item->>'amount')::numeric);
-  end loop;
-  update public.bookings set job_total = v_total,
-    price_per_visit = case when v_total = trunc(v_total) and v_total <= 2147483647
-      then v_total::integer else null end,
-    payment_link = null,
-    schedule_state = case when schedule_state = 'generated' then 'exception' else schedule_state end
-    where id = p_booking_id;
-  v_result := jsonb_build_object('booking_id',p_booking_id,'job_total',v_total);
-  insert into public.crm_operations(id,action,target_id,request,result)
-    values(p_operation_id,'replace_job_items',p_booking_id,p_items,v_result);
-  return v_result;
-end $$;
-
 create or replace function public.crm_agreement_command(p_agreement_id uuid,p_expected_updated_at timestamptz,
   p_operation_id uuid,p_action text,p_payload jsonb) returns jsonb language plpgsql
   security invoker set search_path = '' as $$
 declare v_agreement public.recurring_agreements; v_result jsonb; v_future jsonb;
-  v_next date; v_source uuid; v_new uuid; v_total numeric; v_revision uuid; v_booking_id uuid;
+  v_next date; v_source uuid; v_new uuid; v_total numeric; v_revision uuid; v_visit record;
   v_today date := (now() at time zone 'America/Chicago')::date;
   r public.agreement_schedule_revisions;
 begin
@@ -452,20 +418,18 @@ begin
         p_payload->'items_template',r.visit_time);
       perform 1 from public.bookings where agreement_id = p_agreement_id and schedule_state = 'generated'
         and status = 'confirmed' and confirmed_date >= v_today order by id for update;
-      for v_booking_id in
-        update public.bookings b set schedule_revision_id = v_revision,job_total = v_total,
-          price_per_visit = case when v_total = trunc(v_total) and v_total <= 2147483647 then v_total::integer end,
-          first_visit_price = case when v_total = trunc(v_total) and v_total <= 2147483647 then v_total::integer end
+      for v_visit in
+        select b.id,b.updated_at from public.bookings b
         where b.agreement_id = p_agreement_id and b.schedule_state = 'generated' and b.status = 'confirmed'
           and b.occurrence_on >= v_next and b.confirmed_date >= v_today
           and b.amount_charged is null and b.payment_link is null
           and not exists(select 1 from public.job_payments p where p.booking_id = b.id)
-        returning b.id
+        order by b.id
       loop
-        delete from public.job_items where booking_id = v_booking_id;
-        insert into public.job_items(booking_id,kind,description,amount)
-          select v_booking_id,item->>'kind',item->>'description',(item->>'amount')::numeric
-          from jsonb_array_elements(p_payload->'items_template') item;
+        -- Reuse the checked line-item command. Keep these visits schedule-owned.
+        perform public.crm_replace_job_items(v_visit.id,v_visit.updated_at,gen_random_uuid(),p_payload->'items_template');
+        update public.bookings set schedule_revision_id = v_revision,schedule_state = 'generated',
+          first_visit_price = price_per_visit where id = v_visit.id;
       end loop;
       perform public.crm_reconcile_schedule(p_agreement_id,v_today);
     end if;

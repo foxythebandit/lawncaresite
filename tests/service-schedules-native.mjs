@@ -57,11 +57,24 @@ test('two native reconciliation requests create one visit per cadence slot', asy
     const lines = await data(admin.from('job_items').select('booking_id, amount').in('booking_id', savedIds))
     assert.deepEqual(lines.map(row => row.booking_id).sort(), savedIds.sort())
     assert.ok(lines.every(row => row.amount === 85.5))
+
+    const agreement = await data(admin.from('recurring_agreements').select('updated_at')
+      .eq('id', started.agreement_id).single())
+    await data(admin.rpc('crm_agreement_command', {
+      p_agreement_id: started.agreement_id, p_expected_updated_at: agreement.updated_at,
+      p_operation_id: randomUUID(), p_action: 'price_template',
+      p_payload: { items_template: [{ ...items[0], amount: '91.27' }] },
+    }))
+    const repriced = await data(admin.from('bookings').select('job_total, schedule_state').eq('id', saved[1].id).single())
+    assert.deepEqual(repriced, { job_total: 91.27, schedule_state: 'generated' })
   } finally {
     // Test-only teardown needs database-owner privileges because the app cannot delete revisions.
     execFileSync('supabase', ['db', 'query', '--local', `do $$
     begin
       update public.recurring_agreements set schedule_source_booking_id = null where customer_id = '${customerId}';
+      delete from public.crm_operations where id = '${operationId}'
+        or target_id in (select id from public.bookings where customer_id = '${customerId}')
+        or target_id in (select id from public.recurring_agreements where customer_id = '${customerId}');
       delete from public.job_items where booking_id in (select id from public.bookings where customer_id = '${customerId}');
       delete from public.bookings where customer_id = '${customerId}';
       delete from public.agreement_schedule_revisions where agreement_id in (
@@ -69,7 +82,6 @@ test('two native reconciliation requests create one visit per cadence slot', asy
       delete from public.recurring_agreements where customer_id = '${customerId}';
       delete from public.properties where id = '${propertyId}';
       delete from public.customers where id = '${customerId}';
-      delete from public.crm_operations where id = '${operationId}';
     end $$;`], { stdio: 'pipe' })
   }
 })

@@ -31,6 +31,18 @@ end $$;
 create trigger crm_protect_schedule_visit before update on public.bookings
   for each row execute function public.crm_protect_schedule_visit();
 
+-- The individual price command records an operation even when the total is unchanged.
+create function public.crm_protect_schedule_item_edit() returns trigger
+language plpgsql security invoker set search_path = '' as $$
+begin
+  update public.bookings set schedule_state = 'exception'
+    where id = new.target_id and schedule_state = 'generated';
+  return new;
+end $$;
+create trigger crm_protect_schedule_item_edit after insert on public.crm_operations
+  for each row when (new.action = 'replace_job_items')
+  execute function public.crm_protect_schedule_item_edit();
+
 create function public.crm_materialize_schedule_visit(p_agreement_id uuid,p_revision_id uuid,p_on date)
 returns uuid language plpgsql security invoker set search_path = '' as $$
 declare a public.recurring_agreements; b public.bookings; r public.agreement_schedule_revisions;
@@ -180,6 +192,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
 $$;
 
 revoke all on function public.crm_schedule_slots(uuid,date,date), public.crm_protect_schedule_visit(),
+  public.crm_protect_schedule_item_edit(),
   public.crm_materialize_schedule_visit(uuid,uuid,date), public.crm_reconcile_schedule(uuid,date),
   public.crm_reconcile_schedules(date), public.crm_calendar_entries(date,date), public.crm_calendar_attention(date)
   from public,anon,authenticated;
