@@ -309,14 +309,14 @@ isOneToOne: false
                   ]
                 },"recurring_agreements": {
                   Row: {
-                    "anchor_on": string,"created_at": string,"customer_id": string,"end_on": string | null,"generated_through": string | null,"generation_starts_on": string | null,"id": string,"interval_count": number,"interval_unit": string,"items_template": NonNullable<Json>,"next_on": string,"price_per_visit": number | null,"property_id": string,"schedule_source_booking_id": string | null,"status": string,"updated_at": string
+                    "anchor_on": string,"created_at": string,"customer_id": string,"end_on": string | null,"generated_through": string | null,"generation_starts_on": string | null,"id": string,"interval_count": number,"interval_unit": string,"items_template": NonNullable<Json>,"next_on": string,"price_per_visit": number | null,"property_id": string,"schedule_review_reason": string | null,"schedule_source_booking_id": string | null,"status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "anchor_on": string,"created_at"?: string,"customer_id": string,"end_on"?: string | null,"generated_through"?: string | null,"generation_starts_on"?: string | null,"id"?: string,"interval_count": number,"interval_unit": string,"items_template"?: NonNullable<Json>,"next_on": string,"price_per_visit"?: number | null,"property_id": string,"schedule_source_booking_id"?: string | null,"status"?: string,"updated_at"?: string
+                    "anchor_on": string,"created_at"?: string,"customer_id": string,"end_on"?: string | null,"generated_through"?: string | null,"generation_starts_on"?: string | null,"id"?: string,"interval_count": number,"interval_unit": string,"items_template"?: NonNullable<Json>,"next_on": string,"price_per_visit"?: number | null,"property_id": string,"schedule_review_reason"?: string | null,"schedule_source_booking_id"?: string | null,"status"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "anchor_on"?: string,"created_at"?: string,"customer_id"?: string,"end_on"?: string | null,"generated_through"?: string | null,"generation_starts_on"?: string | null,"id"?: string,"interval_count"?: number,"interval_unit"?: string,"items_template"?: NonNullable<Json>,"next_on"?: string,"price_per_visit"?: number | null,"property_id"?: string,"schedule_source_booking_id"?: string | null,"status"?: string,"updated_at"?: string
+                    "anchor_on"?: string,"created_at"?: string,"customer_id"?: string,"end_on"?: string | null,"generated_through"?: string | null,"generation_starts_on"?: string | null,"id"?: string,"interval_count"?: number,"interval_unit"?: string,"items_template"?: NonNullable<Json>,"next_on"?: string,"price_per_visit"?: number | null,"property_id"?: string,"schedule_review_reason"?: string | null,"schedule_source_booking_id"?: string | null,"status"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -403,7 +403,7 @@ isOneToOne: false
 { Args: { "p_expected_updated_at": string,"p_items": Json,"p_job": Json,"p_lead_id": string,"p_operation_id": string }; Returns: Json
                            },
 "crm_activate_schedule":
-{ Args: { "p_agreement_id": string,"p_source_id": string }; Returns: undefined
+{ Args: { "p_agreement_id": string,"p_legacy"?: boolean,"p_source_id": string }; Returns: undefined
                            },
 "crm_agreement_command":
 { Args: { "p_action": string,"p_agreement_id": string,"p_expected_updated_at": string,"p_operation_id": string,"p_payload": Json }; Returns: Json

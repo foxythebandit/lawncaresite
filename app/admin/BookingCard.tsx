@@ -35,7 +35,7 @@ type Property = { id: string; customer_id: string; address: string }
 type Agreement = {
   id: string; status: string; updated_at: string; anchor_on: string; next_on: string
   interval_unit: 'week' | 'month'; interval_count: number; price_per_visit: number | string | null
-  items_template: JobLine[]
+  items_template: JobLine[]; schedule_review_reason: string | null
 }
 type Payment = { id: string; amount: number | string; paid_on: string; method: string; provenance: string }
 
@@ -230,7 +230,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
             <input aria-label="Visit date" type="date" value={visitDate} onChange={e => setVisitDate(e.target.value)} className="admin-confirm-date-input" />
             <input aria-label="Arrival time or window" value={visitTime} onChange={e => setVisitTime(e.target.value)} className="admin-confirm-date-input" placeholder="Morning, Afternoon, or HH:MM" />
           </div>
-          {agreement?.status === 'active' && <label className="crm-check"><input type="checkbox" checked={movePlan} onChange={e => setMovePlan(e.target.checked)} />Move the rest of the plan too</label>}
+          {agreement?.status === 'active' && !agreement.schedule_review_reason && <label className="crm-check"><input type="checkbox" checked={movePlan} onChange={e => setMovePlan(e.target.checked)} />Move the rest of the plan too</label>}
           <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !visitDate} onClick={() => movePlan && agreement?.status === 'active'
             ? run('move-plan:'+visitDate+visitTime, id => moveVisit({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, date: visitDate, time: visitTime, wholePlan: true, email: emailConfigured && Boolean(booking.email) }), 'Visit moved; the plan now runs from the new date.')
             : run('schedule:'+visitDate+visitTime, id => scheduleJobAndEmail({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, action: booking.status === 'pending' ? 'confirm' : 'reschedule', date: visitDate, time: visitTime }), booking.status === 'pending' ? 'Visit confirmed.' : 'Only this visit was rescheduled.')}>{emailConfigured && booking.email ? booking.status === 'pending' ? 'Confirm & email customer' : 'Reschedule & email customer' : 'Save visit date'}</button></div>
@@ -240,7 +240,7 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         {booking.status === 'confirmed' && <section className="admin-complete-panel" aria-label="Complete job">
           <h3>Complete this visit</h3>
           <input aria-label="Date completed" type="date" value={completedOn} onChange={e => setCompletedOn(e.target.value)} className="admin-confirm-date-input" />
-          <p>{agreement?.status === 'active' ? 'The next visit will be created from the mowing plan.' : 'This is a one-off visit; no next visit will be created.'} Payment is recorded separately.</p>
+          <p>{agreement?.schedule_review_reason ? 'The mowing plan needs schedule review.' : agreement?.status === 'active' ? 'The mowing plan keeps its existing schedule.' : null} Payment is recorded separately.</p>
           {needsOneTimeDecision && customerPlan && <>
             <p role="alert">This visit is recurring but not in {booking.name.split(' ')[0]}&apos;s mowing plan (every {customerPlan.interval_count} {customerPlan.interval_unit}{customerPlan.interval_count === 1 ? '' : 's'}, {money(customerPlan.price_per_visit)}/visit). Add it to the plan; it keeps its {money(jobPrice(booking))} price and the plan continues from its date.</p>
             <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending} onClick={() => run('join-plan', id => addVisitToPlan({ bookingId: booking.id, expectedUpdatedAt: booking.updated_at, operationId: id, agreementId: customerPlan.id }), 'Added to the mowing plan. You may complete it now.')}>Add to mowing plan</button></div>
@@ -314,9 +314,10 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
         </section>}
 
         {agreement && <section className="admin-edit-service-panel" aria-label="Recurring agreement">
-          <h3>Mowing plan <span className={`admin-badge admin-badge-${agreement.status === 'active' ? 'confirmed' : agreement.status === 'paused' ? 'pending' : 'canceled'}`}>{agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span></h3>
-          <p>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · next {dateLabel(agreement.next_on)} · future template {money(agreement.price_per_visit)}.</p>
-          <p>Changing the template affects newly generated visits only. Existing visit prices stay put.</p>
+          <h3>Mowing plan <span className={`admin-badge admin-badge-${agreement.schedule_review_reason || agreement.status === 'paused' ? 'pending' : agreement.status === 'active' ? 'confirmed' : 'canceled'}`}>{agreement.schedule_review_reason ? 'Needs schedule review' : agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span></h3>
+          <p>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {!agreement.schedule_review_reason && <>next {dateLabel(agreement.next_on)} · </>}future template {money(agreement.price_per_visit)}.</p>
+          {agreement.schedule_review_reason && <p>{agreement.schedule_review_reason}</p>}
+          <p>Changing the template updates future visits that haven’t been edited individually. It preserves recorded payments and accepted quotes.</p>
           {agreement.status !== 'ended' && <div className="admin-btn-row"><button className="crm-button crm-button-sm" disabled={pending} onClick={() => run('template:'+JSON.stringify(lines), id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'price_template', itemsTemplate: lines }), 'Future agreement price saved.')}>Use these items for future visits</button></div>}
           {agreement.status === 'active' && <>
             <p>Pause or end will cancel {futureJobIds.length} upcoming unfinished visit{futureJobIds.length === 1 ? '' : 's'} after this preview. Completed and overdue work stays in history.</p>
@@ -325,10 +326,10 @@ export default function BookingCard({ booking, historyCount = 1, customers = [],
               <button className="crm-button crm-button-sm crm-button-danger" disabled={pending} onClick={() => { if (window.confirm(`End and cancel ${futureJobIds.length} upcoming visit(s)? This plan cannot resume.`)) run('end:'+futureJobIds.join(','), id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'end', futureJobIds }), 'Plan ended.') }}>End plan</button>
             </div>
           </>}
-          {agreement.status === 'paused' && <>
+          {(agreement.status === 'paused' || agreement.schedule_review_reason) && <>
             <label>Explicit next date</label><input aria-label="Resume next date" type="date" value={resumeOn} onChange={e => setResumeOn(e.target.value)} className="admin-confirm-date-input" />
-            <p>If this reopens a visit canceled by the pause, that visit keeps its original price.</p>
-            <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !resumeOn} onClick={() => run('resume:'+resumeOn, id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'resume', nextOn: resumeOn }), 'Plan resumed.')}>Resume plan</button></div>
+            {agreement.status === 'paused' && <p>If this reopens a visit canceled by the pause, that visit keeps its original price.</p>}
+            <div className="admin-btn-row"><button className="crm-button crm-button-primary" disabled={pending || !resumeOn} onClick={() => run('resume:'+resumeOn, id => changeAgreement({ agreementId: agreement.id, expectedUpdatedAt: agreement.updated_at, operationId: id, action: 'resume', nextOn: resumeOn }), 'Plan scheduled.')}>{agreement.schedule_review_reason ? 'Restart schedule' : 'Resume plan'}</button></div>
           </>}
         </section>}
 

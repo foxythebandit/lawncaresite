@@ -116,9 +116,10 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         {agreements.length ? agreements.map(agreement => <div className="crm-customer-entry" key={agreement.id}>
           <div>
             <strong>{addressById.get(agreement.property_id) || 'Property'}</strong>
-            <span>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {agreement.status === 'active' ? `Next ${nextPlanVisit(agreement.id) ? dateText(visitDate(nextPlanVisit(agreement.id)!)) : 'not booked'} · ` : ''}{money(agreement.price_per_visit)} per visit</span>
+            <span>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {agreement.status === 'active' && !agreement.schedule_review_reason ? `Next ${nextPlanVisit(agreement.id) ? dateText(visitDate(nextPlanVisit(agreement.id)!)) : 'not booked'} · ` : ''}{money(agreement.price_per_visit)} per visit</span>
+            {agreement.schedule_review_reason && <span>{agreement.schedule_review_reason}</span>}
           </div>
-          <span className={`admin-badge admin-badge-${agreement.status === 'active' ? 'confirmed' : agreement.status === 'paused' ? 'pending' : 'canceled'}`}>{agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span>
+          <span className={`admin-badge admin-badge-${agreement.schedule_review_reason || agreement.status === 'paused' ? 'pending' : agreement.status === 'active' ? 'confirmed' : 'canceled'}`}>{agreement.schedule_review_reason ? 'Needs schedule review' : agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span>
         </div>) : <p className="crm-muted">No mowing plan.</p>}
       </section>
       <section className="crm-panel"><h2>Payments ({payments.length + historicalAmounts.length})</h2>

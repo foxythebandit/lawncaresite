@@ -105,7 +105,7 @@ begin
       perform public.crm_materialize_schedule_visit(a.id,v_slot.revision_id,v_slot.cadence_on);
     end loop;
   end if;
-  select min(occurrence_on) into v_next from public.bookings
+  select min(confirmed_date) into v_next from public.bookings
     where agreement_id = a.id and status = 'confirmed' and confirmed_date >= p_today;
   update public.recurring_agreements set
     generated_through = case when v_from <= v_through then v_through else a.generated_through end,
@@ -172,8 +172,9 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
           and b.occurrence_on = s.cadence_on and b.schedule_state is distinct from 'superseded')),
     'needs_scheduling', (select count(*) from public.bookings where status = 'pending'),
     'schedule_review', (select count(*) from public.recurring_agreements a
-      where a.status = 'active' and a.generation_starts_on is null
-        and not exists(select 1 from public.bookings b where b.agreement_id = a.id and b.status = 'pending')),
+      where a.schedule_review_reason is not null or (
+        a.status = 'active' and a.generation_starts_on is null
+        and not exists(select 1 from public.bookings b where b.agreement_id = a.id and b.status = 'pending'))),
     'catching_up', exists(select 1 from gaps)
   );
 $$;

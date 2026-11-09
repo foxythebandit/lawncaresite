@@ -317,3 +317,5 @@ Owner could not log visits for existing plan customers (Liz Watson's lead visit 
 ### Calendar schedule foundation — 9 November 2026
 
 Slice 1 of daily-clarity adds bounded visit generation, date-range and attention reads, and a database-only schedule worker. Existing visit IDs, prices, acquisition records and completed work survive cutover. The compatibility commands keep individual moves and skips through a series shift. See [Calendar and service schedules](../daily-clarity/README.md) for data identity and rollout details.
+
+Slice 1 review fixes preserve actual dates in the next-visit summary, remap monthly shifts by cadence order and route ambiguous first dates or legacy moves to schedule review. The existing plan controls can restart from an explicit date after saved work. Tests cover exact-cents repricing with protected exclusions, native concurrent generation and the customer portal’s owned past and upcoming visits.

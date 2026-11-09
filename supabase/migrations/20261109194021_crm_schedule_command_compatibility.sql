@@ -25,13 +25,15 @@ begin
   return v_id;
 end $$;
 
-create function public.crm_activate_schedule(p_agreement_id uuid,p_source_id uuid)
+create function public.crm_activate_schedule(p_agreement_id uuid,p_source_id uuid,p_legacy boolean default false)
 returns void language plpgsql security invoker set search_path = '' as $$
-declare a public.recurring_agreements; b public.bookings; v_start date;
+declare a public.recurring_agreements; b public.bookings; v_start date; v_first date;
+  v_definition jsonb; v_review_reason text;
   v_today date := (now() at time zone 'America/Chicago')::date;
 begin
   select * into a from public.recurring_agreements where id = p_agreement_id for update;
-  if not found or a.status = 'ended' or a.generation_starts_on is not null then return; end if;
+  if not found or a.status = 'ended' or a.generation_starts_on is not null
+    or a.schedule_review_reason is not null then return; end if;
   select * into b from public.bookings where id = p_source_id;
   if not found or b.status not in ('confirmed','completed','canceled','skipped')
     or coalesce(b.confirmed_date,(b.completed_at at time zone 'America/Chicago')::date) is null
@@ -39,14 +41,31 @@ begin
     or b.property_id is distinct from a.property_id or jsonb_array_length(a.items_template) = 0 then
     return;
   end if;
-  -- Never fabricate obligations from before the rollout or a backdated start.
-  v_start := greatest(v_today,a.anchor_on,a.next_on);
+  v_first := coalesce(b.confirmed_date,(b.completed_at at time zone 'America/Chicago')::date);
+  -- Legacy next_on is a continuation. For a new plan it must follow the first actual visit.
+  v_start := greatest(v_today,a.anchor_on,a.next_on,case when not p_legacy then v_first + 1 end);
+  v_definition := public.crm_legacy_schedule(a.anchor_on,a.interval_unit,a.interval_count,
+    case when a.next_on >= v_start then a.next_on end);
+  if not p_legacy and a.next_on <= v_first then
+    v_review_reason := 'The planned next visit is on or before the first confirmed visit. Choose a new next date.';
+  elsif p_legacy and exists(
+    select 1 from public.bookings v where v.agreement_id = a.id
+      and v.status in ('confirmed','completed') and v.confirmed_date <> v.occurrence_on
+      and v.confirmed_date >= v_start and (a.end_on is null or v.confirmed_date <= a.end_on)
+      and exists(select 1 from public.crm_schedule_dates(v_definition,v.confirmed_date,v.confirmed_date))
+      and not exists(select 1 from public.bookings other
+        where other.agreement_id = a.id and other.occurrence_on = v.confirmed_date)
+  ) then
+    v_review_reason := 'A saved visit moved onto a regular visit date. Review the saved visits and choose a new next date.';
+  end if;
+  if v_review_reason is not null then
+    update public.recurring_agreements set schedule_source_booking_id = b.id,
+      schedule_review_reason = v_review_reason where id = a.id;
+    return;
+  end if;
   update public.recurring_agreements set schedule_source_booking_id = b.id,
     generation_starts_on = v_start,generated_through = v_start - 1 where id = a.id;
-  perform public.crm_write_schedule_revision(a.id,v_start,
-    public.crm_legacy_schedule(a.anchor_on,a.interval_unit,a.interval_count,
-      case when a.next_on >= v_today then a.next_on end),
-    a.items_template,b.confirmed_time);
+  perform public.crm_write_schedule_revision(a.id,v_start,v_definition,a.items_template,b.confirmed_time);
   perform public.crm_reconcile_schedule(a.id,v_today);
 end $$;
 
@@ -101,23 +120,40 @@ begin
   if a.status <> 'active' or b.status not in ('pending','confirmed') then
     raise exception 'Only an unfinished visit on an active plan can move the plan' using errcode = '23514';
   end if;
+  if a.schedule_review_reason is not null then
+    raise exception 'Review this plan and choose a new next date first' using errcode = '23514';
+  end if;
   if exists(select 1 from public.job_payments where booking_id = b.id)
     or b.amount_charged is not null or b.payment_link is not null then
     raise exception 'Review this visit’s payment before moving the plan' using errcode = '23514';
   end if;
   v_delta := p_date - b.occurrence_on;
   v_from := least(p_date,b.occurrence_on);
-  select array_agg(v.id order by v.occurrence_on),array_agg(
-    case when a.interval_unit = 'week' then v.occurrence_on + v_delta
-      else (p_date + make_interval(months => (
-        (extract(year from v.occurrence_on) - extract(year from b.occurrence_on)) * 12
-        + extract(month from v.occurrence_on) - extract(month from b.occurrence_on))::integer))::date end
-    order by v.occurrence_on) into v_ids,v_slots
-  from public.bookings v where v.agreement_id = a.id and (v.id = b.id
-    or (v.occurrence_on > b.occurrence_on and v.occurrence_on >= v_today
-      and v.schedule_state is distinct from 'superseded' and v.status <> 'declined'
-      and (v.schedule_state = 'generated' or exists(
-        select 1 from public.crm_schedule_slots(a.id,v.occurrence_on,v.occurrence_on)))));
+  -- Count the old rule’s cadence slots, including slots without a saved booking.
+  -- An explicit next date and the normal monthly date can fall in the same month.
+  with future_slots as (
+    select s.cadence_on,
+      row_number() over (order by s.cadence_on)::integer as ordinal
+    from generate_series(0,(
+      select (max(v.occurrence_on) - b.occurrence_on - 1) / 366
+      from public.bookings v where v.agreement_id = a.id and v.occurrence_on > b.occurrence_on
+        and v.schedule_state is distinct from 'superseded'
+    )) as chunk
+    cross join lateral public.crm_schedule_slots(a.id,
+      b.occurrence_on + 1 + 366 * chunk,b.occurrence_on + 366 + 366 * chunk) s
+  ), moving as (
+    select b.id,b.occurrence_on,0 as ordinal
+    union all
+    select v.id,v.occurrence_on,s.ordinal
+    from future_slots s join public.bookings v
+      on v.agreement_id = a.id and v.occurrence_on = s.cadence_on
+    where v.occurrence_on >= v_today and v.schedule_state is distinct from 'superseded'
+      and v.status <> 'declined'
+  )
+  select array_agg(m.id order by m.occurrence_on),array_agg(
+    case when a.interval_unit = 'week' then p_date + 7 * a.interval_count * m.ordinal
+      else (p_date + make_interval(months => a.interval_count * m.ordinal))::date end
+    order by m.occurrence_on) into v_ids,v_slots from moving m;
   if exists(select 1 from public.bookings v where v.id = any(v_ids)
     and (v.status = 'completed' or v.amount_charged is not null or v.payment_link is not null
       or exists(select 1 from public.job_payments p where p.booking_id = v.id))) then
@@ -158,8 +194,9 @@ begin
   for v_row in select m.id,m.target,(v.id = b.id or v.schedule_state = 'generated') as move_actual
     from unnest(v_ids,v_slots) m(id,target)
     join public.bookings v on v.id = m.id
-    order by case when v_delta > 0 then - (v.occurrence_on - date '2000-01-01')
-      else v.occurrence_on - date '2000-01-01' end
+    order by m.target > v.occurrence_on,
+      case when m.target > v.occurrence_on then date '2000-01-01' - v.occurrence_on
+        else v.occurrence_on - date '2000-01-01' end
   loop
     v_target := v_row.target;
     update public.bookings set original_occurrence_on = coalesce(original_occurrence_on,occurrence_on),
@@ -181,10 +218,10 @@ begin
 end $$;
 
 revoke all on function public.crm_legacy_schedule(date,text,integer,date),
-  public.crm_write_schedule_revision(uuid,date,jsonb,jsonb,text),public.crm_activate_schedule(uuid,uuid)
+  public.crm_write_schedule_revision(uuid,date,jsonb,jsonb,text),public.crm_activate_schedule(uuid,uuid,boolean)
   from public,anon,authenticated;
 grant execute on function public.crm_legacy_schedule(date,text,integer,date),
-  public.crm_write_schedule_revision(uuid,date,jsonb,jsonb,text),public.crm_activate_schedule(uuid,uuid)
+  public.crm_write_schedule_revision(uuid,date,jsonb,jsonb,text),public.crm_activate_schedule(uuid,uuid,boolean)
   to service_role;
 
 create or replace function public.crm_start_agreement(p_booking_id uuid,p_expected_updated_at timestamptz,
@@ -260,8 +297,12 @@ begin
     update public.bookings set status = 'confirmed',confirmed_date = v_date,
       confirmed_time = nullif(p_payload->>'time',''),preferred_date = v_date
       where id = p_booking_id;
-    if v_booking.status = 'pending' and v_booking.agreement_id is not null then
-      perform public.crm_activate_schedule(v_booking.agreement_id,p_booking_id);
+    if v_booking.agreement_id is not null then
+      if v_booking.status = 'pending' then
+        perform public.crm_activate_schedule(v_booking.agreement_id,p_booking_id);
+      else
+        perform public.crm_reconcile_schedule(v_booking.agreement_id);
+      end if;
     end if;
   elsif p_action = 'mark_one_time' then
     if v_booking.agreement_id is not null then
@@ -328,8 +369,8 @@ begin
   if v_agreement.end_on is not null and v_on > v_agreement.end_on then
     raise exception 'Visit is after the plan’s end date' using errcode = '22023';
   end if;
-  if v_agreement.generation_starts_on is null and not exists(select 1 from public.bookings
-    where agreement_id = p_agreement_id and status in ('pending','confirmed') and occurrence_on > v_on) then
+  if v_agreement.generation_starts_on is null and v_agreement.schedule_review_reason is null
+    and not exists(select 1 from public.bookings where agreement_id = p_agreement_id and status in ('pending','confirmed') and occurrence_on > v_on) then
     update public.recurring_agreements set anchor_on = v_on,next_on = public.crm_next_occurrence(
       v_on,v_on,interval_unit,interval_count) where id = p_agreement_id;
   end if;
@@ -342,11 +383,45 @@ begin
   return v_result || '{"duplicate":false}'::jsonb;
 end $$;
 
+-- An individual line-item edit protects the visit even if its total stays the same.
+create or replace function public.crm_replace_job_items(p_booking_id uuid,p_expected_updated_at timestamptz,
+  p_operation_id uuid,p_items jsonb) returns jsonb language plpgsql security invoker
+  set search_path = '' as $$
+declare v_booking public.bookings; v_item jsonb; v_total numeric; v_result jsonb;
+begin
+  v_result := public.crm_operation_reply(p_operation_id,'replace_job_items',p_booking_id,p_items);
+  if v_result is not null then return v_result; end if;
+  select * into v_booking from public.bookings where id = p_booking_id for update;
+  if not found then raise exception 'Job not found' using errcode = 'P0002'; end if;
+  if v_booking.updated_at is distinct from p_expected_updated_at then
+    raise exception 'Job changed since it was opened' using errcode = 'PT409';
+  end if;
+  if v_booking.status in ('completed','canceled','skipped','declined') then
+    raise exception 'Finished job prices cannot be changed' using errcode = '23514';
+  end if;
+  v_total := public.crm_validate_items(p_items);
+  delete from public.job_items where booking_id = p_booking_id;
+  for v_item in select value from jsonb_array_elements(p_items) loop
+    insert into public.job_items(booking_id,kind,description,amount)
+      values(p_booking_id,v_item->>'kind',btrim(v_item->>'description'),(v_item->>'amount')::numeric);
+  end loop;
+  update public.bookings set job_total = v_total,
+    price_per_visit = case when v_total = trunc(v_total) and v_total <= 2147483647
+      then v_total::integer else null end,
+    payment_link = null,
+    schedule_state = case when schedule_state = 'generated' then 'exception' else schedule_state end
+    where id = p_booking_id;
+  v_result := jsonb_build_object('booking_id',p_booking_id,'job_total',v_total);
+  insert into public.crm_operations(id,action,target_id,request,result)
+    values(p_operation_id,'replace_job_items',p_booking_id,p_items,v_result);
+  return v_result;
+end $$;
+
 create or replace function public.crm_agreement_command(p_agreement_id uuid,p_expected_updated_at timestamptz,
   p_operation_id uuid,p_action text,p_payload jsonb) returns jsonb language plpgsql
   security invoker set search_path = '' as $$
 declare v_agreement public.recurring_agreements; v_result jsonb; v_future jsonb;
-  v_next date; v_source uuid; v_new uuid; v_total numeric;
+  v_next date; v_source uuid; v_new uuid; v_total numeric; v_revision uuid; v_booking_id uuid;
   v_today date := (now() at time zone 'America/Chicago')::date;
   r public.agreement_schedule_revisions;
 begin
@@ -373,8 +448,25 @@ begin
       and ends_before is null;
     if found then
       v_next := greatest(v_today,r.starts_on);
-      perform public.crm_write_schedule_revision(p_agreement_id,v_next,r.definition,
+      v_revision := public.crm_write_schedule_revision(p_agreement_id,v_next,r.definition,
         p_payload->'items_template',r.visit_time);
+      perform 1 from public.bookings where agreement_id = p_agreement_id and schedule_state = 'generated'
+        and status = 'confirmed' and confirmed_date >= v_today order by id for update;
+      for v_booking_id in
+        update public.bookings b set schedule_revision_id = v_revision,job_total = v_total,
+          price_per_visit = case when v_total = trunc(v_total) and v_total <= 2147483647 then v_total::integer end,
+          first_visit_price = case when v_total = trunc(v_total) and v_total <= 2147483647 then v_total::integer end
+        where b.agreement_id = p_agreement_id and b.schedule_state = 'generated' and b.status = 'confirmed'
+          and b.occurrence_on >= v_next and b.confirmed_date >= v_today
+          and b.amount_charged is null and b.payment_link is null
+          and not exists(select 1 from public.job_payments p where p.booking_id = b.id)
+        returning b.id
+      loop
+        delete from public.job_items where booking_id = v_booking_id;
+        insert into public.job_items(booking_id,kind,description,amount)
+          select v_booking_id,item->>'kind',item->>'description',(item->>'amount')::numeric
+          from jsonb_array_elements(p_payload->'items_template') item;
+      end loop;
       perform public.crm_reconcile_schedule(p_agreement_id,v_today);
     end if;
   elsif p_action in ('pause','end') then
@@ -405,7 +497,9 @@ begin
         where agreement_id = p_agreement_id and (ends_before is null or ends_before > v_today);
     end if;
     update public.recurring_agreements set status = case when p_action = 'pause'
-      then 'paused' else 'ended' end where id = p_agreement_id;
+      then 'paused' else 'ended' end,
+      schedule_review_reason = case when p_action = 'pause' then schedule_review_reason end
+      where id = p_agreement_id;
     update public.bookings set status = 'canceled',
       schedule_state = case when schedule_state = 'generated' then 'superseded' else schedule_state end,
       lifecycle_note = case when p_action = 'pause' then 'Canceled on agreement pause'
@@ -415,8 +509,8 @@ begin
         or coalesce(confirmed_date,preferred_date,occurrence_on)
           >= (now() at time zone 'America/Chicago')::date);
   else
-    if v_agreement.status <> 'paused' then
-      raise exception 'Only paused agreements can resume' using errcode = '23514';
+    if v_agreement.status <> 'paused' and v_agreement.schedule_review_reason is null then
+      raise exception 'Only paused agreements or schedules under review can resume' using errcode = '23514';
     end if;
     v_next := nullif(p_payload->>'next_on','')::date;
     if v_next is null or v_next < (now() at time zone 'America/Chicago')::date then
@@ -425,6 +519,13 @@ begin
     if v_agreement.end_on is not null and v_next > v_agreement.end_on then
       raise exception 'Resume date exceeds agreement end date' using errcode = '22023';
     end if;
+    if v_agreement.schedule_review_reason is not null and exists(
+      select 1 from public.bookings where agreement_id = p_agreement_id
+        and status in ('confirmed','completed')
+        and coalesce(confirmed_date,(completed_at at time zone 'America/Chicago')::date) >= v_next
+    ) then
+      raise exception 'Choose a next date after the saved visits' using errcode = '22023';
+    end if;
     select id into v_source from public.bookings where agreement_id = p_agreement_id
       and status <> 'pending' and customer_id = v_agreement.customer_id and property_id = v_agreement.property_id
       order by (id = v_agreement.schedule_source_booking_id) desc nulls last,occurrence_on desc limit 1;
@@ -432,6 +533,7 @@ begin
       raise exception 'Review the plan’s prior visit and price before resuming' using errcode = '23514';
     end if;
     update public.recurring_agreements set status = 'active',anchor_on = v_next,next_on = v_next,
+      schedule_review_reason = null,
       schedule_source_booking_id = v_source,generation_starts_on = least(generation_starts_on,v_next),
       generated_through = v_next - 1 where id = p_agreement_id;
     select * into r from public.agreement_schedule_revisions where agreement_id = p_agreement_id
@@ -509,6 +611,6 @@ begin
     where a.status in ('active','paused') and jsonb_array_length(a.items_template) > 0
     order by a.id
   loop
-    perform public.crm_activate_schedule(v_plan.id,v_plan.source_id);
+    perform public.crm_activate_schedule(v_plan.id,v_plan.source_id,true);
   end loop;
 end $$;

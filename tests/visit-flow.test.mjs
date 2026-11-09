@@ -36,7 +36,8 @@ async function openPlanVisits(agreementId) {
 }
 
 /** Same calls as startCustomerPlan on the customer page; first visit confirmed on its date. */
-async function customerWithPlan(firstOn, price = '85.00', confirm = true) {
+async function customerWithPlan(firstOn, price = '85.00', confirm = true,
+  { nextOn = day(14, firstOn), unit = 'week', count = 2 } = {}) {
   const { rows: [customer] } = await db.query(`insert into customers(name, phone) values('Liz Test', '5125550100') returning id`)
   // Customers come from a linked lead job; later jobs copy its acquisition.
   await db.query(`insert into bookings(name, phone, address, customer_id, status, one_time)
@@ -46,7 +47,7 @@ async function customerWithPlan(firstOn, price = '85.00', confirm = true) {
     { preferred_date: firstOn, one_time: false, frequency: 'Bi-weekly' }, items)
   let first = await job(created.booking_id)
   const started = await call('crm_start_agreement', first.id, first.updated_at, id(),
-    { anchor_on: firstOn, next_on: day(14, firstOn), end_on: null, interval_unit: 'week', interval_count: 2, items_template: items })
+    { anchor_on: firstOn, next_on: nextOn, end_on: null, interval_unit: unit, interval_count: count, items_template: items })
   if (confirm) {
     first = await job(first.id)
     await call('crm_job_command', first.id, first.updated_at, id(), 'confirm', { date: firstOn, time: null })
@@ -215,4 +216,120 @@ test('whole-plan shifts carry an individual move and skip without generating ext
   const { rows } = await db.query(`select booking_id,service_on::text from crm_calendar_entries($1,$2)
     where agreement_id = $3 order by service_on`, [day(14), day(32), p.agreementId])
   assert.deepEqual(rows, [{ booking_id: moved.id, service_on: day(17) }])
+})
+
+test('an actual first date on or after the proposed second date requires an explicit restart', async () => {
+  for (const delay of [14, 31]) {
+    const p = await customerWithPlan(today, '85.00', false)
+    const first = await job(p.firstId)
+    const actual = day(delay)
+    await call('crm_job_command', first.id, first.updated_at, id(), 'confirm', { date: actual, time: 'Morning' })
+
+    const review = await plan(p.agreementId)
+    assert.match(review.schedule_review_reason, /planned next visit is on or before the first confirmed visit/)
+    assert.equal(review.generation_starts_on, null)
+    const attention = await call('crm_calendar_attention', today)
+    assert.ok(attention.schedule_review >= 1)
+    await call('crm_reconcile_schedules', today)
+    const confirmed = await job(first.id)
+    assert.equal(confirmed.confirmed_date, actual)
+    const done = await call('complete_job', first.id, confirmed.updated_at, id(), actual)
+    assert.equal(done.next_booking_id, null)
+    assert.deepEqual(await openPlanVisits(p.agreementId), [])
+
+    await assert.rejects(call('crm_agreement_command', p.agreementId, review.updated_at, id(), 'resume',
+      { next_on: day(13) }), /after the saved visits/)
+    const restarted = await call('crm_agreement_command', p.agreementId, review.updated_at, id(), 'resume',
+      { next_on: day(14, actual) })
+    assert.equal((await plan(p.agreementId)).schedule_review_reason, null)
+    assert.equal((await job(restarted.next_booking_id)).confirmed_date, day(14, actual))
+    assert.equal((await job(first.id)).status, 'completed')
+  }
+})
+
+test('the next plan date reflects an overdue slot moved to an upcoming actual date', async () => {
+  const p = await customerWithPlan(day(-2))
+  const first = await job(p.firstId)
+  await call('crm_job_command', first.id, first.updated_at, id(), 'reschedule', { date: day(3) })
+  assert.equal((await job(first.id)).occurrence_on, day(-2))
+  assert.equal((await plan(p.agreementId)).next_on, day(3))
+})
+
+test('monthly plan moves preserve ordered slots through the explicit next date, skips and unsaved dates', async () => {
+  const firstOn = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10)
+  const nextOn = day(1, firstOn)
+  const month = (date, offset, dom = Number(date.slice(8))) => {
+    const y = Number(date.slice(0, 4)), m = Number(date.slice(5, 7)) - 1 + offset
+    return new Date(Date.UTC(y, m, Math.min(dom, new Date(Date.UTC(y, m + 1, 0)).getUTCDate()))).toISOString().slice(0, 10)
+  }
+  const p = await customerWithPlan(firstOn, '85.00', true, { nextOn, unit: 'month', count: 1 })
+  const [next, skipped] = await Promise.all([nextOn, month(firstOn, 1)].map(async slot => {
+    const { rows: [saved] } = await db.query('select id from bookings where agreement_id = $1 and occurrence_on = $2',
+      [p.agreementId, slot])
+    return job(saved.id)
+  }))
+  await call('crm_job_command', skipped.id, skipped.updated_at, id(), 'skip', {})
+  const farOn = month(firstOn, 6)
+  const { rows: [virtual] } = await db.query('select revision_id from crm_calendar_entries($1,$1) where agreement_id = $2',
+    [farOn, p.agreementId])
+  const far = await call('crm_materialize_schedule_visit', p.agreementId, virtual.revision_id, farOn)
+
+  await assert.rejects(call('crm_shift_agreement', next.id, next.updated_at, id(), firstOn, null), /protected visit/)
+  assert.equal((await job(next.id)).occurrence_on, nextOn)
+  const later = day(2, nextOn)
+  await call('crm_shift_agreement', next.id, next.updated_at, id(), later, null)
+  assert.equal((await job(next.id)).occurrence_on, later)
+  assert.equal((await job(skipped.id)).occurrence_on, month(later, 1))
+  assert.equal((await job(skipped.id)).status, 'skipped')
+  assert.equal((await job(far)).occurrence_on, month(later, 6))
+  assert.equal((await job(far)).original_occurrence_on, farOn)
+
+  await call('crm_shift_agreement', next.id, (await job(next.id)).updated_at, id(), nextOn, null)
+  assert.equal((await job(next.id)).occurrence_on, nextOn)
+  assert.equal((await job(skipped.id)).occurrence_on, month(nextOn, 1))
+  assert.equal((await job(far)).occurrence_on, month(nextOn, 6))
+  assert.equal((await job(p.firstId)).confirmed_date, firstOn)
+})
+
+test('future plan price updates only untouched visits and keeps accepted and paid facts', async () => {
+  const p = await customerWithPlan(day(-42), '85.00')
+  const find = async offset => {
+    const { rows: [saved] } = await db.query('select id from bookings where agreement_id = $1 and occurrence_on = $2',
+      [p.agreementId, day(offset)])
+    return job(saved.id)
+  }
+  const [overdue, untouched, custom, paid, completed, linked] = await Promise.all([0,14,28,42,56,70].map(find))
+  await call('crm_job_command', overdue.id, overdue.updated_at, id(), 'reschedule', { date: day(-1) })
+  await call('crm_replace_job_items', custom.id, custom.updated_at, id(),
+    [{ kind: 'service', description: 'Individual service, same total', amount: '85.00' }])
+  await call('record_job_payment', paid.id, id(), '17.45', today, 'Cash', 'manual')
+  await call('complete_job', completed.id, completed.updated_at, id(), today)
+  await db.query('update bookings set payment_link = $2 where id = $1', [linked.id, 'https://example.test/payment'])
+  const accepted = (await job(p.firstId)).accepted_quote_snapshot
+  assert.ok(accepted, 'the source visit has a saved quote snapshot')
+  const agreement = await plan(p.agreementId)
+  const template = [
+    { kind: 'service', description: 'Future service', amount: '100.50' },
+    { kind: 'discount', description: 'Ongoing discount', amount: '-4.75' },
+  ]
+  await call('crm_agreement_command', p.agreementId, agreement.updated_at, id(), 'price_template', { items_template: template })
+  const changed = await job(untouched.id)
+  assert.equal(Number(changed.job_total), 95.75)
+  assert.equal(changed.price_per_visit, null)
+  assert.deepEqual(changed.accepted_quote_snapshot, untouched.accepted_quote_snapshot)
+  assert.notEqual(changed.schedule_revision_id, untouched.schedule_revision_id)
+  const { rows: items } = await db.query('select description, amount::text from job_items where booking_id = $1 order by amount desc',
+    [untouched.id])
+  assert.deepEqual(items, template.map(({ description, amount }) => ({ description, amount })))
+  for (const kept of [overdue, custom, paid, completed, linked]) {
+    const current = await job(kept.id)
+    assert.equal(Number(current.job_total), 85)
+    assert.equal(current.schedule_revision_id, kept.schedule_revision_id)
+  }
+  assert.deepEqual((await job(p.firstId)).accepted_quote_snapshot, accepted)
+  assert.equal((await job(linked.id)).payment_link, 'https://example.test/payment')
+  const { rows: [payment] } = await db.query('select amount::text from job_payments where booking_id = $1', [paid.id])
+  assert.equal(payment.amount, '17.45')
+  await call('crm_reconcile_schedule', p.agreementId, day(20))
+  assert.equal(Number((await find(98)).job_total), 95.75)
 })

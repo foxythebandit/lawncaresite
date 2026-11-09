@@ -167,6 +167,7 @@ alter table public.recurring_agreements
   add column schedule_source_booking_id uuid references public.bookings(id),
   add column generation_starts_on date,
   add column generated_through date,
+  add column schedule_review_reason text,
   add constraint agreements_generation_bounds check (
     generated_through is null or generated_through >= generation_starts_on - 1
   );

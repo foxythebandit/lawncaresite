@@ -137,3 +137,51 @@ test('cutover retains existing obligations and money and catches up without cale
     await upgrade.close()
   }
 })
+
+test('cutover pauses generation when a saved moved visit occupies a regular date', async () => {
+  let planId, savedId, before, dates
+  const template = [{ kind: 'service', description: 'Lawn care', amount: '85.50' }]
+  const upgrade = await freshDb({ beforeMigration: async (db, name) => {
+    if (!name.endsWith('_crm_service_schedule_rules.sql')) return
+    const { rows: [fixtureDates] } = await db.query(`select d::text as today, (d + 7)::text as old_slot,
+      (d + 14)::text as moved_date, (d + 21)::text as restart
+      from (select (now() at time zone 'America/Chicago')::date as d) clock`)
+    dates = fixtureDates
+    const { rows: [person] } = await db.query("insert into customers(name,phone) values('Legacy Test','5125550119') returning id")
+    const { rows: [site] } = await db.query("insert into properties(customer_id,address) values($1,'1 Austin Lane') returning id", [person.id])
+    const { rows: [plan] } = await db.query(`insert into recurring_agreements(customer_id,property_id,
+      anchor_on,next_on,interval_unit,interval_count,price_per_visit,items_template)
+      values($1,$2,$3,$4,'week',1,85.50,$5) returning id`,
+    [person.id, site.id, dates.today, dates.moved_date, JSON.stringify(template)])
+    planId = plan.id
+    const { rows: [visit] } = await db.query(`insert into bookings(name,phone,address,customer_id,property_id,
+      agreement_id,occurrence_on,confirmed_date,status,notes,job_total,accepted_quote_snapshot)
+      values('Legacy Test','5125550119','1 Austin Lane',$1,$2,$3,$4,$5,'confirmed','Saved move',59.85,
+        '{"total":59.85}') returning id`, [person.id, site.id, planId, dates.old_slot, dates.moved_date])
+    savedId = visit.id
+    before = await legacyFacts(db, [savedId])
+  } })
+  try {
+    const { rows: [review] } = await upgrade.query(`select schedule_review_reason, generation_starts_on, updated_at
+      from recurring_agreements where id = $1`, [planId])
+    assert.match(review.schedule_review_reason, /saved visit moved onto a regular visit date/)
+    assert.equal(review.generation_starts_on, null)
+    const { rows: [attention] } = await upgrade.query('select crm_calendar_attention($1) as counts', [dates.today])
+    assert.equal(attention.counts.schedule_review, 1)
+    await upgrade.query('select crm_reconcile_schedules($1)', [dates.today])
+    const { rows: entries } = await upgrade.query(`select booking_id,service_on::text from crm_calendar_entries($1,$2)
+      where agreement_id = $3`, [dates.today, dates.restart, planId])
+    assert.deepEqual(entries, [{ booking_id: savedId, service_on: dates.moved_date }])
+    const restart = date => upgrade.query(
+      "select crm_agreement_command($1,$2,$3,'resume',jsonb_build_object('next_on',$4::date))",
+      [planId, review.updated_at, randomUUID(), date])
+    await assert.rejects(restart(dates.moved_date), /after the saved visits/)
+    await restart(dates.restart)
+    const { rows: reopened } = await upgrade.query(`select service_on::text from crm_calendar_entries($1,$2)
+      where agreement_id = $3 order by service_on`, [dates.today, dates.restart, planId])
+    assert.deepEqual(reopened.map(row => row.service_on), [dates.moved_date, dates.restart])
+    assert.deepEqual(await legacyFacts(upgrade, [savedId]), before)
+  } finally {
+    await upgrade.close()
+  }
+})
