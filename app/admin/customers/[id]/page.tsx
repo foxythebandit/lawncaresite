@@ -84,8 +84,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       return <div className="crm-plan-card" key={agreement.id}>
         <div>
           <strong>Mowing plan · every {agreement.interval_count === 1 ? '' : `${agreement.interval_count} `}{agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {money(agreement.price_per_visit)}/visit</strong>
-          <span>{addressById.get(agreement.property_id) || 'Property'} · {next
-            ? `next visit ${dateText(nextDate)}${nextDate && nextDate < today ? ' (overdue — mark it done or move it)' : ''}`
+          <span>{addressById.get(agreement.property_id) || 'Property'} · {agreement.schedule_review_reason
+            ? 'Needs schedule review'
+            : next ? `next visit ${dateText(nextDate)}${nextDate && nextDate < today ? ' (overdue — mark it done or move it)' : ''}`
             : 'no visit booked'}</span>
         </div>
       </div>
