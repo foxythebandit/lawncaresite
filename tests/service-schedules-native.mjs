@@ -100,6 +100,8 @@ test('native worker flags a date conflict without advancing its cursor or stoppi
       const { revision_id: revisionId } = (await entriesOn()).find(row => row.agreement_id === affectedId)
       const moved = await data(admin.from('bookings').select('id, job_total').eq('agreement_id', affectedId)
         .eq('occurrence_on', day(14)).single())
+      const attention = () => data(admin.rpc('crm_calendar_attention', { p_today: today }))
+      const priorAttention = await attention()
       // Simulate an existing collision from before the move command enforced this guard.
       await data(admin.from('bookings').update({ confirmed_date: target, preferred_date: target }).eq('id', moved.id))
       const assertSavedOnly = async () => {
@@ -109,27 +111,41 @@ test('native worker flags a date conflict without advancing its cursor or stoppi
         assert.equal(entries[0].job_total, moved.job_total)
       }
       await assertSavedOnly()
-      const initialAttention = await data(admin.rpc('crm_calendar_attention', { p_today: today }))
-      assert.ok(initialAttention.schedule_review >= 1)
+      assert.equal((await attention()).schedule_review, priorAttention.schedule_review + 1)
       const conflict = await admin.rpc('crm_materialize_schedule_visit', {
         p_agreement_id: affectedId, p_revision_id: revisionId, p_on: target,
       })
       assert.equal(conflict.error?.code, 'PT409')
       assert.match(conflict.error.message, /already has a visit on that date/)
 
-      const run = () => data(admin.rpc('crm_reconcile_schedules', { p_today: day(20) }))
-      await run()
-      const plans = await data(admin.from('recurring_agreements').select('id, generated_through, schedule_review_reason')
-        .in('id', [affectedId, healthyId]))
-      const affected = plans.find(plan => plan.id === affectedId)
-      assert.equal(affected.generated_through, day(90))
-      assert.ok(affected.schedule_review_reason.includes(target))
-      assert.deepEqual(plans.find(plan => plan.id === healthyId),
-        { id: healthyId, generated_through: day(110), schedule_review_reason: null })
-      await assertSavedOnly()
-      const healthyEntry = (await entriesOn()).find(row => row.agreement_id === healthyId)
-      assert.ok(healthyEntry.booking_id, 'the healthy plan generated its regular visit')
-      await run()
+      // Roll back the global worker so standalone test:db never advances other local plans.
+      execFileSync('supabase', ['db', 'query', '--local', `do $test$
+      declare
+        affected public.recurring_agreements;
+        healthy public.recurring_agreements;
+      begin
+        begin
+          perform public.crm_reconcile_schedules('${day(20)}');
+          perform public.crm_reconcile_schedules('${day(20)}');
+          select * into affected from public.recurring_agreements where id = '${affectedId}';
+          select * into healthy from public.recurring_agreements where id = '${healthyId}';
+          if affected.generated_through is distinct from '${day(90)}'::date
+            or coalesce(position('${target}' in affected.schedule_review_reason),0) = 0 then
+            raise exception 'Affected plan must retain its cursor and record the conflicting date';
+          end if;
+          if healthy.generated_through is distinct from '${day(110)}'::date or healthy.schedule_review_reason is not null
+            or not exists(select 1 from public.bookings where agreement_id = healthy.id
+              and occurrence_on = '${target}' and status = 'confirmed') then
+            raise exception 'Healthy plan must still generate its regular visit';
+          end if;
+          if (select array_agg(booking_id) from public.crm_calendar_entries('${target}','${target}')
+            where agreement_id = affected.id) is distinct from array['${moved.id}'::uuid] then
+            raise exception 'Calendar must keep only the saved moved visit';
+          end if;
+          raise sqlstate 'QG001';
+        exception when sqlstate 'QG001' then null;
+        end;
+      end $test$;`], { stdio: 'pipe' })
       await assertSavedOnly()
     })
   })
