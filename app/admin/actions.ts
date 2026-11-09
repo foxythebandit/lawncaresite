@@ -3,14 +3,16 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClient as sessionClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/staff'
+import { calendarDate } from '@/lib/calendar-view'
 import { isStaff, staffReturnTo } from '@/lib/staff-policy'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
+import { providerRetryExpired, saveVisitPaymentLink, type PreparedVisit } from '@/lib/visit-payment-link'
 import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
-import type { Database } from '@/supabase/database.types'
+import type { Database, Json } from '@/supabase/database.types'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -53,11 +55,20 @@ export async function logout() {
   redirect('/admin/login')
 }
 
-export async function updateNotes(id: string, notes: string) {
+export async function updateNotes(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string; note: string
+}): Promise<ActionResult> {
   await requireStaff()
-  if (!UUID_RE.test(id)) return
-  await getAdmin().from('bookings').update({ notes: notes.slice(0, 2000) }).eq('id', id)
-  revalidatePath('/admin/jobs')
+  if (![input.bookingId, input.operationId].every(id => UUID_RE.test(id)) || input.note.length > 2000) {
+    return { success: false, error: 'Enter a note of up to 2,000 characters.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_calendar_save_note', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_note: input.note,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
 }
 
 export async function deleteBooking(id: string): Promise<ActionResult> {
@@ -85,7 +96,7 @@ export async function deleteBooking(id: string): Promise<ActionResult> {
 // address, price, or frequency. Changing the phone deliberately splits the
 // booking off from the old tenant's history — the old tenant's past visits
 // stay under their number, future ones follow the new contact.
-export async function updateContactDetails(id: string, data: { name: string; phone: string; email: string }) {
+export async function updateContactDetails(id: string, data: { name: string; phone: string; email: string; expectedUpdatedAt: string }): Promise<ActionResult> {
   await requireStaff()
   if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
   const name  = data.name.trim()
@@ -94,7 +105,10 @@ export async function updateContactDetails(id: string, data: { name: string; pho
   if (!name) return { success: false, error: 'Name is required.' }
   if (!phone) return { success: false, error: 'Phone is required.' }
   if (email && !EMAIL_RE.test(email)) return { success: false, error: 'Enter a valid email address.' }
-  await getAdmin().from('bookings').update({ name, phone, email: email || null }).eq('id', id)
+  const { data: saved, error } = await getAdmin().from('bookings').update({ name, phone, email: email || null }).eq('id', id)
+    .eq('updated_at', data.expectedUpdatedAt).select('id').maybeSingle()
+  if (error) return { success: false, error: commandError(error) }
+  if (!saved) return { success: false, error: 'Visit changed since it was opened. Reload and try again.' }
   revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
@@ -104,6 +118,10 @@ export async function updateContactDetails(id: string, data: { name: string; pho
 
 export async function sendReminderEmail(id: string): Promise<{ success: boolean; error?: string }> {
   await requireStaff()
+  return emailReminder(id)
+}
+
+async function emailReminder(id: string, prepared?: PreparedVisit): Promise<{ success: boolean; error?: string }> {
   if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
@@ -111,6 +129,13 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
   if (!booking.email) return { success: false, error: 'No email on file for this client.' }
   if (!booking.confirmed_date) return { success: false, error: 'No confirmed date to remind about.' }
   if (!process.env.RESEND_API_KEY) return { success: false, error: 'Email not configured.' }
+
+  if (prepared) {
+    if (booking.last_reminder_sent_at && Date.parse(booking.last_reminder_sent_at) >= Date.parse(prepared.preparedAt)) return { success: true }
+    if (booking.updated_at !== prepared.updatedAt || providerRetryExpired(prepared)) {
+      return { success: false, error: 'Reopen the saved visit and review its date before sending a reminder.' }
+    }
+  }
 
   const firstName = booking.name.split(' ')[0]
   const scheduledDate = new Date(booking.confirmed_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -141,7 +166,7 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
         </div>
       </div>
     `,
-  })
+  }, prepared ? { idempotencyKey: `visit-reminder/${prepared.operationId}` } : undefined)
 
   if (error) return { success: false, error: 'Failed to send reminder email.' }
 
@@ -452,6 +477,93 @@ export async function scheduleJobAndEmail(input: {
   return emailVisitDate(input.bookingId, input.action, input.date, input.time, result)
 }
 
+export type ProjectedVisitEdit =
+  | { action: 'reschedule' | 'shift'; date: string; time?: string; email?: boolean }
+  | { action: 'complete'; date: string }
+  | { action: 'notes'; note: string }
+  | { action: 'items'; items: JobLine[] }
+  | { action: 'payment'; amount: string; date: string; method: string }
+  | { action: 'contact'; name: string; phone: string; email: string }
+  | { action: 'skip' | 'cancel' | 'payment_link' | 'reminder' }
+
+export async function editProjectedVisit(input: ProjectedVisitEdit & {
+  agreementId: string; revisionId: string; on: string; operationId: string
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.agreementId, input.revisionId, input.operationId].every(id => UUID_RE.test(id)) || !calendarDate(input.on)) {
+    return { success: false, error: 'Reopen the calendar and choose a visit.' }
+  }
+  let payload: Json = {}
+  try {
+    switch (input.action) {
+      case 'reschedule':
+      case 'shift':
+        if (!calendarDate(input.date) || (input.time?.length ?? 0) > 80) throw new Error('Review the visit date and arrival window.')
+        payload = { date: input.date, time: input.time?.trim() || null }
+        break
+      case 'complete':
+        if (!calendarDate(input.date)) throw new Error('Choose a completion date.')
+        payload = { date: input.date }
+        break
+      case 'notes':
+        if (input.note.length > 2000) throw new Error('Enter a note of up to 2,000 characters.')
+        payload = { note: input.note }
+        break
+      case 'items':
+        payload = { items: cleanJobLines(input.items) }
+        break
+      case 'payment': {
+        const cents = moneyCents(input.amount)
+        if (!calendarDate(input.date) || cents <= 0 || !input.method.trim()) throw new Error('Enter a payment amount, date, and method.')
+        payload = { date: input.date, amount: centsAmount(cents), method: input.method.trim() }
+        break
+      }
+      case 'contact':
+        if (!input.name.trim() || !input.phone.trim()) throw new Error('Enter a name and phone number.')
+        if (input.email.trim() && !EMAIL_RE.test(input.email.trim())) throw new Error('Enter a valid email address.')
+        payload = { name: input.name.trim(), phone: input.phone.trim(), email: input.email.trim() }
+        break
+      case 'payment_link':
+        if (!process.env.STRIPE_SECRET_KEY) throw new Error('Stripe not configured.')
+        break
+      case 'reminder':
+        if (!process.env.RESEND_API_KEY) throw new Error('Email not configured.')
+        break
+      case 'skip':
+      case 'cancel':
+        break
+      default:
+        throw new Error('Choose a visit action.')
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Review the visit details.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_calendar_edit_occurrence', {
+    p_agreement_id: input.agreementId, p_revision_id: input.revisionId, p_on: input.on,
+    p_operation_id: input.operationId, p_action: input.action, p_payload: payload,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  const result = { success: true as const, data: data as Record<string, unknown> }
+  const id = result.data.booking_id as string
+  if ((input.action === 'reschedule' || input.action === 'shift') && input.email && !result.data.duplicate) {
+    refreshJobs()
+    const notified = await emailVisitDate(id, 'reschedule', input.date, input.time, result)
+    return notified.success ? { ...notified, data: { ...result.data, ...notified.data } } : notified
+  }
+  if (input.action === 'payment_link' || input.action === 'reminder') {
+    const prepared = { operationId: input.operationId, updatedAt: result.data.updated_at as string, preparedAt: result.data.prepared_at as string }
+    if (input.action === 'payment_link') {
+      const link = await createBookingPaymentLink(id, prepared)
+      if ('error' in link) return { success: false, error: `Visit saved. ${link.error}` }
+    } else {
+      const reminder = await emailReminder(id, prepared)
+      if (!reminder.success) return { success: false, error: `Visit saved. ${reminder.error ?? 'Could not send the reminder.'}` }
+    }
+  }
+  refreshJobs()
+  return result
+}
+
 /** Customer email after a visit date is set; a send failure leaves the saved date as is. */
 async function emailVisitDate(bookingId: string, action: 'confirm' | 'reschedule', date: string, time: string | undefined, result: ActionResult): Promise<ActionResult> {
   const { data: booking } = await getAdmin().from('bookings')
@@ -640,42 +752,13 @@ export async function createPaymentLink(
   _address: string,
 ): Promise<{ url: string } | { error: string }> {
   await requireStaff()
+  return createBookingPaymentLink(bookingId)
+}
+
+async function createBookingPaymentLink(bookingId: string, prepared?: PreparedVisit): Promise<{ url: string } | { error: string }> {
   if (!UUID_RE.test(bookingId)) return { error: 'Invalid booking ID' }
   if (!process.env.STRIPE_SECRET_KEY) return { error: 'Stripe not configured' }
-  const db = getAdmin()
-  const { data: booking, error: readError } = await db.from('bookings')
-    .select('id,name,address,job_total,first_visit_price,price_per_visit,status,updated_at').eq('id', bookingId).single()
-  if (readError || !booking) return { error: 'Job not found.' }
-  if (!['confirmed','completed'].includes(booking.status)) return { error: 'Confirm the visit first.' }
-  const amountCents = moneyCents(jobPrice(booking).toFixed(2))
-  if (amountCents <= 0) return { error: 'Set a positive job total first.' }
-
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
-
-  try {
-    const price = await stripe.prices.create({
-      currency: 'usd',
-      unit_amount: amountCents,
-      product_data: {
-        name: `QuietGreen service — ${booking.address}`,
-      },
-    })
-
-    const link = await stripe.paymentLinks.create({
-      line_items: [{ price: price.id, quantity: 1 }],
-      metadata: { booking_id: bookingId, customer_name: booking.name },
-    })
-
-    const { data: saved, error: saveError } = await db.from('bookings')
-      .update({ payment_link: link.url }).eq('id', bookingId)
-      .eq('updated_at', booking.updated_at).select('id').maybeSingle()
-    if (saveError || !saved) return { error: 'Job changed while creating the link. Refresh and review its current total.' }
-
-    return { url: link.url }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Unknown error'
-    return { error: msg }
-  }
+  return saveVisitPaymentLink(getAdmin(), new Stripe(process.env.STRIPE_SECRET_KEY), bookingId, prepared)
 }
 
 // ── Extra charges: one-off work billed outside a booking (bed cleanups, trims…) ──

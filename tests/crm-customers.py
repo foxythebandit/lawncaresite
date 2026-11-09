@@ -45,17 +45,18 @@ with sync_playwright() as playwright:
     page.get_by_role('button', name='Sign in').click()
     page.wait_for_url(BASE + '/admin/customers')
     assert page.get_by_role('link', name=name, exact=False).count() == 0
-    page.goto(BASE + '/admin?search=' + urllib.parse.quote(name, safe=''))
-    card = page.locator('.admin-card').filter(has_text=lead['address'])
-    card.locator('.admin-card-summary').click()
-    card.get_by_role('button', name='Link reviewed identity').click()
+    page.goto(BASE + '/admin/jobs/' + job['id'])
+    page.get_by_role('button', name='More actions', exact=True).click()
+    page.get_by_role('button', name='Link customer and property', exact=True).click()
+    page.get_by_role('button', name='Link reviewed identity').click()
     page.get_by_role('status').filter(has_text='Customer and property linked.').wait_for()
     linked = rows('bookings?id=eq.' + job['id'])[0]
     assert linked['customer_id'] and linked['property_id']
     assert rows('bookings?id=eq.' + other['id'])[0]['customer_id'] is None
     assert rows('leads?id=eq.' + lead['id'])[0]['customer_id'] == linked['customer_id']
+    page.get_by_role('button', name='Record payment', exact=True).click()
     page.get_by_label('Paid amount').fill('125.00')
-    page.get_by_role('button', name='Record payment').click()
+    page.get_by_role('button', name='Save payment', exact=True).click()
     page.get_by_role('status').filter(has_text='Payment recorded.').wait_for()
     old_job = rows('bookings', {'name': name + ' older visit', 'phone': phone, 'address': lead['address'],
                       'status': 'completed', 'price_per_visit': 75, 'job_total': 75,

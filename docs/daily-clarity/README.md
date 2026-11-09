@@ -10,4 +10,21 @@ The first rollout starts generation on or after the Austin cutover date. Existin
 
 Staff calendar range and attention reads use private server RPCs. Today and Next 7 Days read their date ranges directly. The customer portal uses its existing ownership policy to show the nearest upcoming visit and the latest unfinished past visit. It reads completed and pending visits separately.
 
-Use `npm run check` in the isolated local worktree. The schedule tests cover annual and temporary periods, leap-month dates, cutover preservation, missed worker runs, series shifts, stale revisions, and access grants. Native tests check the registered worker command, two concurrent reconciliation calls, an isolated schedule collision and portal ownership with real local logins. The planner's slice 2 replaces the Jobs list and uses the range and attention APIs.
+Use `npm run check` in the isolated local worktree. The schedule tests cover annual and temporary periods, leap-month dates, cutover preservation, missed worker runs, series shifts, stale revisions, and access grants. Native tests check the registered worker command, two concurrent reconciliation calls, an isolated schedule collision and portal ownership with real local logins. The Calendar uses those range and attention APIs.
+
+
+## Calendar and visit workflow
+
+The Calendar opens on Week at `/admin/jobs`. The date and Day, Week, or Month view are shareable. A phone can scroll the week or choose a day from the strip. Visits at one property share a heading and open separate records. The Calendar uses the actual date for the grid, while preferred dates stay under Needs scheduling until staff confirms a visit. Overdue and Needs schedule review link to their own paged results, including detected conflicts before the daily worker records a reason. Today and Next 7 days show the same attention totals.
+
+A visit shows its date, arrival window, price, and status before any editor opens. Mark done records completion. Payment is a separate action. Reschedule offers an explicit choice to email the customer when email is available. Notes, payment, service schedule, and contact or property details each have their own controls. The back link restores the calendar context. A calendar map loads its pins only after staff opens it.
+
+A projected visit opens by schedule revision and date and uses the same editors as a saved visit. Viewing the page leaves the database unchanged. A deliberate visit edit saves the visit and applies the change in one database transaction. A stale revision or a saved individual change prompts staff to reopen the calendar. The operation ledger makes a retry return the same visit.
+
+An explicit payment-link or email-reminder action prepares the saved visit before calling the existing provider. The provider request runs after commit. A retry uses the same operation key while the provider still retains it. Payment links save only against the prepared visit version, so an intervening price change prevents the old link from appearing on the visit. Missing provider configuration stops before any visit is saved. A failed provider request can leave the visit saved for staff to review.
+
+## Browser checks
+
+From the isolated worktree, start the feature server with `work serve daily-clarity`. Use the local staff seed. With Python Playwright and Chromium installed, run `python3 tests/daily-clarity-ui.py`. Set `QG_CALENDAR_SCREEN_DIR` to the feature’s screens directory to save captures. The test uses a local database and synthetic data. It checks Week, Day and Month at phone and desktop widths, exact visit navigation and return, notes and edit conflicts, completion and payment separately, schedule review, search, projected edits, and related staff screens. It cleans up its fixtures.
+
+The older CRM browser scripts still target their isolated fixture server and database. Their visit selectors follow the new detail page. The dedicated calendar browser test runs against this feature worktree’s server and seed.

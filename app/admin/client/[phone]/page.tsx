@@ -23,7 +23,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
   if (visits.length === 0) {
     return (
       <div className="crm-page">
-        <Link href="/admin/jobs" className="crm-back"><Icon name="arrowLeft" size={15} />Jobs</Link>
+        <Link href="/admin/jobs" className="crm-back"><Icon name="arrowLeft" size={15} />Calendar</Link>
         <div className="admin-empty">No unlinked legacy visits found for this phone.</div>
       </div>
     )
@@ -36,7 +36,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
 
   return (
     <div className="crm-page">
-      <Link href="/admin/jobs" className="crm-back"><Icon name="arrowLeft" size={15} />Jobs</Link>
+      <Link href="/admin/jobs" className="crm-back"><Icon name="arrowLeft" size={15} />Calendar</Link>
       <div className="crm-page-heading">
         <div>
           <h1>{client.name}</h1>
@@ -92,7 +92,7 @@ export default async function ClientPage({ params }: { params: Promise<{ phone: 
           const dateStr = (b.completed_at ?? b.confirmed_date ?? b.preferred_date ?? b.created_at).slice(0, 10)
           return (
             <div key={b.id} className="admin-client-visit">
-              <div className="admin-client-visit-date">{formatDate(dateStr)}</div>
+              <Link className="admin-client-visit-date" href={`/admin/jobs/${b.id}`}>{formatDate(dateStr)}</Link>
               <div className="admin-client-visit-info">
                 <span className={`admin-badge admin-badge-${b.status}`}>{jobStatusLabel(b.status)}</span>
                 {b.frequency && <span className="admin-client-visit-freq">{b.frequency}</span>}

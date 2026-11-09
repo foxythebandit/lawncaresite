@@ -266,7 +266,7 @@ export function QuotePanel() {
       <dl className="crm-kv"><dt>Visit</dt><dd>{booking?.confirmed_date ? `Scheduled ${booking.confirmed_date}` : booking?.preferred_date ? `Requested ${booking.preferred_date}` : '—'}</dd></dl>
       <div className="crm-action-row">
         {bookedCustomerId && <Link className="crm-button crm-button-primary" href={`/admin/customers/${bookedCustomerId}`}>Open customer</Link>}
-        <Link className="crm-button" href={`/admin/jobs?search=${encodeURIComponent(lead.name ?? lead.phone)}`}>Open job</Link>
+        {booking && <Link className="crm-button" href={`/admin/jobs/${booking.id}`}>Open visit</Link>}
         {firstVisitOpen && <button type="button" className="crm-button crm-button-ghost crm-button-danger" disabled={pending} onClick={customerCanceled}>Customer canceled</button>}
       </div>
       {cancellationPreview && <div className="crm-booking-request" role="group" aria-label="Review cancellation">

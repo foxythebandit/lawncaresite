@@ -323,3 +323,8 @@ Slice 1 review fixes preserve actual dates in the next-visit summary, remap mont
 The second Slice 1 review fix checks saved and projected dates before single moves or series shifts. A pre-existing collision keeps the saved visit visible and pauses that plan’s generation without stopping other agreements.
 
 A time-only plan edit keeps the saved date and cadence slot for each visit, including an explicit next date and any individual moves or skips. The new window carries forward on the existing rule segments without changing their dates or prices.
+
+
+### Daily clarity Slice 2 — staff Calendar and visit page
+
+The Calendar tab retains `/admin/jobs` and opens on Week at desktop and phone widths. Day and Month are available from the calendar header. Saved visits open by booking ID. Projected visits open by revision and date with the same controls. A deliberate edit saves atomically with the visit record. An explicit payment link or reminder prepares the visit and then calls the existing provider. Preferred-date requests stay in Needs scheduling. Overdue and schedule-review queues share their count and drilldown predicates. Today, Next 7 days, customer history, revenue and lead links lead to the selected visit where its ID is known. Staff keep the existing contact, property, pricing, completion, payment, and service schedule actions on the visit page. See `docs/daily-clarity/README.md` for the local browser checks.

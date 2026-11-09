@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { addVisitToPlan, changeJob, finishVisit, moveVisit } from '../../actions'
@@ -79,7 +81,7 @@ function VisitRow({ visit, firstName, canEmail, setMessage }: {
   return <div className="crm-visit">
     <div className="crm-customer-entry">
       <div>
-        <strong>{visit.date ? dateLabel(visit.date) : 'No date yet'}{visit.time ? ` · ${visit.time}` : ''}</strong>
+        <Link href={`/admin/jobs/${visit.id}`}><strong>{visit.date ? dateLabel(visit.date) : 'No date yet'}{visit.time ? ` · ${visit.time}` : ''}</strong></Link>
         <span>{formatMoney(visit.price)} · {visit.inPlan ? 'Mowing plan visit' : visit.needsPlan ? 'Recurring, not in a plan' : 'One-off'} · {visit.address}</span>
       </div>
       <span className={`admin-badge admin-badge-${overdue ? 'pending' : visit.status}`}>{overdue ? 'Overdue' : jobStatusLabel(visit.status)}</span>

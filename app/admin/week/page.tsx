@@ -1,6 +1,8 @@
-import { austinDay, getScheduledVisits } from '@/lib/calendar-data'
+import { austinDay, getCalendarAttention, getScheduledVisits } from '@/lib/calendar-data'
 import DayJobs from '../DayJobs'
 import ScheduleTabs from '../ScheduleTabs'
+import CalendarAttention from '../CalendarAttention'
+import { calendarContext } from '@/lib/calendar-view'
 import { formatMoney, formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +16,7 @@ export default async function WeekPage() {
   const todayDate = new Date(`${todayKey}T12:00:00Z`)
   const lastDate = new Date(todayDate)
   lastDate.setUTCDate(lastDate.getUTCDate() + 6)
-  const all = await getScheduledVisits(todayKey, dateKey(lastDate))
+  const [all, counts] = await Promise.all([getScheduledVisits(todayKey, dateKey(lastDate)), getCalendarAttention(todayKey)])
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(todayDate)
@@ -42,14 +44,15 @@ export default async function WeekPage() {
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{weekJobs}</span>
-          <span className="admin-stat-label">Jobs next 7 days</span>
+          <span className="admin-stat-label">Visits next 7 days</span>
         </div>
         <div className="admin-stat">
           <span className="admin-stat-val">{formatMoneyWhole(weekRevenue)}</span>
-          <span className="admin-stat-label">Scheduled job value</span>
+          <span className="admin-stat-label">Scheduled visit value</span>
         </div>
       </div>
 
+      <CalendarAttention counts={counts} context={calendarContext({}, todayKey)} />
       <div className="admin-schedule-head"><ScheduleTabs current="week" /></div>
       <div className="admin-week">
         {days.map(day => (
@@ -60,7 +63,7 @@ export default async function WeekPage() {
                 {day.isToday && <span className="admin-week-day-today-tag">Today</span>}
               </span>
               <span className="admin-week-day-summary">
-                {day.jobs.length > 0 ? `${day.jobs.length} job${day.jobs.length === 1 ? '' : 's'} · ${formatMoney(day.revenue)}` : 'No jobs'}
+                {day.jobs.length > 0 ? `${day.jobs.length} visit${day.jobs.length === 1 ? '' : 's'} · ${formatMoney(day.revenue)}` : 'No visits'}
               </span>
             </div>
             {day.jobs.length > 0 && <DayJobs jobs={day.jobs} />}

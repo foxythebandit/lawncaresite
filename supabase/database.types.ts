@@ -423,10 +423,19 @@ isOneToOne: false
 "crm_calendar_attention":
 { Args: { "p_today"?: string }; Returns: Json
                            },
+"crm_calendar_attention_page":
+{ Args: { "p_kind"?: string,"p_limit"?: number,"p_offset"?: number,"p_today": string }; Returns: Json
+                           },
+"crm_calendar_edit_occurrence":
+{ Args: { "p_action": string,"p_agreement_id": string,"p_on": string,"p_operation_id": string,"p_payload": Json,"p_revision_id": string }; Returns: Json
+                           },
 "crm_calendar_entries":
 { Args: { "p_from": string,"p_through": string }; Returns: {
               "address": string,"agreement_id": string,"booking_id": string,"cadence_on": string,"customer_id": string,"job_total": number,"name": string,"property_id": string,"revision_id": string,"service_on": string,"visit_status": string,"visit_time": string
             }[]
+                           },
+"crm_calendar_save_note":
+{ Args: { "p_booking_id": string,"p_expected_updated_at": string,"p_note": string,"p_operation_id": string }; Returns: Json
                            },
 "crm_claim_lead":
 { Args: { "p_call_sid": string,"p_lead_id": string,"p_staff_name": string,"p_staff_phone": string }; Returns: Json

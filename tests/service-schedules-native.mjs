@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { test } from 'node:test'
 import { createClient } from '@supabase/supabase-js'
 import { getPortalBookings } from '../app/portal/bookings.ts'
+import { saveVisitPaymentLink } from '../lib/visit-payment-link.ts'
 
 // Use this checkout's local stack, never the app's environment or a linked project.
 const status = execFileSync('supabase', ['status', '--env', '--output-format', 'text'], { encoding: 'utf8' })
@@ -184,4 +185,81 @@ test('portal reads keep owned overdue, upcoming, pending and completed visits in
   } finally {
     await data(admin.from('bookings').delete().in('id', visits.map(visit => visit.id)))
   }
+})
+
+
+test('prepared visit payment link retries keep one canonical visit and provider link', async () => {
+  await withNativeSchedule(async agreementId => {
+    const on = day(98)
+    const { revision_id: revisionId } = (await data(admin.rpc('crm_calendar_entries', { p_from: on, p_through: on })))
+      .find(row => row.agreement_id === agreementId && !row.booking_id)
+    const operationId = randomUUID()
+    const args = { p_agreement_id: agreementId, p_revision_id: revisionId, p_on: on,
+      p_operation_id: operationId, p_action: 'payment_link', p_payload: {} }
+    const result = await data(admin.rpc('crm_calendar_edit_occurrence', args))
+    const id = result.booking_id
+    const prepared = { operationId, updatedAt: result.updated_at, preparedAt: result.prepared_at }
+    const calls = []
+    const providerLinks = new Map()
+    const url = 'https://example.test/payment-link'
+    const stripe = {
+      prices: { create: async (params, options) => {
+        calls.push(options.idempotencyKey)
+        assert.equal(params.unit_amount, 8550)
+        return { id: 'price_test' }
+      } },
+      paymentLinks: { create: async (params, options) => {
+        calls.push(options.idempotencyKey)
+        assert.equal(params.metadata.booking_id, id)
+        if (providerLinks.has(options.idempotencyKey)) return providerLinks.get(options.idempotencyKey)
+        providerLinks.set(options.idempotencyKey, { url })
+        throw new Error('Synthetic timeout after provider accepted the request')
+      } },
+    }
+
+    assert.deepEqual(await saveVisitPaymentLink(admin, stripe, id, prepared), { error: 'Synthetic timeout after provider accepted the request' })
+    assert.deepEqual(await data(admin.rpc('crm_calendar_edit_occurrence', args)), { ...result, duplicate: true })
+    assert.deepEqual(await saveVisitPaymentLink(admin, stripe, id, prepared), { url })
+    assert.deepEqual(await saveVisitPaymentLink(admin, stripe, id, prepared), { url })
+    assert.deepEqual(calls, [`visit-price/${operationId}`, `visit-link/${operationId}`,
+      `visit-price/${operationId}`, `visit-link/${operationId}`])
+    assert.equal(providerLinks.size, 1)
+    assert.deepEqual(await data(admin.from('bookings').select('id,payment_link').eq('agreement_id', agreementId)
+      .eq('occurrence_on', on)), [{ id, payment_link: url }])
+  })
+})
+
+test('prepared visit payment link rejects expired and stale work before exposing a link', async () => {
+  await withNativeSchedule(async agreementId => {
+    const on = day(98)
+    const { revision_id: revisionId } = (await data(admin.rpc('crm_calendar_entries', { p_from: on, p_through: on })))
+      .find(row => row.agreement_id === agreementId && !row.booking_id)
+    const operationId = randomUUID()
+    const result = await data(admin.rpc('crm_calendar_edit_occurrence', {
+      p_agreement_id: agreementId, p_revision_id: revisionId, p_on: on, p_operation_id: operationId,
+      p_action: 'payment_link', p_payload: {},
+    }))
+    const id = result.booking_id
+    const prepared = { operationId, updatedAt: result.updated_at, preparedAt: result.prepared_at }
+    const calls = []
+    const stripe = {
+      prices: { create: async params => { calls.push(params.unit_amount); return { id: 'price_test' } } },
+      paymentLinks: { create: async () => {
+        await data(admin.rpc('crm_replace_job_items', {
+          p_booking_id: id, p_expected_updated_at: prepared.updatedAt, p_operation_id: randomUUID(),
+          p_items: [{ kind: 'service', description: 'Lawn care', amount: '96.25' }],
+        }))
+        return { url: 'https://example.test/stale-payment-link' }
+      } },
+    }
+
+    const expired = { ...prepared, preparedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }
+    assert.match((await saveVisitPaymentLink(admin, stripe, id, expired)).error, /review its price/)
+    assert.deepEqual(calls, [])
+    assert.match((await saveVisitPaymentLink(admin, stripe, id, prepared)).error, /changed while creating the link/)
+    assert.match((await saveVisitPaymentLink(admin, stripe, id, prepared)).error, /review its price/)
+    assert.deepEqual(calls, [8550])
+    assert.deepEqual(await data(admin.from('bookings').select('job_total,payment_link').eq('id', id).single()),
+      { job_total: 96.25, payment_link: null })
+  })
 })

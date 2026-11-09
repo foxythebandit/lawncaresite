@@ -18,7 +18,7 @@
     "db:status": "node scripts/db.mjs status",
     "db:types": "node scripts/db.mjs types",
     "db:destroy": "node scripts/db.mjs destroy",
-    "test:db": "supabase test db && node --test tests/service-schedules-native.mjs",
+    "test:db": "supabase test db && node --import ./tests/ts-resolve.mjs --test tests/service-schedules-native.mjs",
     "doctor": "node scripts/doctor.mjs",
     "release": "node scripts/release.mjs"
   },

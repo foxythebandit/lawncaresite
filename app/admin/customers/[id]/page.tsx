@@ -81,7 +81,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     {activePlans.map(agreement => {
       const next = nextPlanVisit(agreement.id)
       const nextDate = next ? visitDate(next) : null
-      return <div className="crm-plan-card" key={agreement.id}>
+      return <div className="crm-plan-card" key={agreement.id} id={`schedule-${agreement.id}`}>
         <div>
           <strong>Mowing plan · every {agreement.interval_count === 1 ? '' : `${agreement.interval_count} `}{agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {money(agreement.price_per_visit)}/visit</strong>
           <span>{addressById.get(agreement.property_id) || 'Property'} · {agreement.schedule_review_reason
@@ -97,7 +97,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       <section className="crm-panel crm-customer-wide"><h2>Past visits ({pastJobs.length})</h2>
         {pastJobs.length ? pastJobs.map(job => <div className="crm-customer-entry" key={job.id}>
           <div>
-            <strong>{job.address}</strong>
+            <Link href={`/admin/jobs/${job.id}`}>{job.address || "Open visit"}</Link>
             <span>{dateText(job.confirmed_date || job.preferred_date || job.created_at)} · {money(jobPrice(job))} job total
               {job.accepted_quote_snapshot ? ' · Accepted quote preserved' : ''}</span>
             {job.lead_id && <Link href={`/admin/leads/${job.lead_id}`}>Open linked lead →</Link>}

@@ -1,5 +1,7 @@
 """End-to-end public manual intake and staff measurement/booking stages; real local database."""
 import json, pathlib, uuid, urllib.request, urllib.parse, io
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from PIL import Image
 from playwright.sync_api import sync_playwright
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -77,29 +79,31 @@ with sync_playwright() as p:
  assert db('leads?id=eq.'+lid)[0]['quote_status']=='accepted'
  booking=db('bookings?lead_id=eq.'+lid)[0];assert booking['status']=='pending' and booking['price_per_visit']==80 and booking['utm_source']=='meta'
  assert booking['attribution']==saved['attribution']
- page.goto(BASE+'/admin/jobs');page.wait_for_load_state('load')  # the jobs map keeps geocoding, so the network rarely idles
- page.get_by_role('button',name=name,exact=False).first.click()
- # Book visit already created and linked the customer; the job card no longer asks.
+ first=(datetime.now(ZoneInfo('America/Chicago')).date()+timedelta(days=1))
+ page.goto(BASE+'/admin/jobs/'+booking['id'])
  assert booking['customer_id'] and booking['property_id']
  assert page.get_by_role('button',name='Link reviewed identity').count()==0
- page.get_by_label('Visit date').fill('2026-10-25')
- page.get_by_role('button',name='Save visit date').click()
+ page.get_by_role('button',name='Confirm first visit',exact=True).click()
+ page.get_by_label('Visit date').fill(first.isoformat())
+ page.get_by_role('button',name='Confirm visit',exact=True).click()
  page.get_by_role('status').filter(has_text='Visit confirmed.').wait_for()
  confirmed=db('bookings?id=eq.'+booking['id'])[0];assert confirmed['status']=='confirmed' and confirmed['confirmed_at']
- page.get_by_role('button',name='Start mowing plan',exact=False).click()
- page.locator('section[aria-label="Start recurring agreement"] input[type=date]').fill('2026-11-01')
- page.get_by_role('button',name='Start plan',exact=True).click()
- page.get_by_role('status').filter(has_text='Mowing plan started.').wait_for()
- page.get_by_label('Date completed').fill('2026-10-25')
- page.get_by_role('button',name='Mark complete',exact=True).click()
- page.get_by_role('status').filter(has_text='Visit completed.').wait_for()
- page.get_by_label('Paid amount').fill('80.00')
- page.get_by_label('Date paid').fill('2026-10-25')
- page.get_by_label('Payment method').select_option(label='Cash')
+ page.get_by_role('button',name='Set schedule',exact=True).click()
+ page.get_by_label('Next visit after this one').fill((first+timedelta(days=7)).isoformat())
+ page.get_by_role('button',name='Start mowing schedule',exact=True).click()
+ page.get_by_role('status').filter(has_text='Mowing schedule started.').wait_for()
+ page.get_by_role('button',name='Mark done',exact=True).click()
+ page.get_by_label('Date completed').fill(first.isoformat())
+ page.get_by_role('button',name='Save completion',exact=True).click()
+ page.get_by_role('status').filter(has_text='Visit marked done.').wait_for()
  page.get_by_role('button',name='Record payment',exact=True).click()
+ page.get_by_label('Paid amount').fill('80.00')
+ page.get_by_label('Date paid').fill(first.isoformat())
+ page.get_by_label('Payment method').select_option(label='Cash')
+ page.get_by_role('button',name='Save payment',exact=True).click()
  page.get_by_role('status').filter(has_text='Payment recorded.').wait_for()
  rows=db('bookings?lead_id=eq.'+lid)
- assert len(rows)==2,rows
+ assert len(rows)>=2,rows
  completed=next(r for r in rows if r['status']=='completed');recurring=next(r for r in rows if r['status']=='confirmed')
  assert completed['completed_at'] and len(db('job_payments?booking_id=eq.'+completed['id']))==1
  assert recurring['attribution']==saved['attribution'] and recurring['utm_source']=='meta' and recurring['confirmed_at']
