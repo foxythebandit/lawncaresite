@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(5);
+select plan(6);
 
 select ok(
   not has_table_privilege('anon','public.agreement_schedule_revisions','SELECT')
@@ -12,12 +12,21 @@ select ok(
 select is(
   array(select p.oid::regprocedure::text from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and (p.proname like 'crm%_schedule%' or p.proname like 'crm_calendar_%')
+    where n.nspname = 'public' and (p.proname like 'crm%_schedule%' or p.proname like 'crm_calendar_%'
+      or p.proname like 'crm_service_%' or p.proname = 'crm_save_service_label')
       and (has_function_privilege('anon',p.oid,'EXECUTE')
         or has_function_privilege('authenticated',p.oid,'EXECUTE'))
     order by 1),
   array[]::text[],
   'customer and public roles cannot run the schedule RPCs'
+);
+
+select ok(
+  not has_table_privilege('anon','public.service_labels','SELECT')
+    and not has_table_privilege('authenticated','public.service_labels','SELECT')
+    and has_table_privilege('service_role','public.service_labels','SELECT')
+    and (select relrowsecurity from pg_class where oid = 'public.service_labels'::regclass),
+  'staff service labels require the server role and have RLS enabled'
 );
 
 set local role service_role;

@@ -215,12 +215,69 @@ begin
   return greatest(a.generated_through,case when v_from <= v_through then v_through end);
 end $$;
 
-create or replace function public.crm_shift_agreement(p_booking_id uuid,p_expected_updated_at timestamptz,
-  p_operation_id uuid,p_date date,p_time text)
+-- A direct series move is reserved for a uniform weekly cadence or the
+-- original legacy interval. Complex rules go through the full schedule editor.
+create function public.crm_shift_schedule_definition(p_agreement_id uuid,p_slot date,p_date date)
+returns jsonb language plpgsql stable security invoker set search_path = '' as $$
+declare a public.recurring_agreements; r public.agreement_schedule_revisions; v_rule jsonb;
+begin
+  select * into a from public.recurring_agreements where id = p_agreement_id;
+  select * into r from public.agreement_schedule_revisions
+    where agreement_id = a.id and (ends_before is null or ends_before > greatest(starts_on,p_slot))
+    order by starts_on limit 1;
+  v_rule := r.definition->'base';
+  if exists(select 1 from public.agreement_schedule_revisions rev
+    where rev.agreement_id = a.id and (rev.ends_before is null or rev.ends_before > greatest(rev.starts_on,p_slot))
+      and ((rev.definition->'base') is distinct from v_rule
+        or rev.items_template is distinct from r.items_template
+        or rev.visit_time is distinct from r.visit_time
+        or rev.definition->'base'->>'frequency' not in ('legacy','weekly','biweekly')
+        or jsonb_array_length(coalesce(rev.definition->'annual','[]')) > 0
+        or jsonb_array_length(coalesce(rev.definition->'excluded_on','[]')) > 0
+        or exists(select 1 from jsonb_array_elements(coalesce(rev.definition->'temporary','[]')) period
+          where (period->>'end')::date - (period->>'start')::date > 1
+            or period->'rule'->>'frequency' <> 'weekly'))) then
+    raise exception 'Use Edit schedule to preview changes to this service’s future dates' using errcode = '23514';
+  end if;
+  if v_rule->>'frequency' in ('weekly','biweekly') then
+    return jsonb_build_object('version',1,'base',v_rule || jsonb_build_object('anchor_on',p_date));
+  end if;
+  return public.crm_legacy_schedule(p_date,coalesce(v_rule->>'unit',a.interval_unit),
+    coalesce((v_rule->>'count')::integer,a.interval_count));
+end $$;
+
+create function public.crm_shift_schedule_rows(p_agreement_id uuid,p_booking_id uuid,p_slot date,
+  p_date date,p_today date,p_definition jsonb)
+returns table(booking_id uuid,slot date,target date) language sql stable security invoker set search_path = '' as $$
+  with future_slots as (
+    select s.cadence_on,row_number() over (order by s.cadence_on)::integer as ordinal
+    from generate_series(0,(
+      select (max(v.occurrence_on) - p_slot - 1) / 366
+      from public.bookings v where v.agreement_id = p_agreement_id and v.occurrence_on > p_slot
+        and v.schedule_state is distinct from 'superseded'
+    )) as chunk
+    cross join lateral public.crm_schedule_slots(p_agreement_id,
+      p_slot + 1 + 366 * chunk,p_slot + 366 + 366 * chunk) s
+  ), moving as (
+    select p_booking_id as id,p_slot as occurrence_on,0 as ordinal
+    union all
+    select v.id,v.occurrence_on,s.ordinal from future_slots s join public.bookings v
+      on v.agreement_id = p_agreement_id and v.occurrence_on = s.cadence_on
+    where v.occurrence_on >= p_today and v.schedule_state is distinct from 'superseded' and v.status <> 'declined'
+  )
+  select m.id,m.occurrence_on,case when p_definition->'base'->>'unit' = 'month'
+    then (p_date + make_interval(months => (p_definition->'base'->>'count')::integer * m.ordinal))::date
+    else p_date + 7 * m.ordinal * case p_definition->'base'->>'frequency'
+      when 'biweekly' then 2 when 'weekly' then 1 else (p_definition->'base'->>'count')::integer end end
+  from moving m order by m.occurrence_on;
+$$;
+
+create function public.crm_apply_schedule_shift(p_booking_id uuid,p_expected_updated_at timestamptz,
+  p_operation_id uuid,p_date date,p_time text,p_staff_user_id uuid,p_schedule_operation_id uuid)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare a public.recurring_agreements; b public.bookings; r public.agreement_schedule_revisions;
   v_agreement_id uuid; v_result jsonb; v_ids uuid[]; v_slots date[]; v_target date; v_rev uuid; v_from date;
-  v_row record; v_delta integer; v_request jsonb := jsonb_build_object('date',p_date,'time',p_time);
+  v_row record; v_delta integer; v_definition jsonb; v_request jsonb := jsonb_build_object('date',p_date,'time',p_time);
   v_today date := (now() at time zone 'America/Chicago')::date; v_time text := nullif(p_time,'');
 begin
   if p_date is null then raise exception 'Visit date required' using errcode = '22023'; end if;
@@ -259,8 +316,8 @@ begin
     loop
       v_from := greatest(r.starts_on,b.occurrence_on,v_today);
       update public.agreement_schedule_revisions set ends_before = v_from where id = r.id;
-      insert into public.agreement_schedule_revisions(agreement_id,starts_on,ends_before,definition,items_template,visit_time,service_label_id)
-        values(a.id,v_from,r.ends_before,r.definition,r.items_template,v_time,r.service_label_id) returning id into v_rev;
+      insert into public.agreement_schedule_revisions(agreement_id,starts_on,ends_before,definition,items_template,visit_time,service_label_id,staff_user_id,operation_id)
+        values(a.id,v_from,r.ends_before,r.definition,r.items_template,v_time,r.service_label_id,p_staff_user_id,p_schedule_operation_id) returning id into v_rev;
       update public.bookings v set confirmed_time = v_time,schedule_revision_id = v_rev
         where v.agreement_id = a.id and not v.time_override and v.status = 'confirmed'
           and v.occurrence_on >= v_from and (r.ends_before is null or v.occurrence_on < r.ends_before)
@@ -278,43 +335,11 @@ begin
       values(p_operation_id,'shift_agreement',p_booking_id,v_request,v_result);
     return v_result || '{"duplicate":false}'::jsonb;
   end if;
-  if exists(select 1 from public.agreement_schedule_revisions rev
-    where rev.agreement_id = a.id and (rev.ends_before is null or rev.ends_before > b.occurrence_on)
-      and (rev.definition->'base'->>'frequency' <> 'legacy'
-        or jsonb_array_length(coalesce(rev.definition->'annual','[]')) > 0
-        or jsonb_array_length(coalesce(rev.definition->'excluded_on','[]')) > 0
-        or exists(select 1 from jsonb_array_elements(coalesce(rev.definition->'temporary','[]')) period
-          where (period->>'end')::date - (period->>'start')::date > 1
-            or period->'rule'->>'frequency' <> 'weekly'))) then
-    raise exception 'Use Edit schedule to preview changes to this service’s future dates' using errcode = '23514';
-  end if;
+  v_definition := public.crm_shift_schedule_definition(a.id,b.occurrence_on,p_date);
   v_delta := p_date - b.occurrence_on;
   v_from := least(p_date,b.occurrence_on);
-  -- Count the old rule’s cadence slots, including slots without a saved booking.
-  -- An explicit next date and the normal monthly date can fall in the same month.
-  with future_slots as (
-    select s.cadence_on,
-      row_number() over (order by s.cadence_on)::integer as ordinal
-    from generate_series(0,(
-      select (max(v.occurrence_on) - b.occurrence_on - 1) / 366
-      from public.bookings v where v.agreement_id = a.id and v.occurrence_on > b.occurrence_on
-        and v.schedule_state is distinct from 'superseded'
-    )) as chunk
-    cross join lateral public.crm_schedule_slots(a.id,
-      b.occurrence_on + 1 + 366 * chunk,b.occurrence_on + 366 + 366 * chunk) s
-  ), moving as (
-    select b.id,b.occurrence_on,0 as ordinal
-    union all
-    select v.id,v.occurrence_on,s.ordinal
-    from future_slots s join public.bookings v
-      on v.agreement_id = a.id and v.occurrence_on = s.cadence_on
-    where v.occurrence_on >= v_today and v.schedule_state is distinct from 'superseded'
-      and v.status <> 'declined'
-  )
-  select array_agg(m.id order by m.occurrence_on),array_agg(
-    case when a.interval_unit = 'week' then p_date + 7 * a.interval_count * m.ordinal
-      else (p_date + make_interval(months => a.interval_count * m.ordinal))::date end
-    order by m.occurrence_on) into v_ids,v_slots from moving m;
+  select array_agg(m.booking_id order by m.slot),array_agg(m.target order by m.slot)
+    into v_ids,v_slots from public.crm_shift_schedule_rows(a.id,b.id,b.occurrence_on,p_date,v_today,v_definition) m;
   if exists(select 1 from public.bookings v where v.id = any(v_ids)
     and (v.status = 'completed' or v.amount_charged is not null or v.payment_link is not null
       or exists(select 1 from public.job_payments p where p.booking_id = v.id))) then
@@ -350,8 +375,10 @@ begin
       where id = a.id;
   end if;
   v_rev := public.crm_write_schedule_revision(a.id,v_from,
-    public.crm_legacy_schedule(p_date,a.interval_unit,a.interval_count),a.items_template,
+    v_definition,a.items_template,
     case when r.id is null then nullif(p_time,'') else r.visit_time end);
+  update public.agreement_schedule_revisions set staff_user_id = p_staff_user_id,operation_id = p_schedule_operation_id
+    where id = v_rev;
   for v_row in select m.id,m.target,(v.id = b.id or not v.date_override) as move_actual
     from unnest(v_ids,v_slots) m(id,target)
     join public.bookings v on v.id = m.id
@@ -382,6 +409,20 @@ begin
     values(p_operation_id,'shift_agreement',p_booking_id,v_request,v_result);
   return v_result || '{"duplicate":false}'::jsonb;
 end $$;
+
+create or replace function public.crm_shift_agreement(p_booking_id uuid,p_expected_updated_at timestamptz,
+  p_operation_id uuid,p_date date,p_time text)
+returns jsonb language sql security invoker set search_path = '' as $$
+  select public.crm_apply_schedule_shift(p_booking_id,p_expected_updated_at,p_operation_id,p_date,p_time,null,null);
+$$;
+
+revoke all on function public.crm_shift_schedule_definition(uuid,date,date),
+  public.crm_shift_schedule_rows(uuid,uuid,date,date,date,jsonb),
+  public.crm_apply_schedule_shift(uuid,timestamptz,uuid,date,text,uuid,uuid) from public,anon,authenticated;
+grant execute on function public.crm_shift_schedule_definition(uuid,date,date),
+  public.crm_shift_schedule_rows(uuid,uuid,date,date,date,jsonb),
+  public.crm_apply_schedule_shift(uuid,timestamptz,uuid,date,text,uuid,uuid) to service_role;
+
 
 create or replace function public.crm_agreement_command(p_agreement_id uuid,p_expected_updated_at timestamptz,
   p_operation_id uuid,p_action text,p_payload jsonb) returns jsonb language plpgsql

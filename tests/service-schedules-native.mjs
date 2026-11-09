@@ -263,3 +263,35 @@ test('prepared visit payment link rejects expired and stale work before exposing
       { job_total: 96.25, payment_link: null })
   })
 })
+
+test('native reviewed edits race on one agreement version and replay the winning staff receipt', async () => {
+  await withNativeSchedule(async (agreementId, items) => {
+    const { updated_at } = await data(admin.from('recurring_agreements').select('updated_at').eq('id', agreementId).single())
+    const actor = randomUUID()
+    const operationIds = [randomUUID(), randomUUID()]
+    const amounts = ['91.37', '103.26']
+    const workers = [admin, client(config.SECRET_KEY)]
+    const previews = await Promise.all(amounts.map(amount => {
+      const request = { mode: 'future', from: day(7), definition: { version: 1, base: { frequency: 'weekly', anchor_on: today } },
+        items_template: [{ ...items[0], amount }] }
+      const args = { p_agreement_id: agreementId, p_expected_updated_at: updated_at, p_staff_user_id: actor, p_request: request }
+      return data(admin.rpc('crm_service_edit', args)).then(result => ({ args, result }))
+    }))
+    const commands = previews.map(({ args, result }, i) => ({ ...args, p_operation_id: operationIds[i], p_preview: result.preview }))
+    const attempts = await Promise.all(commands.map((command, i) => workers[i].rpc('crm_service_edit', command)))
+    const winner = attempts.findIndex(attempt => !attempt.error)
+    assert.ok(winner >= 0)
+    assert.equal(attempts[1 - winner].error?.code, 'PT409')
+    const [replayed] = await Promise.all([
+      data(admin.rpc('crm_service_edit', commands[winner])),
+      data(workers[1].rpc('crm_reconcile_schedule', { p_agreement_id: agreementId, p_today: day(15) })),
+    ])
+    assert.deepEqual(replayed, { ...attempts[winner].data, duplicate: true })
+    const revisions = await data(admin.from('agreement_schedule_revisions').select('staff_user_id,operation_id')
+      .eq('agreement_id', agreementId).is('ends_before', null))
+    assert.deepEqual(revisions, [{ staff_user_id: actor, operation_id: operationIds[winner] }])
+    const prices = await data(admin.from('bookings').select('job_total').eq('agreement_id', agreementId).gte('occurrence_on', day(7)))
+    assert.ok(prices.length > 10)
+    assert.ok(prices.every(visit => visit.job_total === Number(amounts[winner])))
+  })
+})
