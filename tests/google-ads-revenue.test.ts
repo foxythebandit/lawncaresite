@@ -78,4 +78,6 @@ test('feed requires the configured Basic credentials', () => {
   assert.equal(feedAuthorized(null, 'google', password), false)
   assert.equal(feedAuthorized(good, 'google', 'short'), false)
   assert.equal(feedAuthorized(good, undefined, undefined), false)
+  // Dashboard-pasted values with stray whitespace still match.
+  assert.equal(feedAuthorized(good, ' google\n', `${password}\n`), true)
 })
