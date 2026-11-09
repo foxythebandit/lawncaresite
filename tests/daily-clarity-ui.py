@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -103,6 +103,9 @@ def fixture():
     mowing = create_visit(customer, name, address, day(1), "Morning", "Lawn care", 85.50,
                           customer_notes="Use the side gate. The dog stays inside on Tuesdays.")
     cleanup = create_visit(customer, name, address, day(1), "14:15", "Leaf cleanup", 250.00)
+    create_visit(customer, name, address, day(5), "14:00", "Patio cleanup", 75.00)
+    create_visit(customer, name, address, day(5), "9:00", "Bed weeding", 105.00)
+    create_visit(customer, name, address, day(5), "09:00", "Hedge trimming", 125.00)
     long_name = "Christopher and Alexandra Montgomery-Rivera"
     long_addr = "888 Meadowridge Crossing, Unit 12B, Austin, TX 78748"
     long_customer = create_customer(long_name, long_addr, 82)
@@ -179,12 +182,30 @@ try:
             geocodes.append(route.request.url)
             route.fulfill(json=[{"lat": "30.174", "lon": "-97.812"}])
         page.route("https://nominatim.openstreetmap.org/**", stub_geocode)
-        page.goto(f"{BASE}/admin/jobs/{mowing}")
+        search_url = calendar("month", day(2), search="Park")
+        page.goto(search_url)
         expect(page.get_by_role("heading", name="Staff sign in")).to_be_visible()
+        assert parse_qs(urlsplit(page.url).query)["next"] == [search_url.removeprefix(BASE)]
         login(page)
-        page.wait_for_url(re.compile(r"/admin/jobs/" + mowing + r"$"))
+        page.wait_for_url(search_url)
+        expect(page.get_by_role("navigation", name="Calendar view").get_by_role("link", name="Month")).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("searchbox", name="Search visits")).to_have_value("Park")
+        shot(page, "calendar-signed-in-context-desktop")
+
+        desktop.clear_cookies()
+        visit_back = calendar("day", day(1), search="Kelli Alvarez").removeprefix(BASE)
+        visit_url = f"{BASE}/admin/jobs/{mowing}?" + urlencode({"returnTo": visit_back})
+        page.goto(visit_url)
+        expect(page.get_by_role("heading", name="Staff sign in")).to_be_visible()
+        assert parse_qs(urlsplit(page.url).query)["next"] == [visit_url.removeprefix(BASE)]
+        login(page)
+        page.wait_for_url(visit_url)
         expect(page.get_by_role("heading", name="Kelli Alvarez")).to_be_visible()
+        expect(page.get_by_role("link", name="Back to calendar")).to_have_attribute("href", visit_back)
         shot(page, "visit-desktop")
+        page.get_by_role("link", name="Back to calendar").click()
+        page.wait_for_url(BASE + visit_back)
+        expect(page.get_by_role("searchbox", name="Search visits")).to_have_value("Kelli Alvarez")
         page.goto(BASE + "/admin/jobs")
         expect(page.get_by_role("navigation", name="Calendar view").get_by_role("link", name="Week")).to_have_attribute("aria-current", "page")
         page.goto(calendar())
@@ -213,6 +234,13 @@ try:
         page.goto(calendar("day", day(1)))
         expect(page.get_by_role("link", name=re.compile("Kelli Alvarez, Leaf cleanup"))).to_be_visible()
         shot(page, "calendar-day-desktop")
+        page.goto(calendar("day", day(5)))
+        day_region = page.get_by_role("region", name=re.compile("^Saturday"))
+        arrivals = day_region.get_by_role("link", name=re.compile("Kelli Alvarez"))
+        expect(arrivals).to_have_count(3)
+        times = [entry.split(", ")[2] for entry in arrivals.evaluate_all("(links) => links.map(link => link.ariaLabel)")]
+        assert times == ["9:00 AM", "9:00 AM", "2:00 PM"], times
+        shot(page, "calendar-exact-times-desktop")
         page.goto(calendar(attention="schedule_review"))
         expect(page.get_by_role("link", name=re.compile("Noah Park.*moved visit conflicts.*Review schedule"))).to_have_attribute("href", re.compile(moved))
         shot(page, "calendar-review-desktop")
@@ -369,8 +397,16 @@ try:
         projected = page.get_by_role("link", name=re.compile("Noah Park, Lawn care"))
         expect(projected).to_have_attribute("href", re.compile("/occurrence/"))
         assert not request(f"bookings?agreement_id=eq.{plan}&occurrence_on=eq.{day(107)}&select=id")
-        projected.click()
+        projected_url = projected.get_attribute("href")
+        assert projected_url and projected_url.startswith("/admin/jobs/occurrence/")
+        desktop.clear_cookies()
+        page.goto(BASE + projected_url)
+        expect(page.get_by_role("heading", name="Staff sign in")).to_be_visible()
+        assert parse_qs(urlsplit(page.url).query)["next"] == [projected_url]
+        login(page)
+        page.wait_for_url(BASE + projected_url)
         expect(page.get_by_role("heading", name="Noah Park")).to_be_visible()
+        expect(page.get_by_role("link", name="Back to calendar")).to_have_attribute("href", parse_qs(urlsplit(projected_url).query)["returnTo"][0])
         assert not request(f"bookings?agreement_id=eq.{plan}&occurrence_on=eq.{day(107)}&select=id")
         for action in ("Mark done", "Reschedule", "Add note", "More actions", "Record payment",
                        "Create payment link", "Items and price", "Edit schedule"):

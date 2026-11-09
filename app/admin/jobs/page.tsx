@@ -16,12 +16,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const { first, last } = calendarRange(context.view, context.date)
   const page = context.page ?? 1
   const attention = context.attention
-  const [visits, attentionPage, search] = await Promise.all([
-    attention || context.search ? [] : getCalendarVisits(first, last),
-    attention ? getCalendarAttentionPage(today, attention, page) : getCalendarAttention(today).then(counts => ({ counts, rows: [] })),
-    context.search && !attention ? getVisitSearch(context.search, page, context.filter, { first, last }) : null,
-  ])
   const focus = typeof query.focus === 'string' && /^[a-zA-Z0-9_-]{1,90}$/.test(query.focus) ? query.focus : undefined
+  const returnTo = calendarHref(context, focus)
+  const [visits, attentionPage, search] = await Promise.all([
+    attention || context.search ? [] : getCalendarVisits(first, last, returnTo),
+    attention ? getCalendarAttentionPage(today, attention, page, returnTo) : getCalendarAttention(today, returnTo).then(counts => ({ counts, rows: [] })),
+    context.search && !attention ? getVisitSearch(context.search, page, context.filter, { first, last }, returnTo) : null,
+  ])
   const label = context.view === 'month' ? dateLabel(first, { month: 'long', year: 'numeric' })
     : first === last ? dateLabel(first, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     : `${dateLabel(first, { month: 'short', day: 'numeric', ...(first.slice(0, 4) !== last.slice(0, 4) && { year: 'numeric' }) })} – ${dateLabel(last, { month: 'short', day: 'numeric', year: 'numeric' })}`

@@ -2,6 +2,9 @@
 import 'server-only'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
+import { austinDay, CALENDAR_PATH } from './calendar-view'
+
+export { austinDay } from './calendar-view'
 
 export type CalendarEntry = {
   booking_id: string | null
@@ -25,12 +28,8 @@ export type CalendarAttention = {
   catching_up: boolean
 }
 
-export function austinDay(date = new Date()) {
-  return date.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
-}
-
-export async function getCalendarEntries(from: string, through: string): Promise<CalendarEntry[]> {
-  await requireStaff('/admin/jobs')
+export async function getCalendarEntries(from: string, through: string, returnTo = CALENDAR_PATH): Promise<CalendarEntry[]> {
+  await requireStaff(returnTo)
   const db = adminDb()
   const visits: CalendarEntry[] = []
   const pageSize = 500
@@ -43,8 +42,8 @@ export async function getCalendarEntries(from: string, through: string): Promise
   }
 }
 
-export async function getCalendarAttention(today = austinDay()): Promise<CalendarAttention> {
-  await requireStaff('/admin/jobs')
+export async function getCalendarAttention(today = austinDay(), returnTo = CALENDAR_PATH): Promise<CalendarAttention> {
+  await requireStaff(returnTo)
   const { data, error } = await adminDb().rpc('crm_calendar_attention', { p_today: today })
   if (error || !data) throw new Error('Could not load visit attention counts.')
   return data
@@ -88,8 +87,8 @@ export type CalendarAttentionRow = {
   service?: string
 }
 
-export async function getCalendarAttentionPage(today: string, kind: CalendarAttentionRow['kind'], page: number) {
-  await requireStaff('/admin/jobs')
+export async function getCalendarAttentionPage(today: string, kind: CalendarAttentionRow['kind'], page: number, returnTo = CALENDAR_PATH) {
+  await requireStaff(returnTo)
   const { data, error } = await adminDb().rpc('crm_calendar_attention_page', {
     p_today: today, p_kind: kind, p_limit: ATTENTION_PAGE_SIZE, p_offset: (page - 1) * ATTENTION_PAGE_SIZE,
   })
@@ -100,8 +99,8 @@ export async function getCalendarAttentionPage(today: string, kind: CalendarAtte
   return { ...result, rows: result.rows.map(row => ({ ...row, service: labels.get(row.booking_id ?? '') })) }
 }
 
-export async function getVisitSearch(search: string, page: number, filter?: 'confirmed' | 'week', bounds?: { first: string; last: string }) {
-  await requireStaff('/admin/jobs')
+export async function getVisitSearch(search: string, page: number, filter?: 'confirmed' | 'week', bounds?: { first: string; last: string }, returnTo = CALENDAR_PATH) {
+  await requireStaff(returnTo)
   // Quote the value for PostgREST's or() grammar and escape ILIKE wildcards.
   const pattern = search.replace(/[\\%_]/g, '\\$&').replace(/[\\"]/g, '\\$&')
   const clause = ['name', 'address', 'phone', 'email'].map(field => `${field}.ilike."%${pattern}%"`).join(',')
@@ -136,8 +135,8 @@ async function savedVisitServices(saved: string[]) {
   return labels
 }
 
-export async function getCalendarVisits(from: string, through: string) {
-  const visits = await getCalendarEntries(from, through)
+export async function getCalendarVisits(from: string, through: string, returnTo = CALENDAR_PATH) {
+  const visits = await getCalendarEntries(from, through, returnTo)
   const db = adminDb()
   const saved = [...new Set(visits.flatMap(row => row.booking_id ? [row.booking_id] : []))]
   const virtual = [...new Set(visits.flatMap(row => row.revision_id && !row.booking_id ? [row.revision_id] : []))]

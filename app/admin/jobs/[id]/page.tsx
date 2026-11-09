@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { austinDay } from '@/lib/calendar-data'
-import { calendarReturnTo } from '@/lib/calendar-view'
+import { calendarReturnTo, visitReturnHref } from '@/lib/calendar-view'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import { visitMapContext, visitScheduleContext } from '../visit-context'
 import VisitDetails from '../VisitDetails'
@@ -11,7 +11,9 @@ export default async function VisitPage({ params, searchParams }: {
   params: Promise<{ id: string }>; searchParams: Promise<{ returnTo?: string }>
 }) {
   const { id } = await params
-  await requireStaff(`/admin/jobs/${id}`)
+  const requestedBack = (await searchParams).returnTo
+  const returnTo = visitReturnHref(`/admin/jobs/${id}`, typeof requestedBack === 'string' ? requestedBack : undefined)
+  await requireStaff(returnTo)
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) notFound()
   const db = adminDb()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).maybeSingle().throwOnError()
@@ -35,7 +37,7 @@ export default async function VisitPage({ params, searchParams }: {
   ])
   const schedule = await visitScheduleContext(agreement.data, today)
   const { id: bookingId, ...visit } = booking
-  return <VisitDetails key={bookingId} bookingId={bookingId} booking={visit} today={today} back={calendarReturnTo((await searchParams).returnTo, today)}
+  return <VisitDetails key={bookingId} bookingId={bookingId} booking={visit} today={today} back={calendarReturnTo(requestedBack, today)}
     agreement={agreement.data} {...schedule}
     customers={customers.data ?? []} properties={properties.data ?? []} candidates={candidates.data ?? []}
     items={(items.data ?? []).map(item => ({ ...item, kind: item.kind === 'discount' ? 'discount' : 'service', amount: String(item.amount) }))}

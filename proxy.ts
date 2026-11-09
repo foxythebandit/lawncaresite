@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextRequest, NextResponse } from 'next/server'
 import { isStaff, staffReturnTo } from '@/lib/staff-policy'
+import { CALENDAR_PATH } from '@/lib/calendar-view'
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
@@ -15,9 +16,11 @@ export async function proxy(request: NextRequest) {
     },
   })
   const { data: { user } } = await client.auth.getUser()
-  if (request.nextUrl.pathname.startsWith('/admin') && request.nextUrl.pathname !== '/admin/login' && !isStaff(user)) {
+  const { pathname, search } = request.nextUrl
+  if (pathname.startsWith('/admin') && pathname !== '/admin/login' && !isStaff(user)) {
     const url = new URL('/admin/login', request.url)
-    url.searchParams.set('next', staffReturnTo(request.nextUrl.pathname))
+    const calendar = pathname === CALENDAR_PATH || pathname.startsWith(CALENDAR_PATH + '/')
+    url.searchParams.set('next', staffReturnTo(calendar ? pathname + search : pathname))
     const redirect = NextResponse.redirect(url)
     response.cookies.getAll().forEach(cookie => redirect.cookies.set(cookie))
     return redirect

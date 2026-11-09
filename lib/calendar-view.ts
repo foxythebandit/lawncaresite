@@ -4,6 +4,7 @@ import { jobStatusLabel } from './crm-jobs'
 export const CALENDAR_PATH = '/admin/jobs'
 export const VIEWS = ['day', 'week', 'month'] as const
 export type CalendarView = typeof VIEWS[number]
+export const VISIT_WINDOWS = ['Morning', 'Timed', 'Afternoon', 'Any time', 'Other windows'] as const
 export const ATTENTION = {
   overdue: 'Overdue',
   needs_scheduling: 'Needs scheduling',
@@ -13,6 +14,10 @@ export type AttentionKind = keyof typeof ATTENTION
 
 const iso = (date: Date) => date.toISOString().slice(0, 10)
 const dateAtNoon = (day: string) => new Date(day + 'T12:00:00Z')
+
+export function austinDay(date = new Date()) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
+}
 
 export function calendarDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^[1-9]\d{3}-\d{2}-\d{2}$/.test(value)) return false
@@ -51,22 +56,30 @@ export function visitStatus(status: string, day: string | null, today: string) {
   return jobStatusLabel(status)
 }
 
-export function visitTime(value: string | null | undefined) {
-  if (!value?.trim()) return 'Any time'
-  const time = value.trim()
-  const exact = /^([01]?\d|2[0-3]):([0-5]\d)(?::00)?$/.exec(time)
-  if (!exact) return time
-  const hour = Number(exact[1])
-  return `${hour % 12 || 12}:${exact[2]} ${hour < 12 ? 'AM' : 'PM'}`
+function visitMinutes(value: string | null | undefined) {
+  const exact = /^([01]?\d|2[0-3]):([0-5]\d)(?::00)?$/.exec(value?.trim() ?? '')
+  return exact ? Number(exact[1]) * 60 + Number(exact[2]) : null
 }
 
-export function visitWindow(time: string | null): string {
-  if (/^(?:[01]?\d|2[0-3]):[0-5]\d(?::00)?$/.test(time?.trim() ?? '')) return 'Timed'
+export function visitTime(value: string | null | undefined) {
+  const minutes = visitMinutes(value)
+  if (minutes == null) return value?.trim() || 'Any time'
+  const hour = Math.floor(minutes / 60)
+  return `${hour % 12 || 12}:${String(minutes % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
+}
+
+export function visitWindow(time: string | null) {
+  if (visitMinutes(time) != null) return 'Timed'
   const value = time?.trim().toLowerCase()
   if (value === 'morning') return 'Morning'
   if (value === 'afternoon') return 'Afternoon'
   if (!value || value === 'any time') return 'Any time'
   return 'Other windows'
+}
+
+export function compareVisitTimes(a: string | null, b: string | null) {
+  const order = VISIT_WINDOWS.indexOf(visitWindow(a)) - VISIT_WINDOWS.indexOf(visitWindow(b))
+  return order || (visitMinutes(a) ?? 0) - (visitMinutes(b) ?? 0)
 }
 
 export type CalendarContext = {
@@ -100,7 +113,7 @@ export function calendarHref(context: CalendarContext, focus?: string) {
   return `${CALENDAR_PATH}?${params}`
 }
 
-export function calendarReturnTo(value: unknown, today: string) {
+export function calendarReturnTo(value: unknown, today = austinDay()) {
   if (typeof value !== 'string' || !value.startsWith(CALENDAR_PATH + '?') || value.length > 1400) return calendarHref(calendarContext({}, today))
   const params = new URLSearchParams(value.slice(CALENDAR_PATH.length + 1))
   return calendarHref(calendarContext(Object.fromEntries(params), today), params.get('focus') ?? undefined)
@@ -109,5 +122,9 @@ export function calendarReturnTo(value: unknown, today: string) {
 export function visitHref(target: { booking_id: string | null; agreement_id: string | null; revision_id: string | null; cadence_on: string | null }, returnTo?: string) {
   const path = target.booking_id ? `${CALENDAR_PATH}/${target.booking_id}`
     : `${CALENDAR_PATH}/occurrence/${target.agreement_id}_${target.revision_id}_${target.cadence_on}`
+  return visitReturnHref(path, returnTo)
+}
+
+export function visitReturnHref(path: string, returnTo?: string) {
   return returnTo ? `${path}?returnTo=${encodeURIComponent(returnTo)}` : path
 }

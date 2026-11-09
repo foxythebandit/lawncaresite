@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { austinDay, getCalendarEntries } from '@/lib/calendar-data'
-import { calendarDate, calendarReturnTo, visitHref } from '@/lib/calendar-view'
+import { calendarDate, calendarReturnTo, visitHref, visitReturnHref } from '@/lib/calendar-view'
 import type { JobLine } from '@/lib/crm-jobs'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
@@ -22,13 +22,15 @@ export default async function OccurrencePage({ params, searchParams }: {
   params: Promise<{ key: string }>; searchParams: Promise<{ returnTo?: string }>
 }) {
   const { key } = await params
-  await requireStaff(`/admin/jobs/occurrence/${key}`)
+  const requestedBack = (await searchParams).returnTo
+  const returnTo = visitReturnHref(`/admin/jobs/occurrence/${key}`, typeof requestedBack === 'string' ? requestedBack : undefined)
+  await requireStaff(returnTo)
   const parts = key.split('_')
   const [agreementId, revisionId, on] = parts
   if (parts.length !== 3 || !UUID.test(agreementId) || !UUID.test(revisionId) || !calendarDate(on)) notFound()
   const today = austinDay()
-  const back = calendarReturnTo((await searchParams).returnTo, today)
-  const visit = (await getCalendarEntries(on, on)).find(row =>
+  const back = calendarReturnTo(requestedBack, today)
+  const visit = (await getCalendarEntries(on, on, returnTo)).find(row =>
     row.agreement_id === agreementId && row.revision_id === revisionId && row.cadence_on === on)
   const db = adminDb()
   if (visit?.booking_id) {

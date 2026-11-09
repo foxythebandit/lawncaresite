@@ -4,12 +4,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 import type { CalendarEntry } from '@/lib/calendar-data'
-import { addDays, calendarHref, calendarRange, dateLabel, visitHref, visitStatus, visitTime, visitWindow, type CalendarContext } from '@/lib/calendar-view'
+import { addDays, calendarHref, calendarRange, compareVisitTimes, dateLabel, visitHref, visitStatus, visitTime, visitWindow, VISIT_WINDOWS, type CalendarContext } from '@/lib/calendar-view'
 import { customerDisplayName } from '@/lib/lead-labels'
 import { shortAddress } from '@/lib/lead-summary'
 import Icon from './icons'
 
-const WINDOWS = ['Morning', 'Timed', 'Afternoon', 'Any time', 'Other windows', 'Mixed times']
+const WINDOWS = [...VISIT_WINDOWS, 'Mixed times']
 export type DisplayVisit = CalendarEntry & { service: string }
 
 function entryKey(visit: DisplayVisit) {
@@ -36,8 +36,7 @@ function VisitLink({ visit, context, today, compact, selectedDay, grouped }: {
 function DayVisits({ visits, context, today, day }: { visits: DisplayVisit[]; context: CalendarContext; today: string; day: string }) {
   if (!visits.length) return <p className="work-cal-empty">No visits</p>
   const groups = new Map<string, DisplayVisit[]>()
-  const ordered = [...visits].sort((a, b) => WINDOWS.indexOf(visitWindow(a.visit_time)) - WINDOWS.indexOf(visitWindow(b.visit_time)))
-  for (const visit of ordered) {
+  for (const visit of visits) {
     const key = visit.property_id ?? entryKey(visit)
     const group = groups.get(key) ?? []
     group.push(visit)
@@ -84,6 +83,7 @@ export default function CalendarView({ context, today, visits, focus }: {
     day.push(visit)
     byDate.set(visit.service_on, day)
   }
+  for (const day of byDate.values()) day.sort((a, b) => compareVisitTimes(a.visit_time, b.visit_time))
 
   function revealDay(date: string) {
     const container = canvas.current
