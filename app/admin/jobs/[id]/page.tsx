@@ -21,24 +21,29 @@ export default async function VisitPage({ params, searchParams }: {
 
   const today = austinDay()
   const linked = Boolean(booking.customer_id && booking.property_id)
-  const [items, payments, agreement, candidates, customers, properties, quoteBookings, map] = await Promise.all([
+  const [items, payments, agreement, candidates, customers, properties, quoteBookings, map, serviceLabel] = await Promise.all([
     db.from('job_items').select('kind,description,amount').eq('booking_id', id).order('created_at').order('id').throwOnError(),
     db.from('job_payments').select('id,amount,paid_on,method,provenance').eq('booking_id', id).order('paid_on', { ascending: false }).throwOnError(),
     booking.agreement_id ? db.from('recurring_agreements').select('*').eq('id', booking.agreement_id).maybeSingle().throwOnError() : { data: null },
     !booking.agreement_id && booking.customer_id && booking.property_id
-      ? db.from('recurring_agreements').select('id,interval_count,interval_unit,price_per_visit,next_on')
-        .eq('customer_id', booking.customer_id).eq('property_id', booking.property_id).eq('status', 'active').order('created_at').throwOnError()
+      ? db.from('recurring_agreements').select('*,service_labels(id,name,semantic_key,retired_at)')
+        .eq('customer_id', booking.customer_id).eq('property_id', booking.property_id).eq('status', 'active')
+        .or(booking.service_label_id ? `service_label_id.is.null,service_label_id.eq.${booking.service_label_id}` : 'id.not.is.null')
+        .order('created_at').throwOnError()
       : { data: [] },
     !linked ? db.from('customers').select('id,name,phone').order('name').throwOnError() : { data: [] },
     !linked ? db.from('properties').select('id,customer_id,address').order('address').throwOnError() : { data: [] },
     booking.lead_id ? db.from('bookings').select('id,created_at,accepted_quote_snapshot,creation_operation_id')
       .eq('lead_id', booking.lead_id).or('creation_operation_id.not.is.null,accepted_quote_snapshot->>agreement_id.is.null').order('created_at', { ascending: false }).limit(30).throwOnError() : { data: [] },
     visitMapContext(booking),
+    booking.service_label_id && booking.status !== 'completed'
+      ? db.from('service_labels').select('name').eq('id', booking.service_label_id).maybeSingle().throwOnError()
+      : { data: null },
   ])
-  const schedule = await visitScheduleContext(agreement.data, today)
+  const schedule = await visitScheduleContext(agreement.data, booking.occurrence_on ?? today)
   const { id: bookingId, ...visit } = booking
   return <VisitDetails key={bookingId} bookingId={bookingId} booking={visit} today={today} back={calendarReturnTo(requestedBack, today)}
-    agreement={agreement.data} {...schedule}
+    agreement={agreement.data} {...schedule} serviceLabel={serviceLabel.data?.name}
     customers={customers.data ?? []} properties={properties.data ?? []} candidates={candidates.data ?? []}
     items={(items.data ?? []).map(item => ({ ...item, kind: item.kind === 'discount' ? 'discount' : 'service', amount: String(item.amount) }))}
     payments={payments.data ?? []} quotedVisit={latestQuoteBooking(quoteBookings.data ?? [])?.id === booking.id}

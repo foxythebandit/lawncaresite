@@ -2,6 +2,7 @@
 import 'server-only'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
+import type { Tables } from '@/supabase/database.types'
 import { austinDay, CALENDAR_PATH } from './calendar-view'
 
 export { austinDay } from './calendar-view'
@@ -126,10 +127,13 @@ async function savedVisitServices(saved: string[]) {
   const labels = new Map<string, string>()
   const db = adminDb()
   for (let i = 0; i < saved.length; i += 100) {
-    const { data, error } = await db.from('bookings').select('id,job_items(kind,description)').in('id', saved.slice(i, i + 100))
+    const { data, error } = await db.from('bookings').select('id,status,service_labels(name),job_items(kind,description)')
+      .in('id', saved.slice(i, i + 100)).overrideTypes<{
+        id: string; status: string; service_labels: { name: string } | null; job_items: { kind: string; description: string }[]
+      }[], { merge: false }>()
     if (error) throw new Error('Could not load visit services.')
     for (const row of data) {
-      const label = visitService(row.job_items)
+      const label = (row.status === 'completed' ? null : row.service_labels?.name) ?? visitService(row.job_items)
       if (label) labels.set(row.id, label)
     }
   }
@@ -143,10 +147,13 @@ export async function getCalendarVisits(from: string, through: string, returnTo 
   const virtual = [...new Set(visits.flatMap(row => row.revision_id && !row.booking_id ? [row.revision_id] : []))]
   const labels = await savedVisitServices(saved)
   for (let i = 0; i < virtual.length; i += 100) {
-    const { data, error } = await db.from('agreement_schedule_revisions').select('id,items_template').in('id', virtual.slice(i, i + 100))
+    const { data, error } = await db.from('agreement_schedule_revisions').select('id,items_template,service_labels(name)')
+      .in('id', virtual.slice(i, i + 100)).overrideTypes<{
+        id: string; items_template: Tables<'agreement_schedule_revisions'>['items_template']; service_labels: { name: string } | null
+      }[], { merge: false }>()
     if (error) throw new Error('Could not load scheduled services.')
     for (const row of data) {
-      const label = visitService(Array.isArray(row.items_template) ? row.items_template as { kind?: unknown; description?: unknown }[] : [])
+      const label = row.service_labels?.name ?? visitService(Array.isArray(row.items_template) ? row.items_template as { kind?: unknown; description?: unknown }[] : [])
       if (label) labels.set(row.id, label)
     }
   }

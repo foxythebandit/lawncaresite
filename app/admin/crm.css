@@ -1355,3 +1355,39 @@
   .work-cal-navigation .work-cal-arrow { width: 29px; padding: 0; }
   .work-cal-toolbar .admin-view-btn { padding-inline: 6px; font-size: 12px; }
 }
+
+/* Service editor uses the same card and action hierarchy as a visit. */
+.service-editor-card { max-width: 760px; }
+.service-editor-form, .service-editor-main, .service-editor-subsection, .service-editor-review, .service-label-field {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.service-editor-form { margin-top: 16px; }
+.service-editor-main { border: 0; padding: 0; margin: 0; }
+.service-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.service-editor-subsection, .service-editor-review { border-top: 1px solid var(--c-border); padding: 12px 0 0; margin: 0; }
+fieldset.service-editor-subsection { border-width: 1px 0 0; }
+.service-editor-subsection legend, .service-editor-subsection h2, .service-editor-review h2, .service-editor-review h3 { margin: 0; }
+.service-editor-subsection > button { justify-self: start; }
+.service-month-day { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 6px; }
+.service-editor-fields :is(input, select), .service-month-day select { min-width: 0; width: 100%; }
+.service-preview-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.service-preview-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--c-border);
+}
+.service-preview-list li strong { white-space: nowrap; }
+.service-editor-notice { color: var(--c-text-2); }
+@media (max-width: 480px) {
+  .service-editor-fields { grid-template-columns: minmax(0, 1fr); }
+}
+.service-customer-schedules { margin-bottom: 16px; }
+.service-customer-row { scroll-margin-top: 74px; }
+@media (max-width: 600px) {
+  .service-customer-row { align-items: start; flex-direction: column; }
+}

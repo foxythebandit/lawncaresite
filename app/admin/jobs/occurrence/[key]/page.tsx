@@ -1,3 +1,4 @@
+import type { Tables } from '@/supabase/database.types'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { austinDay, getCalendarEntries } from '@/lib/calendar-data'
@@ -42,7 +43,8 @@ export default async function OccurrencePage({ params, searchParams }: {
 
   const [agreement, revision] = await Promise.all([
     db.from('recurring_agreements').select('*').eq('id', agreementId).maybeSingle().throwOnError(),
-    db.from('agreement_schedule_revisions').select('items_template').eq('id', revisionId).eq('agreement_id', agreementId).maybeSingle().throwOnError(),
+    db.from('agreement_schedule_revisions').select('items_template,service_labels(name)').eq('id', revisionId).eq('agreement_id', agreementId)
+      .maybeSingle().overrideTypes<{ items_template: Tables<'agreement_schedule_revisions'>['items_template']; service_labels: { name: string } | null }, { merge: false }>().throwOnError(),
   ])
   const plan = agreement.data
   if (!plan?.schedule_source_booking_id || !Array.isArray(revision.data?.items_template)) return <ScheduleChanged back={back} />
@@ -50,7 +52,7 @@ export default async function OccurrencePage({ params, searchParams }: {
   if (!source || source.status === 'pending' || source.agreement_id !== plan.id || source.customer_id !== plan.customer_id ||
     source.property_id !== plan.property_id) return <ScheduleChanged back={back} />
 
-  const [map, schedule] = await Promise.all([visitMapContext(source), visitScheduleContext(plan, today)])
+  const [map, schedule] = await Promise.all([visitMapContext(source), visitScheduleContext(plan, on)])
   const items = revision.data.items_template.flatMap((item): JobLine[] =>
     item && typeof item === 'object' && !Array.isArray(item) &&
     (item.kind === 'service' || item.kind === 'discount') && typeof item.description === 'string' &&
@@ -79,6 +81,6 @@ export default async function OccurrencePage({ params, searchParams }: {
     one_time: false,
   }
   return <VisitDetails key={`${key}/${sourceId}`} occurrence={{ agreementId, revisionId, on }} booking={booking} today={today} back={back}
-    agreement={plan} {...schedule} customers={[]} properties={[]} candidates={[]} items={items} payments={[]}
+    agreement={plan} {...schedule} serviceLabel={revision.data.service_labels?.name} customers={[]} properties={[]} candidates={[]} items={items} payments={[]}
     quotedVisit={false} {...map} emailConfigured={Boolean(process.env.RESEND_API_KEY)} />
 }

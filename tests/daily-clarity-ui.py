@@ -53,11 +53,11 @@ def request(path, method="GET", payload=None):
 def day(offset):
     return (MONDAY + timedelta(days=offset)).isoformat()
 
-def shot(page, name):
+def shot(page, name, *, full_page=True):
     if SCREEN_DIR:
         path = Path(SCREEN_DIR)
         path.mkdir(parents=True, exist_ok=True)
-        page.screenshot(path=str(path / (name + ".png")), full_page=True, animations="disabled")
+        page.screenshot(path=str(path / (name + ".png")), full_page=full_page, animations="disabled")
 
 def assert_no_overflow(page):
     widths = page.evaluate("() => [document.documentElement.clientWidth, document.documentElement.scrollWidth]")
@@ -86,6 +86,7 @@ def create_visit(customer, name, address, on, arrival, service, price, status="c
 
 customers = []
 lead_ids = []
+service_label_ids = []
 visit_ids = []
 def create_customer(name, address, suffix):
     customer = {"id": str(uuid4()), "name": name, "phone": f"51255501{suffix:02d}", "property": str(uuid4())}
@@ -95,7 +96,7 @@ def create_customer(name, address, suffix):
     return customer
 
 def visit(id_):
-    return request(f"bookings?id=eq.{id_}&select=id,status,confirmed_date,job_total,notes,updated_at")[0]
+    return request(f"bookings?id=eq.{id_}&select=id,status,agreement_id,confirmed_date,completed_at,job_total,notes,updated_at")[0]
 
 def fixture():
     name, address = "Kelli Alvarez", "104 Cinder Grove Lane, Austin, TX 78745"
@@ -168,6 +169,7 @@ def clean_up():
     ids = ", ".join(f"'{c['id']}'" for c in customers)
     extra_visits = ", ".join(f"'{visit_id}'" for visit_id in visit_ids) or "null"
     owned = f"customer_id in ({ids}) or id in ({extra_visits})"
+    labels = ", ".join(f"'{label_id}'" for label_id in service_label_ids) or "null"
     for lead_id in lead_ids:
         request(f"leads?id=eq.{lead_id}", "DELETE")
     subprocess.run([cli, "db", "query", "--local", f"""
@@ -175,7 +177,8 @@ def clean_up():
         begin
           update public.recurring_agreements set schedule_source_booking_id = null where customer_id in ({ids});
           delete from public.crm_operations where target_id in (select id from public.bookings where {owned})
-            or target_id in (select id from public.recurring_agreements where customer_id in ({ids}));
+            or target_id in (select id from public.recurring_agreements where customer_id in ({ids}))
+            or target_id in ({ids}, {labels});
           delete from public.job_payments where booking_id in (select id from public.bookings where {owned});
           delete from public.job_items where booking_id in (select id from public.bookings where {owned});
           delete from public.bookings where {owned};
@@ -184,8 +187,155 @@ def clean_up():
           delete from public.recurring_agreements where customer_id in ({ids});
           delete from public.properties where customer_id in ({ids});
           delete from public.customers where id in ({ids});
+          delete from public.service_labels where id in ({labels});
         end $test$;
     """], check=True, capture_output=True, text=True)
+
+def service_editor_browser():
+    customer = create_customer("Kelli Alvarez", "92 Garden Lane, Austin, TX 78704", 77)
+    customer_url = f"{BASE}/admin/customers/{customer['id']}"
+    year = TODAY.year + 1
+    first_date = f"{year}-03-01"
+    create_visit(customer, customer["name"], "92 Garden Lane, Austin, TX 78704",
+                 (TODAY - timedelta(days=7)).isoformat(), None, "Earlier visit", 70, status="completed")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        for width, height in [(1440, 1000), (390, 844), (320, 740)]:
+            context = local_browser(browser, width, height)
+            page = context.new_page()
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(customer_url)
+            login(page)
+            page.get_by_role("link", name="Add service", exact=True).click()
+            expect(page.get_by_role("heading", name="Add service", exact=True)).to_be_visible()
+            if width < 500:
+                page.evaluate("window.scrollTo(0,0)")
+                shot(page, f"service-editor-viewport-{width}", full_page=False)
+            page.get_by_label("Service label").select_option(label="Lawn care")
+            page.get_by_label("Agreed price per visit ($)").fill("85.50")
+            page.get_by_label("Visit date").fill(first_date)
+            page.get_by_label("Cadence", exact=True).select_option("paused")
+            page.get_by_role("button", name="Add annual period").click()
+            page.get_by_role("button", name="Preview changes", exact=True).click()
+            expect(page.get_by_role("heading", name="Review before saving")).to_be_visible()
+            expect(page.get_by_text("$85.50", exact=True).first).to_be_visible()
+            assert_no_overflow(page)
+            shot(page, f"service-annual-preview-{width}")
+            save = page.get_by_role("button", name="Save reviewed change")
+            if width < 500:
+                save.scroll_into_view_if_needed()
+                save.click(trial=True)
+                assert save.bounding_box()["y"] + save.bounding_box()["height"] <= page.locator(".admin-nav").bounding_box()["y"]
+                shot(page, f"service-review-save-viewport-{width}", full_page=False)
+            if width == 1440:
+                save.click()
+                schedules = page.get_by_role("region", name="Service schedules")
+                expect(schedules.get_by_text("Lawn care · $85.50 per visit")).to_be_visible()
+                expect(schedules.get_by_text(re.compile("Seasonal service"))).to_be_visible()
+                service = request(f"recurring_agreements?customer_id=eq.{customer['id']}&select=id,schedule_source_booking_id")[0]
+                first_mow = service["schedule_source_booking_id"]
+                page.goto(calendar("day", first_date))
+                page.get_by_role("link", name=re.compile("Kelli Alvarez, Lawn care")).click()
+                page.get_by_role("button", name="Reschedule", exact=True).click()
+                expect(page.get_by_label("Move this and future visits")).to_have_count(0)
+                expect(page.get_by_role("link", name="Edit its future schedule")).to_have_attribute("href", re.compile(service["id"]))
+                expect(page.get_by_role("button", name="Save visit date")).to_be_enabled()
+                page.goto(customer_url)
+                page.get_by_role("link", name="Add service", exact=True).click()
+                page.get_by_label("Visit pattern").select_option("once")
+                page.get_by_role("button", name="New label", exact=True).click()
+                page.get_by_label("Label name", exact=True).fill("Leaf and acorn cleanup")
+                page.get_by_role("button", name="Create label", exact=True).click()
+                expect(page.get_by_label("Service label").locator("option:checked")).to_have_text("Leaf and acorn cleanup")
+                label_query = urlencode({"name": "eq.Leaf and acorn cleanup", "select": "id"})
+                label = request("service_labels?" + label_query)[0]["id"]
+                service_label_ids.append(label)
+                page.get_by_label("Agreed visit price ($)").fill("250.00")
+                page.get_by_label("Visit date").fill(first_date)
+                page.get_by_label("Visit note (optional)").fill("Collect acorns and leaves by the front gate.")
+                page.get_by_role("button", name="Preview changes", exact=True).click()
+                expect(page.get_by_text(re.compile(r"First visit.*\$250\.00"))).to_be_visible()
+                page.get_by_role("button", name="Save reviewed change").click()
+                page.wait_for_url(re.compile(r"/admin/jobs/[0-9a-f-]+$"))
+                first_cleanup = page.url.rsplit("/", 1)[1]
+                expect(page.get_by_text("$250.00", exact=True).first).to_be_visible()
+                assert visit(first_cleanup)["agreement_id"] is None
+                assert visit(first_mow)["confirmed_date"] == visit(first_cleanup)["confirmed_date"] == first_date
+                page.goto(calendar("day", first_date))
+                cleanup = page.get_by_role("link", name=re.compile("Kelli Alvarez, Leaf and acorn cleanup"))
+                expect(cleanup).to_be_visible()
+                cleanup.click()
+                page.wait_for_url(re.compile(first_cleanup))
+                exact_visit_url = page.url.removeprefix(BASE)
+                page.get_by_role("button", name="Mark done", exact=True).click()
+                page.get_by_role("button", name="Save completion", exact=True).click()
+                expect(page.get_by_text("Done", exact=True)).to_be_visible()
+                page.get_by_role("button", name="Record payment", exact=True).click()
+                page.get_by_role("button", name="Save payment", exact=True).click()
+                expect(page.get_by_text("Paid in full", exact=True)).to_be_visible()
+                assert visit(first_mow)["status"] == "confirmed"
+                source_before = visit(first_cleanup)
+                page.get_by_role("button", name="Set schedule", exact=True).click()
+                start = page.get_by_role("link", name="Start schedule from this visit", exact=True)
+                editor = start.get_attribute("href")
+                editor_query = parse_qs(urlsplit(editor).query)
+                assert editor_query["visit"] == [first_cleanup] and editor_query["origin"] == [exact_visit_url]
+                context.clear_cookies()
+                page.goto(BASE + editor)
+                expect(page.get_by_role("heading", name="Staff sign in")).to_be_visible()
+                assert parse_qs(urlsplit(page.url).query)["next"] == [editor]
+                login(page)
+                page.wait_for_url(BASE + editor)
+                expect(page.get_by_role("link", name="Back to visit").first).to_have_attribute("href", exact_visit_url)
+                page.get_by_label("Agreed price per visit ($)").fill("190.00")
+                page.get_by_role("button", name="Preview changes", exact=True).click()
+                expect(page.get_by_role("heading", name="Review before saving")).to_be_visible()
+                expect(page.get_by_text(re.compile(r"First visit.*\$250\.00")).last).to_be_visible()
+                expect(page.get_by_text("$190.00", exact=True).first).to_be_visible()
+                shot(page, "service-keep-cleanup-first-visit-desktop")
+                page.get_by_role("button", name="Save reviewed change").click()
+                expect(schedules.get_by_text("Leaf and acorn cleanup · $190.00 per visit")).to_be_visible()
+                expect(schedules.get_by_text("Lawn care · $85.50 per visit")).to_be_visible()
+                saved = visit(first_cleanup)
+                assert saved["job_total"] == 250 and saved["status"] == "completed"
+                assert saved["completed_at"] == source_before["completed_at"] and saved["notes"] == source_before["notes"]
+                assert request(f"job_payments?booking_id=eq.{first_cleanup}&select=amount")[0]["amount"] == 250
+                same_day = request(f"bookings?customer_id=eq.{customer['id']}&confirmed_date=eq.{first_date}&select=id")
+                assert sorted(row["id"] for row in same_day) == sorted([first_cleanup, first_mow])
+                revisions = request(f"agreement_schedule_revisions?agreement_id=eq.{saved['agreement_id']}&select=id,staff_user_id,operation_id")
+                assert len(revisions) == 1 and revisions[0]["staff_user_id"] and revisions[0]["operation_id"]
+                operations = request(f"crm_operations?id=eq.{revisions[0]['operation_id']}&select=action,result")
+                assert operations[0]["action"] == "service_create" and operations[0]["result"]["booking_id"] == first_cleanup
+                shot(page, "customer-independent-services-desktop")
+                future_date = (datetime.fromisoformat(first_date).date() + timedelta(days=7)).isoformat()
+                page.goto(calendar("day", future_date))
+                page.get_by_role("link", name=re.compile("Kelli Alvarez, Leaf and acorn cleanup")).click()
+                page.get_by_role("button", name="Reschedule", exact=True).click()
+                page.get_by_label("Move this and future visits").check()
+                new_date = (datetime.fromisoformat(future_date).date() + timedelta(days=1)).isoformat()
+                page.get_by_label("Visit date", exact=True).fill(new_date)
+                page.get_by_role("button", name="Review dates", exact=True).click()
+                expect(page.get_by_role("heading", name="Review before saving")).to_be_visible()
+                expect(page.get_by_text("$190.00", exact=True).first).to_be_visible()
+                shot(page, "service-series-move-review-desktop")
+                page.get_by_role("button", name="Save reviewed dates").click()
+                page.wait_for_url(re.compile(r"/admin/jobs/[0-9a-f-]+\?"))
+                expect(page.get_by_role("button", name="Reschedule", exact=True)).to_be_visible()
+                assert not request(f"bookings?agreement_id=eq.{saved['agreement_id']}&occurrence_on=eq.{future_date}&select=id")
+                shifted = request(f"bookings?agreement_id=eq.{saved['agreement_id']}&occurrence_on=eq.{new_date}&select=id")
+                assert len(shifted) == 1 and shifted[0]["id"] in page.url
+            assert not errors, errors
+            context.close()
+        browser.close()
+    print("Seasonal editor, reviewed series move and Kelli cleanup passed. Mobile save is reachable at 390 and 320 px.")
+
+if os.environ.get("QG_SERVICE_EDITOR_ONLY") == "1":
+    try:
+        service_editor_browser()
+    finally:
+        clean_up()
+    raise SystemExit(0)
 
 try:
     mowing, cleanup, unnamed_visit, overdue, pending, moved, plan, customer, unlinked = fixture()

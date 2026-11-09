@@ -478,7 +478,7 @@ export async function scheduleJobAndEmail(input: {
 }
 
 export type ProjectedVisitEdit =
-  | { action: 'reschedule' | 'shift'; date: string; time?: string; email?: boolean }
+  | { action: 'reschedule'; date: string; time?: string; email?: boolean }
   | { action: 'complete'; date: string }
   | { action: 'notes'; note: string }
   | { action: 'items'; items: JobLine[] }
@@ -497,7 +497,6 @@ export async function editProjectedVisit(input: ProjectedVisitEdit & {
   try {
     switch (input.action) {
       case 'reschedule':
-      case 'shift':
         if (!calendarDate(input.date) || (input.time?.length ?? 0) > 80) throw new Error('Review the visit date and arrival window.')
         payload = { date: input.date, time: input.time?.trim() || null }
         break
@@ -545,7 +544,7 @@ export async function editProjectedVisit(input: ProjectedVisitEdit & {
   if (error) return { success: false, error: commandError(error) }
   const result = { success: true as const, data: data as Record<string, unknown> }
   const id = result.data.booking_id as string
-  if ((input.action === 'reschedule' || input.action === 'shift') && input.email && !result.data.duplicate) {
+  if (input.action === 'reschedule' && input.email && !result.data.duplicate) {
     refreshJobs()
     const notified = await emailVisitDate(id, 'reschedule', input.date, input.time, result)
     return notified.success ? { ...notified, data: { ...result.data, ...notified.data } } : notified
@@ -621,31 +620,29 @@ export async function finishVisit(input: {
   return { success: true, data: { next_booking_id: next } }
 }
 
-/** Move one upcoming visit, or (plan visits) the whole plan from this visit on, and optionally email the customer. */
-export async function moveVisit(input: {
-  bookingId: string; expectedUpdatedAt: string; operationId: string; date: string; time?: string
-  wholePlan: boolean; email: boolean
-}): Promise<ActionResult> {
-  await requireStaff()
-  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId) || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    return { success: false, error: 'Choose the new date.' }
+export async function reviewPlanMove(input: {
+  agreementId: string; date: string; time: string; email: boolean; operationId?: string; preview?: string
+} & ({ bookingId: string; version: string } | { revisionId: string; on: string })): Promise<ActionResult> {
+  const staff = await requireStaff()
+  if (!UUID_RE.test(input.agreementId) || !calendarDate(input.date) || input.time.length > 80
+    || (input.operationId && !UUID_RE.test(input.operationId))
+    || ('bookingId' in input ? !UUID_RE.test(input.bookingId) : !UUID_RE.test(input.revisionId) || !calendarDate(input.on))) {
+    return { success: false, error: 'Review the visit and choose the new date.' }
   }
-  let result: ActionResult
-  if (input.wholePlan) {
-    const { data, error } = await getAdmin().rpc('crm_shift_agreement', {
-      p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
-      p_operation_id: input.operationId, p_date: input.date, p_time: input.time || null,
-    })
-    if (error) return { success: false, error: commandError(error) }
-    refreshJobs()
-    result = { success: true, data: data as Record<string, unknown> }
-  } else {
-    const { data: job } = await getAdmin().from('bookings').select('status').eq('id', input.bookingId).single()
-    result = await changeJob({ ...input, action: job?.status === 'pending' ? 'confirm' : 'reschedule' })
-    if (!result.success) return result
-  }
-  if (!input.email || result.data?.duplicate) return result
-  return emailVisitDate(input.bookingId, 'reschedule', input.date, input.time, result)
+  const { data, error } = await getAdmin().rpc('crm_review_schedule_shift', {
+    p_agreement_id: input.agreementId, p_staff_user_id: staff.id,
+    p_request: { date: input.date, time: input.time, email: input.email,
+      ...('bookingId' in input ? { booking_id: input.bookingId, version: input.version }
+        : { revision_id: input.revisionId, on: input.on }) },
+    p_operation_id: input.operationId ?? null, p_preview: input.preview ?? null,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  const result = { success: true as const, data: data as Record<string, unknown> }
+  if (!input.operationId) return result
+  refreshJobs()
+  if (!input.email || result.data.duplicate || typeof result.data.booking_id !== 'string') return result
+  const notified = await emailVisitDate(result.data.booking_id, 'reschedule', input.date, input.time, result)
+  return notified.success ? { ...notified, data: { ...result.data, ...notified.data } } : notified
 }
 
 /** Fold a recurring visit that is not in a plan (booked from a lead) into the customer's plan at that property. */
@@ -724,9 +721,10 @@ export async function getCustomers() {
   return { customers: customers.data ?? [], properties: properties.data ?? [] }
 }
 
-export async function getAgreements() {
+export async function getAgreements(customerId?: string) {
   await requireStaff()
-  const { data, error } = await getAdmin().from('recurring_agreements').select('*')
+  const query = getAdmin().from('recurring_agreements').select('*,service_labels(id,name,semantic_key,retired_at)')
+  const { data, error } = await (customerId ? query.eq('customer_id', customerId) : query)
   if (error) throw new Error(commandError(error))
   return data ?? []
 }

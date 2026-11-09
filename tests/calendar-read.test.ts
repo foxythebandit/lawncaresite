@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { calendarContext, calendarHref, calendarRange, calendarReturnTo, compareVisitTimes, shiftCalendar, visitReturnHref, visitStatus, visitTime, visitWindow } from '@/lib/calendar-view'
 import { customerDisplayName } from '@/lib/lead-labels'
-import { staffReturnTo } from '@/lib/staff-policy'
+import { keepsStaffQuery, staffReturnTo } from '@/lib/staff-policy'
+import { serviceEditorHref } from '@/lib/service-schedules'
 
 test('old calendar URLs stay useful and visit returns are confined to the calendar', () => {
   const today = '2026-11-09'
@@ -35,6 +36,19 @@ test('staff login carries only valid Calendar query and visit return context', (
   assert.equal(staffReturnTo('/admin/login?next=' + encodeURIComponent(calendar)), '/admin/leads')
   assert.equal(staffReturnTo('/admin/revenue'), '/admin/revenue')
   assert.equal(staffReturnTo('/l/234ABC'), '/l/234ABC')
+})
+
+test('service editor sign-in preserves the source visit and its calendar while stripping other input', () => {
+  const customer = '12345678-abcd-1234-abcd-123456789012'
+  const visit = '12345678-abcd-1234-abcd-123456789013'
+  const calendar = '/admin/jobs?view=day&date=2026-12-01&search=Kelli'
+  const origin = visitReturnHref(`/admin/jobs/${visit}`, calendar)
+  const editor = serviceEditorHref(customer, { visit, origin })
+  assert.equal(keepsStaffQuery(editor.split('?')[0]), true)
+  assert.equal(keepsStaffQuery('/admin/revenue'), false)
+  assert.equal(staffReturnTo(editor + '&next=//elsewhere.test'), editor)
+  const unsafe = new URLSearchParams({ visit: '../../', origin: '//elsewhere.test/admin/jobs/' + visit })
+  assert.equal(staffReturnTo(`/admin/customers/${customer}/service?${unsafe}`), `/admin/customers/${customer}/service`)
 })
 
 test('calendar ranges use local dates across months and DST, and work status uses the actual date', () => {

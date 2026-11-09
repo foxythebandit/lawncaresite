@@ -85,6 +85,7 @@ type ForecastAgreement = {
   id: string; status: string; customer_id: string; property_id: string
   price_per_visit: number | string | null
   items_template: { kind: string; description: string }[]
+  service_labels?: { semantic_key: string | null } | null
 }
 
 /** Conservative mowing outlook. Legacy grouping is a report key, never a customer merge. */
@@ -100,8 +101,9 @@ export function mowingForecast(jobs: ForecastJob[], agreements: ForecastAgreemen
   }
   for (const agreement of activeAgreements) {
     const related = jobs.find(job => job.agreement_id === agreement.id)
-    if (!agreement.items_template.some(item => item.kind === 'service'
-      && /(mow|lawn care|grass cut)/i.test(item.description))) continue
+    const mowing = agreement.service_labels ? agreement.service_labels.semantic_key === 'mowing'
+      : agreement.items_template.some(item => item.kind === 'service' && /(mow|lawn care|grass cut)/i.test(item.description))
+    if (!mowing) continue
     const perVisit = Number(agreement.price_per_visit ?? 0)
     if (perVisit <= 0) continue
     rows.push({ id: agreement.id, href: `/admin/customers/${agreement.customer_id}`,
