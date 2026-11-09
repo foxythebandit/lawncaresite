@@ -1,4 +1,4 @@
-"""Book visit with a mowing plan, then Add job / Start mowing plan from the customer page (disposable local CRM)."""
+"""Book a lead, add an itemized visit, and schedule a second property in a disposable local CRM."""
 import datetime
 import json
 import pathlib
@@ -71,13 +71,13 @@ with sync_playwright() as playwright:
     page.get_by_role('heading', name=name).wait_for()
 
     # Customer: one-off upsell job.
-    page.get_by_role('button', name='+ Add job').click()
-    sheet = page.locator('section[aria-label="Add job"]')
+    page.get_by_role('button', name='Add itemized visit').click()
+    sheet = page.locator('section[aria-label="Add itemized visit"]')
     sheet.get_by_label('Service', exact=True).fill('Leaf cleanup')
     sheet.get_by_label('Price ($)', exact=True).fill('180')
     sheet.get_by_label('Discount ($, optional)').fill('20')
-    sheet.get_by_role('button', name='Add job', exact=True).click()
-    page.get_by_text('Job added.', exact=False).first.wait_for()
+    sheet.get_by_role('button', name='Add visit', exact=True).click()
+    page.get_by_text('Visit added.', exact=False).first.wait_for()
     extra = [row for row in db('bookings?customer_id=eq.' + customer_id) if row['agreement_id'] is None]
     assert len(extra) == 1 and float(extra[0]['job_total']) == 160 and extra[0]['one_time'] is True
     assert extra[0]['property_id'] == job['property_id'] and extra[0]['status'] == 'pending'
@@ -85,14 +85,17 @@ with sync_playwright() as playwright:
     assert len(db('job_items?booking_id=eq.' + extra[0]['id'])) == 2
 
     # Customer: second property gets its own mowing plan.
-    page.get_by_role('button', name='Start mowing plan').click()
-    plan_sheet = page.locator('section[aria-label="Start mowing plan"]')
-    plan_sheet.wait_for()
-    plan_sheet.get_by_label('Address', exact=True).fill('8103 Shoal Creek Blvd, Austin, TX 78757')
-    plan_sheet.get_by_label('Price per visit ($)').fill('45')
-    plan_sheet.get_by_label('First visit').fill(first_visit)
-    plan_sheet.get_by_role('button', name='Start plan', exact=True).click()
-    page.get_by_text('Mowing plan started.', exact=False).first.wait_for()
+    page.get_by_role('link', name='Add service', exact=True).click()
+    page.get_by_role('heading', name='Add service', exact=True).wait_for()
+    page.get_by_label('Property', exact=True).select_option('')
+    page.get_by_label('Address', exact=True).fill('8103 Shoal Creek Blvd, Austin, TX 78757')
+    page.get_by_label('Service label').select_option(label='Lawn care')
+    page.get_by_label('Agreed price per visit ($)').fill('45')
+    page.get_by_label('Visit date', exact=True).fill(first_visit)
+    page.get_by_role('button', name='Preview changes', exact=True).click()
+    page.get_by_role('heading', name='Review before saving').wait_for()
+    page.get_by_role('button', name='Save reviewed change', exact=True).click()
+    page.get_by_text('Lawn care · $45.00 per visit', exact=True).wait_for()
     plans = db('recurring_agreements?customer_id=eq.' + customer_id + '&order=created_at')
     assert len(plans) == 2 and float(plans[1]['price_per_visit']) == 45 and plans[1]['property_id'] != job['property_id']
     assert len(db('properties?customer_id=eq.' + customer_id)) == 2

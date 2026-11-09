@@ -96,6 +96,23 @@ test('labels carry no price, two services at one property stay independent, and 
   assert.equal(revision.operation_id, a.op)
 })
 
+test('a one-off with a retired label can start a schedule under a new active label', async () => {
+  const c = await customer()
+  const custom = await call('crm_save_service_label', null, null, 'Seasonal yard cleanup', false, id(), actor)
+  const existing = await create(c, { property_id: c.property_id, label_id: custom.id, first_on: today, price: '250' })
+  const first = await visit(existing.booking_id)
+  await call('crm_save_service_label', custom.id, custom.updated_at, custom.name, true, id(), actor)
+  const active = await label('Leaf cleanup')
+  const result = await create(c, { property_id: c.property_id, label_id: active.id, first_on: today, price: '225',
+    definition: definition(weekly()), source_id: first.id, source_version: first.updated_at })
+  assert.equal(result.booking_id, first.id)
+  assert.equal((await visit(first.id)).service_label_id, custom.id)
+  assert.equal((await visit(first.id)).job_total, 250)
+  const future = await at(result.agreement_id, 7)
+  assert.equal(future.service_label_id, active.id)
+  assert.equal(future.job_total, 225)
+})
+
 test('annual spring mowing, monthly February override, and cross-year cleanup use the reviewed dates', async () => {
   const nextYear = Number(today.slice(0, 4)) + 1
   const c = await customer()

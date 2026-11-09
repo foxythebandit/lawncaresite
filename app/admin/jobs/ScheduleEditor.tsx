@@ -142,7 +142,8 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
   const [sourceId, setSourceId] = useState(selectedSource?.id ?? '')
   const [propertyId, setPropertyId] = useState(selectedSource?.propertyId ?? plan?.property_id ?? properties[0]?.id ?? '')
   const [address, setAddress] = useState('')
-  const [labelId, setLabelId] = useState(selectedSource?.labelId ?? plan?.service_label_id ?? '')
+  const sourceLabel = (visit?: ServiceEditorSource) => labels.find(label => label.id === visit?.labelId && !label.retired_at)?.id
+  const [labelId, setLabelId] = useState(sourceLabel(selectedSource) ?? plan?.service_label_id ?? '')
   const [price, setPrice] = useState((plan?.price_per_visit ?? selectedSource?.price)?.toFixed(2) ?? '')
   const [arrival, setArrival] = useState(initialArrival ?? selectedSource?.arrival ?? 'Any time')
   const [first, setFirst] = useState(selectedSource?.date ?? today)
@@ -183,7 +184,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     const visit = sources.find(item => item.id === id)
     if (visit) {
       setFirst(visit.date)
-      if (visit.labelId) setLabelId(visit.labelId)
+      setLabelId(sourceLabel(visit) ?? '')
       setPrice(visit.price.toFixed(2))
     }
     invalidate()
@@ -280,7 +281,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
       </>}
       {(edit ? mode === 'future' : true) && <>
         <ServiceLabelPicker labels={labels} value={labelId} onChange={id => { setLabelId(id); invalidate() }}
-          locked={extra || Boolean(source?.labelId)} required={!edit} />
+          locked={extra || Boolean(sourceLabel(source))} required={!edit} />
         <div className="service-editor-fields">
           {!(edit && itemized) && <label className="crm-field">{futureFields ? 'Agreed price per visit ($)' : 'Agreed visit price ($)'}
             <input value={price} inputMode="decimal" required pattern="[0-9]+(\.[0-9]{1,2})?" maxLength={13} onChange={event => setPrice(event.target.value)} />

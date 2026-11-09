@@ -101,7 +101,8 @@ begin
     select * into b from public.bookings where id = v_source for update;
     if not found or v_definition is null or b.agreement_id is not null or b.customer_id is distinct from p_customer_id
       or b.property_id is distinct from v_property or b.property_id is null
-      or (b.service_label_id is not null and b.service_label_id <> l.id)
+      or (b.service_label_id is not null and b.service_label_id <> l.id
+        and exists(select 1 from public.service_labels original where original.id = b.service_label_id and original.retired_at is null))
       or b.status not in ('confirmed','completed')
       or coalesce(b.confirmed_date,(b.completed_at at time zone 'America/Chicago')::date) is distinct from v_first
       or b.updated_at is distinct from (p_request->>'source_version')::timestamptz then
@@ -148,7 +149,7 @@ begin
     select * into b from public.bookings where id = v_source;
     perform public.crm_job_command(b.id,b.updated_at,gen_random_uuid(),'confirm',jsonb_build_object('date',v_first,'time',v_time));
   end if;
-  update public.bookings set service_label_id = l.id where id = v_source;
+  update public.bookings set service_label_id = l.id where id = v_source and service_label_id is null;
   if v_definition is not null then
     v_unit := case when v_frequency = 'monthly' then 'month' else 'week' end;
     v_count := case when v_frequency = 'biweekly' then 2 else 1 end;
