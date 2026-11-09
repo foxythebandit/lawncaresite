@@ -357,3 +357,144 @@ test('migration conservatively protects an older ambiguous schedule exception', 
     await upgraded.close()
   }
 })
+
+test('pending first visit must be confirmed before reviewing future schedule changes', async () => {
+  const c = await customer()
+  const firstOn = day(7)
+  const { id: first, updated_at: version } = await row(`insert into bookings(name,phone,address,customer_id,property_id,status,preferred_date)
+    values('Pending service','5125550156','111 Editor Lane',$1,$2,'pending',$3) returning id,updated_at`,
+  c.customer_id, c.property_id, firstOn)
+  const { agreement_id: agreementId } = await call('crm_start_agreement', first, version, id(),
+    { anchor_on: firstOn, next_on: day(14), interval_unit: 'week', interval_count: 1, items_template: items('Lawn care', '85.50') })
+  const request = { mode: 'future', from: firstOn, definition: definition(weekly(firstOn)) }
+  await assert.rejects(review(agreementId, request), /Confirm the first visit/)
+  await assert.rejects(review(agreementId, { mode: 'range', from: firstOn, through: day(14), rule: weekly(firstOn) }),
+    /Confirm the first visit/)
+  assert.equal((await visit(first)).status, 'pending')
+  await call('crm_job_command', first, (await visit(first)).updated_at, id(), 'confirm', { date: firstOn, time: 'Morning' })
+  assert.equal((await visit(first)).status, 'confirmed')
+  assert.equal((await review(agreementId, request)).preview.conflicts.length, 0)
+})
+
+test('a backward series move cannot cross a bounded cadence override', async () => {
+  const { agreement_id: agreementId } = await setup({ definition: definition({ frequency: 'biweekly', anchor_on: today }) })
+  await (await review(agreementId, { mode: 'range', from: day(7), through: day(35), rule: weekly(day(7)) })).save()
+  const selected = await at(agreementId, 42)
+  const facts = () => row(`select
+    (select to_jsonb(a) from recurring_agreements a where a.id=$1) as agreement,
+    (select jsonb_agg(to_jsonb(r) order by r.id) from agreement_schedule_revisions r where r.agreement_id=$1) as revisions,
+    (select jsonb_agg(to_jsonb(b) order by b.id) from bookings b where b.agreement_id=$1) as bookings`, agreementId)
+  const before = await facts()
+  const request = { booking_id: selected.id, version: selected.updated_at, date: day(30), time: 'Afternoon' }
+  await assert.rejects(call('crm_review_schedule_shift', agreementId, request, actor), /Use Edit schedule/)
+  await assert.rejects(call('crm_shift_agreement', selected.id, selected.updated_at, id(), request.date, request.time), /Use Edit schedule/)
+  assert.deepEqual(await facts(), before)
+  const timeOnly = { ...request, date: selected.confirmed_date }
+  const preview = await call('crm_review_schedule_shift', agreementId, timeOnly, actor)
+  await call('crm_review_schedule_shift', agreementId, timeOnly, actor, id(), preview.preview)
+  const after = await facts()
+  assert.deepEqual(after.bookings.map(b => [b.id, b.occurrence_on, b.confirmed_date]),
+    before.bookings.map(b => [b.id, b.occurrence_on, b.confirmed_date]))
+  assert.ok(after.revisions.some(r => r.starts_on === day(7) && r.ends_before === day(36) && r.definition.base.frequency === 'weekly'))
+  assert.equal((await visit(selected.id)).confirmed_time, 'Afternoon')
+})
+
+test('series move preview matches the calendar with a moved visit and a moved then canceled visit', async () => {
+  const { agreement_id: agreementId, booking_id: first } = await setup()
+  const moved = await at(agreementId, 7)
+  const canceled = await at(agreementId, 14)
+  await call('crm_job_command', moved.id, moved.updated_at, id(), 'reschedule', { date: day(10), time: 'Afternoon' })
+  await call('crm_job_command', canceled.id, canceled.updated_at, id(), 'reschedule', { date: day(17), time: 'Morning' })
+  await call('crm_job_command', canceled.id, (await visit(canceled.id)).updated_at, id(), 'cancel', {})
+  const request = { booking_id: first, version: (await visit(first)).updated_at, date: day(2), time: 'Morning' }
+  const preview = await call('crm_review_schedule_shift', agreementId, request, actor)
+  assert.deepEqual(preview.conflicts, [])
+  assert.equal(preview.changes.find(change => change.booking_id === moved.id).on, day(10))
+  assert.equal(preview.changes.find(change => change.booking_id === canceled.id).action, 'tombstone')
+  const shown = [...preview.dates, ...preview.changes.filter(change => change.action !== 'tombstone')]
+    .filter(visit => visit.on <= day(28)).map(visit => [visit.on, visit.price]).sort()
+  assert.deepEqual(shown, [2, 10, 23].map(offset => [day(offset), 85.5]))
+  await call('crm_review_schedule_shift', agreementId, request, actor, id(), preview.preview)
+  const calendar = (await db.query(`select service_on::text,job_total::float as price
+    from crm_calendar_entries($1,$2) where agreement_id=$3 order by service_on`, [day(2), day(28), agreementId])).rows
+  assert.deepEqual(shown, calendar.map(visit => [visit.service_on, visit.price]))
+  const saved = await visit(canceled.id)
+  assert.deepEqual([saved.status, saved.occurrence_on, saved.confirmed_date], ['canceled', day(16), day(17)])
+})
+
+test('resuming before a pause-canceled future first visit restores its exact saved facts', async () => {
+  const { agreement_id: agreementId, booking_id: first } = await setup({
+    label_id: (await label('Leaf cleanup')).id, first_on: day(7), price: '250.00', definition: definition(weekly(day(7))),
+  })
+  const original = await visit(first)
+  const individuallyCanceled = await at(agreementId, 14)
+  await call('crm_job_command', individuallyCanceled.id, individuallyCanceled.updated_at, id(), 'cancel', {})
+  await (await review(agreementId, { mode: 'pause', from: today })).save()
+  assert.deepEqual([(await visit(first)).status, (await visit(first)).schedule_cancellation], ['canceled', 'pause'])
+  const resume = await review(agreementId, { mode: 'resume', from: day(1) })
+  const planned = resume.preview.changes.find(change => change.booking_id === first)
+  assert.deepEqual([planned.action, planned.on, planned.arrival, planned.price], ['restore', day(7), 'Morning', 250])
+  assert.equal((await visit(first)).status, 'canceled')
+  const saved = await resume.save()
+  assert.deepEqual(await resume.save(), { ...saved, duplicate: true })
+  const restored = await visit(first)
+  assert.deepEqual(restored, { ...original, updated_at: restored.updated_at, lifecycle_note: 'Schedule visit restored' })
+  const actual = (await db.query(`select booking_id,service_on::text,job_total::float as price
+    from crm_calendar_entries($1,$2) where agreement_id=$3 order by service_on`, [day(1), day(21), agreementId])).rows
+  assert.deepEqual(actual.map(visit => [visit.service_on, visit.price]), [[day(7), 250], [day(21), 250]])
+  assert.equal(actual[0].booking_id, first)
+  assert.equal((await visit(individuallyCanceled.id)).status, 'canceled')
+})
+
+test('bounded skip can cancel the first visit before recurrence starts without reviving it on resume', async () => {
+  const { agreement_id: agreementId, booking_id: first } = await setup({
+    label_id: (await label('Leaf cleanup')).id, first_on: day(7), price: '250.00', definition: definition(weekly(day(7))),
+  })
+  const original = await visit(first)
+  const skip = await review(agreementId, { mode: 'range', from: day(1), through: day(7), rule: { frequency: 'paused' } })
+  const planned = skip.preview.changes.find(change => change.booking_id === first)
+  assert.deepEqual([planned.action, planned.on, planned.price], ['cancel', day(7), 250])
+  await skip.save()
+  const canceled = await visit(first)
+  assert.deepEqual([canceled.status, canceled.schedule_cancellation, canceled.job_total, canceled.accepted_quote_snapshot],
+    ['canceled', 'range', original.job_total, original.accepted_quote_snapshot])
+  assert.equal((await at(agreementId, 14)).status, 'confirmed')
+  await (await review(agreementId, { mode: 'pause', from: today })).save()
+  const resume = await review(agreementId, { mode: 'resume', from: day(1) })
+  assert.ok(!resume.preview.changes.some(change => change.booking_id === first && change.action === 'restore'))
+  await resume.save()
+  assert.equal((await visit(first)).status, 'canceled')
+  assert.equal((await visit(first)).schedule_cancellation, 'range')
+  assert.equal((await at(agreementId, 14)).status, 'confirmed')
+})
+
+test('bounded skip and pause respect protected first visits and individual cancellations', async () => {
+  for (const protection of ['moved', 'paid', 'completed', 'canceled', 'skipped']) {
+    const { agreement_id: agreementId, booking_id: first } = await setup({
+      first_on: day(7), definition: definition(weekly(day(7))),
+    })
+    const { updated_at } = await visit(first)
+    if (protection === 'paid') await call('record_job_payment', first, id(), '85.50', today, 'Cash', 'manual')
+    else if (protection === 'completed') await call('complete_job', first, updated_at, id(), today)
+    else {
+      const action = { moved: 'reschedule', canceled: 'cancel', skipped: 'skip' }[protection]
+      await call('crm_job_command', first, updated_at, id(), action, protection === 'moved' ? { date: day(9), time: '09:30' } : {})
+    }
+    const before = await visit(first)
+    const skip = await review(agreementId, { mode: 'range', from: day(6), through: day(12), rule: { frequency: 'paused' } })
+    assert.ok(!skip.preview.changes.some(change => change.booking_id === first && change.action !== 'keep'), protection)
+    await skip.save()
+    assert.deepEqual(await visit(first), before, protection)
+    const pause = await review(agreementId, { mode: 'pause', from: today })
+    if (protection === 'paid') {
+      assert.ok(pause.preview.conflicts.some(change => change.booking_id === first))
+      await assert.rejects(pause.save(), /Resolve the visits/)
+    } else if (protection === 'canceled' || protection === 'skipped') {
+      await pause.save()
+      const resume = await review(agreementId, { mode: 'resume', from: day(1) })
+      assert.ok(!resume.preview.changes.some(change => change.booking_id === first && change.action === 'restore'))
+      await resume.save()
+      assert.deepEqual(await visit(first), before, protection)
+    }
+  }
+})

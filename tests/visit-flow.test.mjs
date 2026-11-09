@@ -35,7 +35,7 @@ async function openPlanVisits(agreementId) {
   return rows.map(r => iso(r.occurrence_on))
 }
 
-/** Same calls as startCustomerPlan on the customer page; first visit confirmed on its date. */
+/** Start a legacy agreement with its first visit confirmed on the scheduled date. */
 async function customerWithPlan(firstOn, price = '85.00', confirm = true,
   { nextOn = day(14, firstOn), unit = 'week', count = 2, time = null } = {}) {
   const { rows: [customer] } = await db.query(`insert into customers(name, phone) values('Liz Test', '5125550100') returning id`)

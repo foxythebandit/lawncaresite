@@ -106,7 +106,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const firstVisit = quotedVisit || (!booking.agreement_id && !booking.occurrence_on)
   const origin = visitHref({ booking_id: bookingId ?? null, agreement_id: occurrence?.agreementId ?? null,
     revision_id: occurrence?.revisionId ?? null, cadence_on: occurrence?.on ?? null }, back)
-  const scheduleEditor = booking.customer_id && agreement ? serviceEditorHref(booking.customer_id, {
+  const awaitingFirst = agreement?.status === 'active' && !agreement.generation_starts_on && !agreement.schedule_review_reason
+  const scheduleEditor = booking.customer_id && agreement && !awaitingFirst ? serviceEditorHref(booking.customer_id, {
     schedule: agreement.id, from: booking.occurrence_on ?? visitDate ?? undefined, origin,
   }) : null
   const addExtra = booking.customer_id && agreement?.service_label_id && agreement.status !== 'ended'
@@ -439,10 +440,10 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         <h2>Service schedule</h2>
         {agreement ? <>
           <p>{scheduleSummary ?? cadence(agreement)} · {formatMoney(agreement.price_per_visit)} per visit</p>
-          <p className="crm-muted">{reviewReason ? 'Needs schedule review' : agreement.status === 'active' ? `Active · Next ${dateText(agreement.next_on)}` : agreement.status === 'paused' ? 'Paused' : 'Ended'}</p>
+          <p className="crm-muted">{reviewReason ? 'Needs schedule review' : awaitingFirst ? 'Awaiting first-visit confirmation' : agreement.status === 'active' ? `Active · Next ${dateText(agreement.next_on)}` : agreement.status === 'paused' ? 'Paused' : 'Ended'}</p>
           {occurrence && reviewReason && <p className="crm-muted">{reviewReason}</p>}
         </> : <p className="crm-muted">{needsSchedule ? 'Review the schedule for this recurring visit.' : 'No repeating schedule for this visit.'}</p>}
-        {(agreement || current || booking.status === 'completed') && <div className="work-visit-actions">{edit(agreement ? 'Edit schedule' : 'Set schedule', 'schedule')}</div>}
+        {!awaitingFirst && (agreement || current || booking.status === 'completed') && <div className="work-visit-actions">{edit(agreement ? 'Edit schedule' : 'Set schedule', 'schedule')}</div>}
       </section>
       <section className="work-visit-card">
         <h2>Contact and property</h2>

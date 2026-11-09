@@ -110,9 +110,10 @@ begin
   end if;
   -- Validate the requested revision before looking up the current occupant of the slot.
   select * into b from public.bookings where agreement_id = a.id and occurrence_on = p_on for update;
-  if found and b.schedule_state is distinct from 'superseded'
-    and b.schedule_cancellation is distinct from 'pause'
-    and b.schedule_cancellation is distinct from 'range' then return b.id; end if;
+  if found and ((b.id = a.schedule_source_booking_id and b.schedule_cancellation = 'range')
+    or (b.schedule_state is distinct from 'superseded'
+      and b.schedule_cancellation is distinct from 'pause'
+      and b.schedule_cancellation is distinct from 'range')) then return b.id; end if;
   if public.crm_schedule_has_actual_visit(a.id,
     case when b.date_override then b.confirmed_date else p_on end,b.id) then
     raise exception 'This plan already has a visit on that date. Review the schedule.' using errcode = 'PT409';
@@ -227,7 +228,8 @@ begin
     order by starts_on limit 1;
   v_rule := r.definition->'base';
   if exists(select 1 from public.agreement_schedule_revisions rev
-    where rev.agreement_id = a.id and (rev.ends_before is null or rev.ends_before > greatest(rev.starts_on,p_slot))
+    where rev.agreement_id = a.id
+      and (rev.ends_before is null or rev.ends_before > greatest(rev.starts_on,least(p_slot,p_date)))
       and ((rev.definition->'base') is distinct from v_rule
         or rev.items_template is distinct from r.items_template
         or rev.visit_time is distinct from r.visit_time

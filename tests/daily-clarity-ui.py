@@ -198,6 +198,17 @@ def service_editor_browser():
     first_date = f"{year}-03-01"
     create_visit(customer, customer["name"], "92 Garden Lane, Austin, TX 78704",
                  (TODAY - timedelta(days=7)).isoformat(), None, "Earlier visit", 70, status="completed")
+    pending_customer = create_customer("Pending first visit", "97 Orchard Lane, Austin, TX 78704", 78)
+    pending_url = f"{BASE}/admin/customers/{pending_customer['id']}"
+    pending_date = (TODAY + timedelta(days=3)).isoformat()
+    next_date = (TODAY + timedelta(days=10)).isoformat()
+    first_pending = create_visit(pending_customer, pending_customer["name"], "97 Orchard Lane, Austin, TX 78704",
+                                 pending_date, "Morning", "Lawn care", 85.50, status="pending", one_time=False)
+    pending_plan = request("rpc/crm_start_agreement", "POST", {
+        "p_booking_id": first_pending, "p_expected_updated_at": visit(first_pending)["updated_at"], "p_operation_id": str(uuid4()),
+        "p_config": {"anchor_on": pending_date, "next_on": next_date, "interval_unit": "week", "interval_count": 1,
+                     "items_template": [{"kind": "service", "description": "Lawn care", "amount": "85.50"}]},
+    })["agreement_id"]
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         for width, height in [(1440, 1000), (390, 844), (320, 740)]:
@@ -325,10 +336,65 @@ def service_editor_browser():
                 assert not request(f"bookings?agreement_id=eq.{saved['agreement_id']}&occurrence_on=eq.{future_date}&select=id")
                 shifted = request(f"bookings?agreement_id=eq.{saved['agreement_id']}&occurrence_on=eq.{new_date}&select=id")
                 assert len(shifted) == 1 and shifted[0]["id"] in page.url
+
+                page.goto(customer_url)
+                mow_schedule = schedules.locator(f"#schedule-{service['id']}")
+                mow_schedule.get_by_role("link", name="Edit schedule").click()
+                page.get_by_label("Change", exact=True).select_option("pause")
+                page.get_by_role("button", name="Preview changes", exact=True).click()
+                expect(page.get_by_text("Cancel and keep in history", exact=False).first).to_be_visible()
+                page.get_by_role("button", name="Save reviewed change").click()
+                expect(mow_schedule.get_by_text("Paused", exact=True)).to_be_visible()
+                assert visit(first_mow)["status"] == "canceled"
+                mow_schedule.get_by_role("link", name="Edit schedule").click()
+                expect(page.get_by_label("Change", exact=True)).to_have_value("resume")
+                page.get_by_role("button", name="Preview changes", exact=True).click()
+                expect(page.get_by_text("Restore visit", exact=False).first).to_be_visible()
+                shot(page, "service-resume-first-visit-desktop")
+                page.get_by_role("button", name="Save reviewed change").click()
+                expect(mow_schedule.get_by_text(re.compile("^Next "))).to_be_visible()
+                assert (visit(first_mow)["status"], visit(first_mow)["job_total"]) == ("confirmed", 85.50)
+                mow_schedule.get_by_role("link", name="Edit schedule").click()
+                page.get_by_label("Change", exact=True).select_option("range")
+                page.get_by_label("Apply from", exact=True).fill(first_date)
+                page.get_by_label("Through", exact=True).fill(first_date)
+                page.get_by_role("button", name="Preview changes", exact=True).click()
+                expect(page.get_by_text("Cancel and keep in history", exact=False)).to_be_visible()
+                shot(page, "service-skip-first-visit-desktop")
+                page.get_by_role("button", name="Save reviewed change").click()
+                expect(mow_schedule.get_by_role("link", name="Edit schedule")).to_be_visible()
+                assert visit(first_mow)["status"] == "canceled"
+
+            page.goto(pending_url)
+            pending_schedule = page.get_by_role("region", name="Service schedules")
+            expect(pending_schedule.get_by_text("Awaiting first-visit confirmation")).to_be_visible()
+            first_link = pending_schedule.get_by_role("link", name="Confirm first visit", exact=True)
+            first_href = f"/admin/jobs/{first_pending}"
+            expect(first_link).to_have_attribute("href", first_href)
+            expect(pending_schedule.get_by_role("link", name="Edit schedule")).to_have_count(0)
+            assert_no_overflow(page)
+            shot(page, f"service-awaits-first-confirmation-{width}", full_page=False)
+            page.goto(f"{pending_url}/service?schedule={pending_plan}")
+            expect(page.get_by_text("Confirm the first visit before editing this schedule.")).to_be_visible()
+            expect(page.get_by_role("button", name="Preview changes")).to_have_count(0)
+            assert_no_overflow(page)
+            shot(page, f"service-first-confirmation-continuation-{width}", full_page=False)
+            page.get_by_role("link", name="Confirm first visit", exact=True).click()
+            page.wait_for_url(BASE + first_href)
+            expect(page.get_by_role("button", name="Confirm first visit", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Edit schedule", exact=True)).to_have_count(0)
+            if width == 320:
+                page.get_by_role("button", name="Confirm first visit", exact=True).click()
+                expect(page.get_by_label("Visit date", exact=True)).to_have_value(pending_date)
+                page.get_by_role("button", name="Confirm visit", exact=True).click()
+                expect(page.get_by_text("Visit confirmed.", exact=True)).to_be_visible()
+                assert visit(first_pending)["status"] == "confirmed"
+                page.goto(pending_url)
+                expect(pending_schedule.get_by_role("link", name="Edit schedule", exact=True)).to_be_visible()
             assert not errors, errors
             context.close()
         browser.close()
-    print("Seasonal editor, reviewed series move and Kelli cleanup passed. Mobile save is reachable at 390 and 320 px.")
+    print("Service editor, first-visit confirmation, pause/resume and bounded skip passed at the exercised desktop and phone widths.")
 
 if os.environ.get("QG_SERVICE_EDITOR_ONLY") == "1":
     try:

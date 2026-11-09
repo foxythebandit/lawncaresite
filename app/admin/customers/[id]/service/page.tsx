@@ -55,6 +55,13 @@ export default async function CustomerServicePage({ params, searchParams }: {
   }))
   const back = visitOrigin ?? (visit ? `/admin/jobs/${visit}` : `/admin/customers/${id}${schedule ? `#schedule-${schedule}` : ''}`)
   const backLabel = visitOrigin || visit ? 'Back to visit' : 'Back to customer'
+  const awaitingFirst = plan.data?.status === 'active' && !plan.data.generation_starts_on && !plan.data.schedule_review_reason
+  const { data: pendingFirst } = awaitingFirst && plan.data
+    ? await db.from('bookings').select('id').eq('agreement_id', plan.data.id)
+      .eq('occurrence_on', plan.data.anchor_on).eq('status', 'pending').maybeSingle().throwOnError()
+    : { data: null }
+  const firstPath = pendingFirst ? `/admin/jobs/${pendingFirst.id}` : null
+  const firstHref = pendingFirst && originBookingId === pendingFirst.id ? visitOrigin : firstPath
   const title = extra ? 'Add extra visit' : plan.data ? 'Edit service schedule' : 'Add service'
   const property = properties.data.find(p => p.id === plan.data?.property_id)
   return <main className="crm-page work-visit-page">
@@ -67,8 +74,13 @@ export default async function CustomerServicePage({ params, searchParams }: {
           {selectedLabel && <p className="crm-muted">{selectedLabel.name}</p>}
         </div>
       </div>
-      {plan.data?.status === 'ended' ? <p>This service schedule has ended. Its saved visits stay in customer history.</p> :
-        <ScheduleEditor customerId={id} properties={properties.data} labels={labels.data} sources={choices}
+      {plan.data?.status === 'ended' ? <p>This service schedule has ended. Its saved visits stay in customer history.</p>
+        : awaitingFirst ? <>
+          <p>Confirm the first visit before editing this schedule.</p>
+          {firstHref && <div className="work-visit-actions">
+            <Link href={firstHref} className="crm-button crm-button-primary">Confirm first visit</Link>
+          </div>}
+        </> : <ScheduleEditor customerId={id} properties={properties.data} labels={labels.data} sources={choices}
           initialSource={visit} plan={plan.data} definition={definitionFrom(revision?.definition)}
           itemsFromVisit={itemsFromVisit} initialArrival={revision?.visit_time ?? null} today={today} from={effective} extra={extra} back={back} backLabel={backLabel} />}
     </section>

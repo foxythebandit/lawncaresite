@@ -10,7 +10,7 @@ import { revalidatePath } from 'next/cache'
 import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
 import { providerRetryExpired, saveVisitPaymentLink, type PreparedVisit } from '@/lib/visit-payment-link'
-import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
+import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import type { Database, Json } from '@/supabase/database.types'
 
@@ -303,30 +303,6 @@ export async function recordManualPayment(input: {
   return { success: true, data: { payment_id: data } }
 }
 
-export async function startJobAgreement(input: {
-  bookingId: string; expectedUpdatedAt: string; operationId: string
-  anchorOn: string; nextOn: string; endOn?: string | null
-  intervalUnit: 'week' | 'month'; intervalCount: number; itemsTemplate: JobLine[]
-}): Promise<ActionResult> {
-  await requireStaff()
-  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId)) {
-    return { success: false, error: 'Invalid job.' }
-  }
-  let template: JobLine[]
-  try { template = cleanJobLines(input.itemsTemplate) }
-  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
-  const { data, error } = await getAdmin().rpc('crm_start_agreement', {
-    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
-    p_operation_id: input.operationId,
-    p_config: { anchor_on: input.anchorOn, next_on: input.nextOn,
-      end_on: input.endOn || null, interval_unit: input.intervalUnit,
-      interval_count: input.intervalCount, items_template: template },
-  })
-  if (error) return { success: false, error: commandError(error) }
-  refreshJobs()
-  return { success: true, data: data as Record<string, unknown> }
-}
-
 function revalidateCustomer(customerId: string) {
   refreshJobs()
   revalidatePath(`/admin/customers/${customerId}`)
@@ -354,68 +330,6 @@ export async function addCustomerJob(input: {
   if (error) return { success: false, error: commandError(error) }
   revalidateCustomer(input.customerId)
   return { success: true, data: data as Record<string, unknown> }
-}
-
-/**
- * Start a mowing plan for an existing customer. The first visit is either a visit they already have
- * booked at that property (a lead's booking, so it is not duplicated) or a new one; either way it is
- * scheduled on its date so it can be marked done.
- */
-export async function startCustomerPlan(input: {
-  jobOperationId: string; planOperationId: string; confirmOperationId: string; customerId: string
-  propertyId: string | null; newAddress: string | null; existingBookingId?: string | null
-  firstDate: string; intervalUnit: 'week' | 'month'; intervalCount: number; pricePerVisit: string
-}): Promise<ActionResult> {
-  await requireStaff(`/admin/customers/${input.customerId}`)
-  if (![input.jobOperationId, input.planOperationId, input.confirmOperationId, input.customerId].every(v => UUID_RE.test(v))
-    || (input.propertyId && !UUID_RE.test(input.propertyId)) || (input.existingBookingId && !UUID_RE.test(input.existingBookingId))) {
-    return { success: false, error: 'Refresh this customer and try again.' }
-  }
-  if (!input.propertyId && !input.newAddress?.trim()) return { success: false, error: 'Choose a property or enter an address.' }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.firstDate)) return { success: false, error: 'Choose the first visit date.' }
-  if (!['week', 'month'].includes(input.intervalUnit) || !Number.isInteger(input.intervalCount) || input.intervalCount < 1 || input.intervalCount > 52) {
-    return { success: false, error: 'Choose how often to visit.' }
-  }
-  let items: JobLine[]
-  try { items = cleanJobLines([{ kind: 'service', description: 'Lawn care', amount: input.pricePerVisit }]) }
-  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
-  if (moneyCents(items[0].amount) <= 0) return { success: false, error: 'Enter the price per visit.' }
-  const label = input.intervalUnit === 'week'
-    ? (input.intervalCount === 1 ? 'Weekly' : input.intervalCount === 2 ? 'Bi-weekly' : `Every ${input.intervalCount} weeks`)
-    : (input.intervalCount === 1 ? 'Monthly' : `Every ${input.intervalCount} months`)
-  const db = getAdmin()
-  let bookingId = input.existingBookingId ?? null
-  if (bookingId) {
-    const { data: existing } = await db.from('bookings').select('customer_id,property_id,status,agreement_id').eq('id', bookingId).single()
-    if (!existing || existing.customer_id !== input.customerId || existing.property_id !== input.propertyId
-      || existing.agreement_id || !['pending', 'confirmed'].includes(existing.status)) {
-      return { success: false, error: 'That visit can no longer start the plan. Refresh this customer.' }
-    }
-  } else {
-    const created = await db.rpc('crm_create_customer_job', {
-      p_operation_id: input.jobOperationId, p_customer_id: input.customerId, p_property_id: input.propertyId,
-      p_property: input.propertyId ? null : { address: input.newAddress!.trim() },
-      p_job: { preferred_date: input.firstDate, notes: '', one_time: false, frequency: label }, p_items: items,
-    })
-    if (created.error) return { success: false, error: commandError(created.error) }
-    bookingId = (created.data as { booking_id: string }).booking_id
-  }
-  // The plan's first visit is on the chosen date: schedule it (an existing visit moves to that date).
-  const { data: job } = await db.from('bookings').select('status,updated_at,confirmed_date,agreement_id').eq('id', bookingId).single()
-  if (job && !job.agreement_id && (job.status === 'pending' || job.confirmed_date !== input.firstDate)) {
-    const scheduled = await changeJob({ bookingId, expectedUpdatedAt: job.updated_at, operationId: input.confirmOperationId,
-      action: job.status === 'pending' ? 'confirm' : 'reschedule', date: input.firstDate })
-    if (!scheduled.success) return scheduled
-  }
-  const { data: fresh } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
-  const { data, error } = await db.rpc('crm_start_agreement', {
-    p_booking_id: bookingId, p_expected_updated_at: fresh?.updated_at, p_operation_id: input.planOperationId,
-    p_config: { anchor_on: input.firstDate, next_on: addInterval(input.firstDate, input.intervalUnit, input.intervalCount),
-      end_on: null, interval_unit: input.intervalUnit, interval_count: input.intervalCount, items_template: items },
-  })
-  if (error) return { success: false, error: commandError(error) }
-  revalidateCustomer(input.customerId)
-  return { success: true, data: { ...(data as Record<string, unknown>), booking_id: bookingId } }
 }
 
 /** Quote outcome: a lead's booked visit (its latest quote booking) canceled before it happens counts as a canceled quote. */

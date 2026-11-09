@@ -202,6 +202,10 @@ begin
   if not found or a.updated_at is distinct from p_expected_updated_at then
     raise exception 'Schedule changed. Reopen it before editing.' using errcode = 'PT409';
   end if;
+  if a.status = 'active' and a.generation_starts_on is null and a.schedule_review_reason is null
+    and v_mode in ('future','range') then
+    raise exception 'Confirm the first visit before editing this schedule' using errcode = '23514';
+  end if;
   if a.status = 'ended' or (v_mode = 'resume' and a.status <> 'paused' and a.schedule_review_reason is null)
     or (v_mode in ('future','range','pause') and a.status <> 'active')
     or (v_mode = 'range' and a.generation_starts_on is null) then
@@ -309,14 +313,21 @@ begin
     where b.agreement_id = a.id
       and case when v_mode in ('pause','end') then b.status in ('pending','confirmed')
         and coalesce(b.confirmed_date,b.preferred_date,b.occurrence_on,v_from) >= v_from
-      else b.occurrence_on >= v_from and (v_through is null or b.occurrence_on <= v_through)
+      else (b.occurrence_on >= v_from or (v_mode = 'resume' and b.id = a.schedule_source_booking_id
+          and b.schedule_cancellation = 'pause' and b.confirmed_date >= v_from))
+        and (v_through is null or b.occurrence_on <= v_through)
         and (b.status in ('confirmed','completed') or (b.status = 'canceled'
           and (b.schedule_state = 'superseded' or b.schedule_cancellation in ('pause','range')))) end
   ), changes as (
     select b.*,case
       when v_mode in ('pause','end') then case when has_money_or_history then 'conflict' else 'cancel' end
-      when has_money_or_history or b.id = a.schedule_source_booking_id or
-        (b.status = 'confirmed' and b.confirmed_date < v_today) then 'keep'
+      when has_money_or_history or (b.status = 'confirmed' and b.confirmed_date < v_today) then 'keep'
+      when b.id = a.schedule_source_booking_id then case
+        when v_mode = 'resume' and b.status = 'canceled' and b.schedule_cancellation = 'pause'
+          and b.confirmed_date >= v_from and (v_end is null or b.confirmed_date <= v_end) then 'restore'
+        when v_mode = 'range' and v_rule->>'frequency' = 'paused'
+          and b.status = 'confirmed' and not b.date_override then 'cancel'
+        when b.status = 'canceled' then 'leave_canceled' else 'keep' end
       when b.status = 'canceled' then case when has_slot
         and (not date_override or b.confirmed_date >= v_from) then 'restore' else 'leave_canceled' end
       when has_slot then 'update'
@@ -328,13 +339,20 @@ begin
     from affected b
   )
   select coalesce(jsonb_agg(jsonb_build_object('booking_id',id,'slot',occurrence_on,
-    'on',case when change = 'restore' and not date_override then occurrence_on else coalesce(confirmed_date,preferred_date,occurrence_on) end,
+    'on',case when change = 'restore' and not date_override and id is distinct from a.schedule_source_booking_id
+      then occurrence_on else coalesce(confirmed_date,preferred_date,occurrence_on) end,
     'version',updated_at,'action',change,'old_price',job_total,
-    'price',case when change in ('update','restore') and not price_override then public.crm_validate_items(new_items) else job_total end,
-    'arrival',case when change in ('update','restore') and not time_override then new_time else confirmed_time end)
+    'price',case when change in ('update','restore') and not price_override and id is distinct from a.schedule_source_booking_id
+      then public.crm_validate_items(new_items) else job_total end,
+    'arrival',case when change in ('update','restore') and not time_override and id is distinct from a.schedule_source_booking_id
+      then new_time else confirmed_time end)
     order by coalesce(confirmed_date,preferred_date,occurrence_on),id),'[]')
     into v_changes from changes where change <> 'leave_canceled';
 
+  if v_mode = 'range' and jsonb_array_length(v_segments) = 0
+    and not exists(select 1 from jsonb_array_elements(v_changes) c where c->>'action' = 'cancel') then
+    raise exception 'There is no active schedule in those dates' using errcode = '22023';
+  end if;
   select coalesce(jsonb_agg(c),'[]') into v_conflicts from jsonb_array_elements(v_changes) c where c->>'action' = 'conflict';
   if v_limit >= v_from and v_mode not in ('pause','end') then
     with proposed as (
@@ -393,9 +411,6 @@ begin
     v_result := public.crm_agreement_command(a.id,a.updated_at,gen_random_uuid(),v_mode,
       jsonb_build_object('future_job_ids',v_future));
   else
-    if v_mode = 'range' and jsonb_array_length(v_segments) = 0 then
-      raise exception 'There is no active schedule in those dates' using errcode = '22023';
-    end if;
     if a.schedule_source_booking_id is null or not exists(select 1 from public.bookings
       where id = a.schedule_source_booking_id and agreement_id = a.id
         and customer_id = a.customer_id and property_id = a.property_id and status <> 'pending') then
@@ -430,13 +445,18 @@ begin
       where action in ('update','restore','cancel','extra')
     loop
       if v_row.action = 'cancel' then
-        update public.bookings set status = 'canceled',schedule_state = 'superseded',
+        update public.bookings set status = 'canceled',
+          schedule_state = case when id = a.schedule_source_booking_id then schedule_state else 'superseded' end,
           schedule_cancellation = case when v_mode = 'range' then 'range' else 'rule' end,
           lifecycle_note = case when v_mode = 'range' then 'Skipped by reviewed date range' else 'Removed by reviewed schedule change' end
           where id = v_row.booking_id;
       elsif v_row.action = 'extra' then
         update public.bookings set date_override = true,retain_visit = true,schedule_state = 'exception',
           lifecycle_note = 'Kept as an individual visit after schedule change' where id = v_row.booking_id;
+      elsif v_row.action = 'restore' and v_row.booking_id = a.schedule_source_booking_id then
+        -- The separately booked first visit has its own facts outside the recurring revision.
+        update public.bookings set status = 'confirmed',schedule_cancellation = null,
+          lifecycle_note = 'Schedule visit restored' where id = v_row.booking_id;
       else
         select revision_id into v_id from public.crm_schedule_slots(a.id,v_row.slot,v_row.slot);
         if v_row.action = 'restore' then
@@ -557,7 +577,7 @@ begin
       from moves m
     )
     select coalesce(jsonb_agg(jsonb_build_object('booking_id',booking_id,'old_on',coalesce(confirmed_date,v_actual),
-      'on',new_on,'version',updated_at,'action',case when blocked then 'conflict'
+      'on',new_on,'target_slot',target,'version',updated_at,'action',case when blocked then 'conflict'
         when status in ('skipped','canceled') then 'tombstone'
         when confirmed_date = new_on then 'keep' else 'move' end,
       'old_price',coalesce(job_total,v_price),'price',coalesce(job_total,v_price),
@@ -583,7 +603,10 @@ begin
     select coalesce(jsonb_agg(jsonb_build_object('on',d,'price',a.price_per_visit,
       'arrival',public.crm_service_arrival(case when r.id is null then v_time else r.visit_time end,d)) order by d),'[]')
       into v_dates from public.crm_schedule_dates(v_definition,v_date,greatest(v_date,least(v_date + 90,a.end_on))) d
-      where not exists(select 1 from jsonb_array_elements(v_changes) c where (c->>'on')::date = d);
+      where not exists(select 1 from jsonb_array_elements(v_changes) c where (c->>'target_slot')::date = d)
+        and not exists(select 1 from public.bookings keep
+          where keep.agreement_id = a.id and keep.occurrence_on = d and keep.schedule_state is distinct from 'superseded'
+            and not exists(select 1 from jsonb_array_elements(v_changes) c where (c->>'booking_id')::uuid = keep.id));
   end if;
   v_result := jsonb_build_object('changes',v_changes,'dates',v_dates,'conflicts',v_conflicts,
     'first_on',v_date,'first_price',v_price,'first_arrival',v_time);

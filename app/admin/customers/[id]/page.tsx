@@ -97,6 +97,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       <h2>Service schedules ({agreements.length})</h2>
       {agreements.length ? agreements.map(agreement => {
         const next = nextPlanVisit(agreement.id)
+        const awaitingFirst = agreement.status === 'active' && !agreement.generation_starts_on && !agreement.schedule_review_reason
+        const pendingFirst = awaitingFirst && openJobs.find(job => job.agreement_id === agreement.id
+          && job.occurrence_on === agreement.anchor_on && job.status === 'pending')
         const description = agreement.service_labels?.name ?? visitService(
           Array.isArray(agreement.items_template) ? agreement.items_template as { kind?: unknown; description?: unknown }[] : []
         ) ?? 'Service schedule'
@@ -105,9 +108,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <strong>{description} · {money(agreement.price_per_visit)} per visit</strong>
             <span>{addressById.get(agreement.property_id) ?? 'Property'} · {scheduleLabel(definitions.get(agreement.id) ?? null, agreement)}</span>
             <span>{agreement.schedule_review_reason ?? (agreement.status === 'paused' ? 'Paused' : agreement.status === 'ended' ? 'Ended'
+              : awaitingFirst ? 'Awaiting first-visit confirmation'
               : next ? `Next ${dateText(visitDate(next))}${visitDate(next)! < today ? ' · Overdue' : ''}` : 'No visits in the current window')}</span>
           </div>
-          {agreement.status !== 'ended' && <div className="work-visit-actions">
+          {pendingFirst && <Link className="crm-button crm-button-sm" href={`/admin/jobs/${pendingFirst.id}`}>Confirm first visit</Link>}
+          {agreement.status !== 'ended' && !awaitingFirst && <div className="work-visit-actions">
             <Link className="crm-button crm-button-sm" href={serviceEditorHref(id, { schedule: agreement.id })}>
               {agreement.schedule_review_reason ? 'Review schedule' : 'Edit schedule'}</Link>
             {agreement.service_label_id && <Link className="crm-button crm-button-sm" href={serviceEditorHref(id, { schedule: agreement.id, extra: true })}>Add extra visit</Link>}
