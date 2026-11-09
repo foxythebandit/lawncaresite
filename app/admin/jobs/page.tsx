@@ -30,7 +30,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     booking_id: row.id, agreement_id: null, revision_id: null, cadence_on: null, customer_id: null,
     name: row.name, address: row.address, phone: row.phone, visit_status: row.status, job_total: row.job_total,
     service_on: row.status === 'pending' ? row.preferred_date : row.confirmed_date,
-    visit_time: row.status === 'pending' ? row.preferred_time : row.confirmed_time, reason: null,
+    visit_time: row.status === 'pending' ? row.preferred_time : row.confirmed_time, reason: null, service: undefined,
   }))
   const more = attention ? page * ATTENTION_PAGE_SIZE < attentionPage.counts[attention] : search?.more
   const visibleVisits = context.filter === 'confirmed' ? visits.filter(visit => visit.visit_status === 'confirmed') : visits
@@ -82,7 +82,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             <span><strong>{name}</strong>
               <small>{[row.address !== name ? row.address : null, row.phone ? formatPhone(row.phone) : null].filter(Boolean).join(' · ')}</small>
               {row.reason && <small>{row.reason}</small>}</span>
-            <span><strong>{row.reason ? 'Review schedule' : visitStatus(row.visit_status ?? '', row.service_on, today)}</strong>
+            <span><strong>{attention === 'needs_scheduling' ? row.service ?? 'Service not specified'
+              : row.reason ? 'Review schedule' : visitStatus(row.visit_status ?? '', row.service_on, today)}</strong>
               {!row.reason && <small>{row.visit_status === 'pending' && row.service_on ? 'Requested ' : ''}{when}{row.visit_time ? ` · ${visitTime(row.visit_time)}` : ''}{row.job_total != null ? ` · ${formatMoney(row.job_total)}` : ''}</small>}</span>
             <Icon name="chevronRight" size={16} />
           </Link>

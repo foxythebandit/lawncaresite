@@ -345,6 +345,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         {panel === 'schedule' && (agreement ? <>
           <p className="crm-muted">{cadence(agreement)} · {formatMoney(agreement.price_per_visit)} per visit</p>
           {reviewReason && <p role="alert">{reviewReason}</p>}
+          {occurrence && reviewReason && !agreement.schedule_review_reason && <Link className="crm-button" href="/admin/jobs?attention=schedule_review">Review conflicting visits</Link>}
           {agreement.status !== 'ended' && <div className="work-visit-actions">{edit('Edit future visit price', 'price')}</div>}
           {agreement.status === 'active' && <>
             <p>Pausing or ending affects {futureJobIds.length} upcoming unfinished {futureJobIds.length === 1 ? 'visit' : 'visits'}.</p>
@@ -438,6 +439,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         {agreement ? <>
           <p>{cadence(agreement)} · {formatMoney(agreement.price_per_visit)} per visit</p>
           <p className="crm-muted">{reviewReason ? 'Needs schedule review' : agreement.status === 'active' ? `Active · Next ${dateText(agreement.next_on)}` : agreement.status === 'paused' ? 'Paused' : 'Ended'}</p>
+          {occurrence && reviewReason && <p className="crm-muted">{reviewReason}</p>}
         </> : <p className="crm-muted">{needsSchedule ? 'Review the schedule for this recurring visit.' : 'No repeating schedule for this visit.'}</p>}
         {(agreement || current || booking.status === 'completed') && <div className="work-visit-actions">{edit(agreement ? 'Edit schedule' : 'Set schedule', 'schedule')}</div>}
       </section>

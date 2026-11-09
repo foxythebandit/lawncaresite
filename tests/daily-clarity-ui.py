@@ -115,6 +115,7 @@ def fixture():
     unnamed_visit = create_visit(unnamed, unnamed["phone"], unnamed_addr, day(4), None, "Lawn care", 70.00)
     overdue = create_visit(customer, name, address, (TODAY - timedelta(days=8)).isoformat(), None, "Lawn care", 85.50)
     pending = create_visit(unnamed, "", unnamed_addr, None, None, "Leaf cleanup", 130.00, status="pending")
+    create_visit(unnamed, "", unnamed_addr, day(2), "Morning", "Lawn care", 70.00, status="pending")
 
     recurring_name, recurring_address = "Noah Park", "303 Crescent Field Drive, Austin, TX 78749"
     recurring = create_customer(recurring_name, recurring_address, 84)
@@ -230,7 +231,8 @@ try:
         page.goto(calendar(attention="overdue"))
         expect(page.get_by_role("region", name="Overdue").get_by_role("link", name=re.compile("Kelli Alvarez"))).to_have_attribute("href", re.compile(overdue))
         page.goto(calendar(attention="needs_scheduling"))
-        expect(page.get_by_role("region", name="Needs scheduling").get_by_role("link", name=re.compile("Willowbank Walk"))).to_have_attribute("href", re.compile(pending))
+        expect(page.get_by_role("region", name="Needs scheduling").get_by_role("link", name=re.compile("Willowbank Walk.*Leaf cleanup"))).to_have_attribute("href", re.compile(pending))
+        expect(page.get_by_role("region", name="Needs scheduling").get_by_role("link", name=re.compile("Willowbank Walk.*Lawn care.*Requested"))).to_be_visible()
         shot(page, "calendar-requests-desktop")
         page.goto(calendar(search="Willowbank"))
         result = page.get_by_role("region", name="Search results").get_by_role("link", name=re.compile("Willowbank Walk.*Scheduled"))
@@ -284,7 +286,7 @@ try:
                 expect(mobile.get_by_role("link", name=re.compile("Kelli Alvarez, Lawn care"))).to_be_visible()
                 shot(mobile, "calendar-day-390")
                 mobile.goto(calendar(attention="needs_scheduling"))
-                expect(mobile.get_by_role("region", name="Needs scheduling").get_by_role("link", name=re.compile("Willowbank Walk"))).to_be_visible()
+                expect(mobile.get_by_role("region", name="Needs scheduling").get_by_role("link", name=re.compile("Willowbank Walk.*Leaf cleanup"))).to_be_visible()
                 shot(mobile, "calendar-requests-390")
                 for path, title, filename in (
                     ("/admin/route", "Today", "today-attention"),
@@ -374,7 +376,11 @@ try:
                        "Create payment link", "Items and price", "Edit schedule"):
             expect(page.get_by_role("button", name=action, exact=True)).to_be_visible()
         expect(page.get_by_role("link", name="Customer history")).to_be_visible()
+        expect(page.get_by_text(re.compile(r"^A moved visit conflicts with the schedule on " + day(100)))).to_be_visible()
         shot(page, "visit-projected-desktop")
+        page.get_by_role("button", name="Edit schedule", exact=True).click()
+        expect(page.get_by_role("link", name="Review conflicting visits")).to_have_attribute("href", "/admin/jobs?attention=schedule_review")
+        page.get_by_role("button", name="Close", exact=True).click()
         page.get_by_role("button", name="Create payment link", exact=True).click()
         expect(page.get_by_role("alert").filter(has_text="Stripe not configured.")).to_be_visible()
         assert not request(f"bookings?agreement_id=eq.{plan}&occurrence_on=eq.{day(107)}&select=id")

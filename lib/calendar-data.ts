@@ -85,6 +85,7 @@ export type CalendarAttentionRow = {
   phone: string | null
   job_total: number | null
   reason: string | null
+  service?: string
 }
 
 export async function getCalendarAttentionPage(today: string, kind: CalendarAttentionRow['kind'], page: number) {
@@ -93,7 +94,10 @@ export async function getCalendarAttentionPage(today: string, kind: CalendarAtte
     p_today: today, p_kind: kind, p_limit: ATTENTION_PAGE_SIZE, p_offset: (page - 1) * ATTENTION_PAGE_SIZE,
   })
   if (error || !data) throw new Error('Could not load visits needing attention.')
-  return data as unknown as { counts: CalendarAttention; rows: CalendarAttentionRow[] }
+  const result = data as unknown as { counts: CalendarAttention; rows: CalendarAttentionRow[] }
+  if (kind !== 'needs_scheduling') return result
+  const labels = await savedVisitServices(result.rows.flatMap(row => row.booking_id ? [row.booking_id] : []))
+  return { ...result, rows: result.rows.map(row => ({ ...row, service: labels.get(row.booking_id ?? '') })) }
 }
 
 export async function getVisitSearch(search: string, page: number, filter?: 'confirmed' | 'week', bounds?: { first: string; last: string }) {
@@ -114,8 +118,22 @@ export async function getVisitSearch(search: string, page: number, filter?: 'con
 export function visitService(items: { kind?: unknown; description?: unknown }[]) {
   const labels = [...new Set(items.flatMap(item =>
     item.kind === 'service' && typeof item.description === 'string' && item.description.trim() ? [item.description.trim()] : []))]
-  if (!labels.length) return 'Service visit'
+  if (!labels.length) return null
   return labels.length === 1 ? labels[0] : `${labels[0]} + ${labels.length - 1}`
+}
+
+async function savedVisitServices(saved: string[]) {
+  const labels = new Map<string, string>()
+  const db = adminDb()
+  for (let i = 0; i < saved.length; i += 100) {
+    const { data, error } = await db.from('bookings').select('id,job_items(kind,description)').in('id', saved.slice(i, i + 100))
+    if (error) throw new Error('Could not load visit services.')
+    for (const row of data) {
+      const label = visitService(row.job_items)
+      if (label) labels.set(row.id, label)
+    }
+  }
+  return labels
 }
 
 export async function getCalendarVisits(from: string, through: string) {
@@ -123,16 +141,14 @@ export async function getCalendarVisits(from: string, through: string) {
   const db = adminDb()
   const saved = [...new Set(visits.flatMap(row => row.booking_id ? [row.booking_id] : []))]
   const virtual = [...new Set(visits.flatMap(row => row.revision_id && !row.booking_id ? [row.revision_id] : []))]
-  const labels = new Map<string, string>()
-  for (let i = 0; i < saved.length; i += 100) {
-    const { data, error } = await db.from('bookings').select('id,job_items(kind,description)').in('id', saved.slice(i, i + 100))
-    if (error) throw new Error('Could not load visit services.')
-    for (const row of data) labels.set(row.id, visitService(row.job_items))
-  }
+  const labels = await savedVisitServices(saved)
   for (let i = 0; i < virtual.length; i += 100) {
     const { data, error } = await db.from('agreement_schedule_revisions').select('id,items_template').in('id', virtual.slice(i, i + 100))
     if (error) throw new Error('Could not load scheduled services.')
-    for (const row of data) labels.set(row.id, visitService(Array.isArray(row.items_template) ? row.items_template as { kind?: unknown; description?: unknown }[] : []))
+    for (const row of data) {
+      const label = visitService(Array.isArray(row.items_template) ? row.items_template as { kind?: unknown; description?: unknown }[] : [])
+      if (label) labels.set(row.id, label)
+    }
   }
   return visits.map(visit => ({ ...visit, service: labels.get(visit.booking_id ?? visit.revision_id ?? '') ?? 'Service visit' }))
 }
