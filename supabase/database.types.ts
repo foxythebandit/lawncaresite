@@ -490,6 +490,12 @@ isOneToOne: false
 "crm_schedule_dates":
 { Args: { "p_definition": Json,"p_from": string,"p_through": string }; Returns: string[]
                            },
+"crm_schedule_first_move_conflict":
+{ Args: { "p_agreement_id": string,"p_from": string,"p_through"?: string }; Returns: string
+                           },
+"crm_schedule_has_actual_visit":
+{ Args: { "p_agreement_id": string,"p_ignore_id"?: string,"p_on": string }; Returns: boolean
+                           },
 "crm_schedule_slots":
 { Args: { "p_agreement_id": string,"p_from": string,"p_through": string }; Returns: {
               "cadence_on": string,"revision_id": string

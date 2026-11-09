@@ -25,13 +25,13 @@ async function data(request) {
   return result.data
 }
 
-test('two native reconciliation requests create one visit per cadence slot', async () => {
+async function withNativeSchedule(run) {
   const customerId = randomUUID()
   const propertyId = randomUUID()
   const firstId = randomUUID()
   const operationId = randomUUID()
   const items = [{ kind: 'service', description: 'Lawn care', amount: '85.50' }]
-  const visit = { id: firstId, name: 'Schedule race test', phone: '5125550119', address: '1 Test Lane',
+  const visit = { id: firstId, name: 'Native schedule test', phone: '5125550119', address: '1 Test Lane',
     customer_id: customerId, property_id: propertyId, status: 'confirmed', confirmed_date: today }
   try {
     await data(admin.from('customers').insert({ id: customerId, name: visit.name, phone: visit.phone }))
@@ -41,32 +41,7 @@ test('two native reconciliation requests create one visit per cadence slot', asy
       p_booking_id: firstId, p_expected_updated_at: first.updated_at, p_operation_id: operationId,
       p_config: { anchor_on: today, next_on: day(7), interval_unit: 'week', interval_count: 1, items_template: items },
     }))
-    const args = { p_agreement_id: started.agreement_id, p_today: day(100) }
-    // Separate HTTP requests use independent database transactions.
-    const results = await Promise.allSettled([admin, client(config.SECRET_KEY)].map(worker =>
-      data(worker.rpc('crm_reconcile_schedule', args))))
-    assert.deepEqual(results, [
-      { status: 'fulfilled', value: day(190) },
-      { status: 'fulfilled', value: day(190) },
-    ])
-    const saved = await data(admin.from('bookings').select('id, occurrence_on, job_total')
-      .eq('agreement_id', started.agreement_id).order('occurrence_on'))
-    assert.deepEqual(saved.map(row => row.occurrence_on), Array.from({ length: 28 }, (_, i) => day(i * 7)))
-    assert.ok(saved.slice(1).every(row => row.job_total === 85.5))
-    const savedIds = saved.slice(1).map(row => row.id)
-    const lines = await data(admin.from('job_items').select('booking_id, amount').in('booking_id', savedIds))
-    assert.deepEqual(lines.map(row => row.booking_id).sort(), savedIds.sort())
-    assert.ok(lines.every(row => row.amount === 85.5))
-
-    const agreement = await data(admin.from('recurring_agreements').select('updated_at')
-      .eq('id', started.agreement_id).single())
-    await data(admin.rpc('crm_agreement_command', {
-      p_agreement_id: started.agreement_id, p_expected_updated_at: agreement.updated_at,
-      p_operation_id: randomUUID(), p_action: 'price_template',
-      p_payload: { items_template: [{ ...items[0], amount: '91.27' }] },
-    }))
-    const repriced = await data(admin.from('bookings').select('job_total, schedule_state').eq('id', saved[1].id).single())
-    assert.deepEqual(repriced, { job_total: 91.27, schedule_state: 'generated' })
+    await run(started.agreement_id, items)
   } finally {
     // Test-only teardown needs database-owner privileges because the app cannot delete revisions.
     execFileSync('supabase', ['db', 'query', '--local', `do $$
@@ -84,6 +59,80 @@ test('two native reconciliation requests create one visit per cadence slot', asy
       delete from public.customers where id = '${customerId}';
     end $$;`], { stdio: 'pipe' })
   }
+}
+
+test('two native reconciliation requests create one visit per cadence slot', async () => {
+  await withNativeSchedule(async (agreementId, items) => {
+    const args = { p_agreement_id: agreementId, p_today: day(100) }
+    // Separate HTTP requests use independent database transactions.
+    const results = await Promise.allSettled([admin, client(config.SECRET_KEY)].map(worker =>
+      data(worker.rpc('crm_reconcile_schedule', args))))
+    assert.deepEqual(results, [
+      { status: 'fulfilled', value: day(190) },
+      { status: 'fulfilled', value: day(190) },
+    ])
+    const saved = await data(admin.from('bookings').select('id, occurrence_on, job_total')
+      .eq('agreement_id', agreementId).order('occurrence_on'))
+    assert.deepEqual(saved.map(row => row.occurrence_on), Array.from({ length: 28 }, (_, i) => day(i * 7)))
+    assert.ok(saved.slice(1).every(row => row.job_total === 85.5))
+    const savedIds = saved.slice(1).map(row => row.id)
+    const lines = await data(admin.from('job_items').select('booking_id, amount').in('booking_id', savedIds))
+    assert.deepEqual(lines.map(row => row.booking_id).sort(), savedIds.sort())
+    assert.ok(lines.every(row => row.amount === 85.5))
+
+    const agreement = await data(admin.from('recurring_agreements').select('updated_at')
+      .eq('id', agreementId).single())
+    await data(admin.rpc('crm_agreement_command', {
+      p_agreement_id: agreementId, p_expected_updated_at: agreement.updated_at,
+      p_operation_id: randomUUID(), p_action: 'price_template',
+      p_payload: { items_template: [{ ...items[0], amount: '91.27' }] },
+    }))
+    const repriced = await data(admin.from('bookings').select('job_total, schedule_state').eq('id', saved[1].id).single())
+    assert.deepEqual(repriced, { job_total: 91.27, schedule_state: 'generated' })
+  })
+})
+
+test('native worker flags a date conflict without advancing its cursor or stopping other plans', async () => {
+  await withNativeSchedule(async affectedId => {
+    await withNativeSchedule(async healthyId => {
+      const target = day(98)
+      const entriesOn = () => data(admin.rpc('crm_calendar_entries', { p_from: target, p_through: target }))
+      const { revision_id: revisionId } = (await entriesOn()).find(row => row.agreement_id === affectedId)
+      const moved = await data(admin.from('bookings').select('id, job_total').eq('agreement_id', affectedId)
+        .eq('occurrence_on', day(14)).single())
+      // Simulate an existing collision from before the move command enforced this guard.
+      await data(admin.from('bookings').update({ confirmed_date: target, preferred_date: target }).eq('id', moved.id))
+      const assertSavedOnly = async () => {
+        const entries = (await entriesOn()).filter(row => row.agreement_id === affectedId)
+        assert.deepEqual(entries.map(row => row.booking_id), [moved.id])
+        assert.equal(entries[0].cadence_on, day(14))
+        assert.equal(entries[0].job_total, moved.job_total)
+      }
+      await assertSavedOnly()
+      const initialAttention = await data(admin.rpc('crm_calendar_attention', { p_today: today }))
+      assert.ok(initialAttention.schedule_review >= 1)
+      const conflict = await admin.rpc('crm_materialize_schedule_visit', {
+        p_agreement_id: affectedId, p_revision_id: revisionId, p_on: target,
+      })
+      assert.equal(conflict.error?.code, 'PT409')
+      assert.match(conflict.error.message, /already has a visit on that date/)
+
+      const run = () => data(admin.rpc('crm_reconcile_schedules', { p_today: day(20) }))
+      await run()
+      const plans = await data(admin.from('recurring_agreements').select('id, generated_through, schedule_review_reason')
+        .in('id', [affectedId, healthyId]))
+      const affected = plans.find(plan => plan.id === affectedId)
+      assert.equal(affected.generated_through, day(90))
+      assert.ok(affected.schedule_review_reason.includes(target))
+      assert.deepEqual(plans.find(plan => plan.id === healthyId),
+        { id: healthyId, generated_through: day(110), schedule_review_reason: null })
+      await assertSavedOnly()
+      const healthyEntry = (await entriesOn()).find(row => row.agreement_id === healthyId)
+      assert.ok(healthyEntry.booking_id, 'the healthy plan generated its regular visit')
+      await run()
+      await assertSavedOnly()
+    })
+  })
 })
 
 test('portal reads keep owned overdue, upcoming, pending and completed visits in scope', async () => {

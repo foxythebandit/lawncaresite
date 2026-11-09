@@ -10,6 +10,27 @@ returns table(revision_id uuid,cadence_on date) language sql stable security inv
     and greatest(p_from,r.starts_on,a.generation_starts_on) <= least(p_through,r.ends_before - 1,a.end_on);
 $$;
 
+create function public.crm_schedule_has_actual_visit(p_agreement_id uuid,p_on date,p_ignore_id uuid default null)
+returns boolean language sql stable security invoker set search_path = '' as $$
+  select exists(select 1 from public.bookings
+    where agreement_id = p_agreement_id and confirmed_date = p_on and status in ('confirmed','completed')
+      and id is distinct from p_ignore_id);
+$$;
+
+-- Check saved moved dates individually, including dates beyond the generated window.
+create function public.crm_schedule_first_move_conflict(p_agreement_id uuid,p_from date,p_through date default null)
+returns date language sql stable security invoker set search_path = '' as $$
+  select v.confirmed_date from public.bookings v
+  where v.agreement_id = p_agreement_id and v.status in ('confirmed','completed')
+    and v.confirmed_date <> v.occurrence_on and v.confirmed_date >= p_from
+    and (p_through is null or v.confirmed_date <= p_through)
+    and exists(select 1 from public.crm_schedule_slots(p_agreement_id,v.confirmed_date,v.confirmed_date))
+    and not exists(select 1 from public.bookings existing
+      where existing.agreement_id = v.agreement_id and existing.occurrence_on = v.confirmed_date
+        and existing.schedule_state is distinct from 'superseded')
+  order by v.confirmed_date limit 1;
+$$;
+
 -- Protect a visit as soon as staff records an individual change. Schedule
 -- commands mark their own transitions by changing the revision or state.
 create function public.crm_protect_schedule_visit() returns trigger
@@ -49,21 +70,23 @@ declare a public.recurring_agreements; b public.bookings; r public.agreement_sch
   v_id uuid; v_total numeric;
 begin
   select * into a from public.recurring_agreements where id = p_agreement_id for update;
-  if not found or a.status <> 'active' or not exists(
+  if not found or a.status <> 'active' or a.schedule_review_reason is not null or not exists(
     select 1 from public.crm_schedule_slots(p_agreement_id,p_on,p_on) s where s.revision_id = p_revision_id
   ) then
     raise exception 'Schedule changed; reopen the calendar' using errcode = 'PT409';
   end if;
   -- Validate the requested revision before looking up the current occupant of the slot.
   select * into b from public.bookings where agreement_id = a.id and occurrence_on = p_on for update;
-  if found then
-    if b.schedule_state = 'superseded' then
-      select * into r from public.agreement_schedule_revisions where id = p_revision_id;
-      update public.bookings set status = 'confirmed', schedule_state = 'generated',
-        schedule_revision_id = p_revision_id, confirmed_date = p_on, preferred_date = p_on,
-        confirmed_time = r.visit_time, lifecycle_note = 'Schedule visit restored'
-      where id = b.id;
-    end if;
+  if found and b.schedule_state is distinct from 'superseded' then return b.id; end if;
+  if public.crm_schedule_has_actual_visit(a.id,p_on) then
+    raise exception 'This plan already has a visit on that date. Review the schedule.' using errcode = 'PT409';
+  end if;
+  if b.id is not null then
+    select * into r from public.agreement_schedule_revisions where id = p_revision_id;
+    update public.bookings set status = 'confirmed', schedule_state = 'generated',
+      schedule_revision_id = p_revision_id, confirmed_date = p_on, preferred_date = p_on,
+      confirmed_time = r.visit_time, lifecycle_note = 'Schedule visit restored'
+    where id = b.id;
     return b.id;
   end if;
 
@@ -100,14 +123,22 @@ end $$;
 create function public.crm_reconcile_schedule(p_agreement_id uuid,
   p_today date default (now() at time zone 'America/Chicago')::date)
 returns date language plpgsql security invoker set search_path = '' as $$
-declare a public.recurring_agreements; v_from date; v_through date; v_slot record; v_next date;
+declare a public.recurring_agreements; v_from date; v_through date; v_slot record; v_next date; v_conflict date;
 begin
   if p_today is null then raise exception 'Choose a reconciliation date' using errcode = '22023'; end if;
   select * into a from public.recurring_agreements where id = p_agreement_id for update;
   if not found or a.status <> 'active' or a.generation_starts_on is null then return null; end if;
+  if a.schedule_review_reason is not null then return a.generated_through; end if;
   v_from := coalesce(a.generated_through + 1,a.generation_starts_on);
   v_through := least(p_today + 90,a.end_on,v_from + 365);
   if v_from <= v_through then
+    v_conflict := public.crm_schedule_first_move_conflict(a.id,v_from,v_through);
+    if v_conflict is not null then
+      update public.recurring_agreements set schedule_review_reason = format(
+        'A saved visit overlaps the regular visit on %s. Review the dates before restarting.',v_conflict)
+        where id = a.id;
+      return a.generated_through;
+    end if;
     for v_slot in
       select s.* from public.crm_schedule_slots(a.id,v_from,v_through) s
       where not exists(select 1 from public.bookings b where b.agreement_id = a.id
@@ -131,7 +162,7 @@ returns integer language plpgsql security invoker set search_path = '' as $$
 declare v_id uuid; v_count integer := 0;
 begin
   for v_id in select a.id from public.recurring_agreements a
-    where a.status = 'active' and a.generation_starts_on is not null
+    where a.status = 'active' and a.generation_starts_on is not null and a.schedule_review_reason is null
       and coalesce(a.generated_through + 1,a.generation_starts_on) <= least(p_today + 90,a.end_on)
     order by a.id for update skip locked
   loop
@@ -161,9 +192,11 @@ begin
     join public.bookings b on b.id = a.schedule_source_booking_id
     cross join lateral public.crm_schedule_slots(a.id,p_from,p_through) s
     join public.agreement_schedule_revisions r on r.id = s.revision_id
-    where a.status = 'active' and not exists(select 1 from public.bookings v
-      where v.agreement_id = a.id and v.occurrence_on = s.cadence_on
-        and v.schedule_state is distinct from 'superseded')
+    where a.status = 'active' and a.schedule_review_reason is null
+      and not public.crm_schedule_has_actual_visit(a.id,s.cadence_on)
+      and not exists(select 1 from public.bookings v
+        where v.agreement_id = a.id and v.occurrence_on = s.cadence_on
+          and v.schedule_state is distinct from 'superseded')
     order by 5,6,1,2;
 end $$;
 
@@ -173,30 +206,35 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     select a.id,coalesce(a.generated_through + 1,a.generation_starts_on) as gap_start,
       least(p_today - 1,a.end_on) as gap_end
     from public.recurring_agreements a
-    where a.status = 'active' and a.generation_starts_on is not null
+    where a.status = 'active' and a.generation_starts_on is not null and a.schedule_review_reason is null
       and coalesce(a.generated_through + 1,a.generation_starts_on) <= least(p_today - 1,a.end_on)
   )
   select jsonb_build_object(
     'overdue', (select count(*) from public.bookings where status = 'confirmed' and confirmed_date < p_today)
       + (select count(*) from gaps g cross join lateral public.crm_schedule_slots(
           g.id,g.gap_start,least(g.gap_end,g.gap_start + 365)) s
-        where not exists(select 1 from public.bookings b where b.agreement_id = g.id
-          and b.occurrence_on = s.cadence_on and b.schedule_state is distinct from 'superseded')),
+        where not public.crm_schedule_has_actual_visit(g.id,s.cadence_on)
+          and not exists(select 1 from public.bookings b where b.agreement_id = g.id
+            and b.occurrence_on = s.cadence_on and b.schedule_state is distinct from 'superseded')),
     'needs_scheduling', (select count(*) from public.bookings where status = 'pending'),
     'schedule_review', (select count(*) from public.recurring_agreements a
       where a.schedule_review_reason is not null or (
-        a.status = 'active' and a.generation_starts_on is null
-        and not exists(select 1 from public.bookings b where b.agreement_id = a.id and b.status = 'pending'))),
+        a.status = 'active' and (
+          (a.generation_starts_on is null
+            and not exists(select 1 from public.bookings b where b.agreement_id = a.id and b.status = 'pending'))
+          or public.crm_schedule_first_move_conflict(a.id,coalesce(a.generated_through + 1,a.generation_starts_on)) is not null))),
     'catching_up', exists(select 1 from gaps)
   );
 $$;
 
 revoke all on function public.crm_schedule_slots(uuid,date,date), public.crm_protect_schedule_visit(),
-  public.crm_protect_schedule_item_edit(),
+  public.crm_protect_schedule_item_edit(), public.crm_schedule_has_actual_visit(uuid,date,uuid),
+  public.crm_schedule_first_move_conflict(uuid,date,date),
   public.crm_materialize_schedule_visit(uuid,uuid,date), public.crm_reconcile_schedule(uuid,date),
   public.crm_reconcile_schedules(date), public.crm_calendar_entries(date,date), public.crm_calendar_attention(date)
   from public,anon,authenticated;
-grant execute on function public.crm_schedule_slots(uuid,date,date),
+grant execute on function public.crm_schedule_slots(uuid,date,date), public.crm_schedule_has_actual_visit(uuid,date,uuid),
+  public.crm_schedule_first_move_conflict(uuid,date,date),
   public.crm_materialize_schedule_visit(uuid,uuid,date), public.crm_reconcile_schedule(uuid,date),
   public.crm_reconcile_schedules(date), public.crm_calendar_entries(date,date), public.crm_calendar_attention(date)
   to service_role;

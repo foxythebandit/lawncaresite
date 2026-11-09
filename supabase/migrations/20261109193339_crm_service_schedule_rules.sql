@@ -186,6 +186,8 @@ alter table public.bookings
   );
 create index bookings_schedule_revision_idx on public.bookings(schedule_revision_id)
   where schedule_revision_id is not null;
+create index bookings_moved_schedule_date_idx on public.bookings(agreement_id,confirmed_date)
+  where status in ('confirmed','completed') and confirmed_date <> occurrence_on;
 create index bookings_unfinished_date_idx on public.bookings(confirmed_date,id)
   where status = 'confirmed' and confirmed_date is not null;
 

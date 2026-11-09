@@ -333,3 +333,49 @@ test('future plan price updates only untouched visits and keeps accepted and pai
   await call('crm_reconcile_schedule', p.agreementId, day(20))
   assert.equal(Number((await find(98)).job_total), 95.75)
 })
+
+test('a single plan visit cannot move onto a saved or projected regular visit', async () => {
+  const p = await customerWithPlan(today)
+  const { rows: [saved] } = await db.query('select id from bookings where agreement_id = $1 and occurrence_on = $2',
+    [p.agreementId, day(14)])
+  const moving = await job(saved.id)
+  for (const target of [day(98), day(28)]) {
+    const operation = id()
+    const move = () => call('crm_job_command', moving.id, moving.updated_at, operation, 'reschedule', { date: target })
+    await assert.rejects(move(), /already has a visit on that date/)
+    await assert.rejects(move(), /already has a visit on that date/)
+  }
+  assert.equal((await job(moving.id)).confirmed_date, day(14))
+  await call('crm_reconcile_schedule', p.agreementId, day(20))
+  const { rows: visits } = await db.query(`select booking_id from crm_calendar_entries($1,$1)
+    where agreement_id = $2`, [day(98), p.agreementId])
+  assert.equal(visits.length, 1)
+  assert.ok(visits[0].booking_id)
+  assert.notEqual(visits[0].booking_id, moving.id)
+
+  const { rows: [regular] } = await db.query(`select id,updated_at from bookings
+    where agreement_id = $1 and occurrence_on = $2`, [p.agreementId, day(28)])
+  await call('crm_job_command', regular.id, regular.updated_at, id(), 'reschedule', { date: day(29) })
+  await call('crm_job_command', moving.id, moving.updated_at, id(), 'reschedule', { date: day(28) })
+  const { rows: freed } = await db.query(`select booking_id from crm_calendar_entries($1,$1)
+    where agreement_id = $2`, [day(28), p.agreementId])
+  assert.deepEqual(freed, [{ booking_id: moving.id }])
+})
+
+test('moving a plan cannot create a projected regular visit on a retained far-future move', async () => {
+  const p = await customerWithPlan(today)
+  const first = await job(p.firstId)
+  const { rows: [saved] } = await db.query('select id from bookings where agreement_id = $1 and occurrence_on = $2',
+    [p.agreementId, day(14)])
+  const moving = await job(saved.id)
+  await call('crm_job_command', moving.id, moving.updated_at, id(), 'reschedule', { date: day(120) })
+  const retained = await job(moving.id)
+
+  await assert.rejects(call('crm_shift_agreement', first.id, first.updated_at, id(), day(8), null),
+    /protected visit on/)
+  assert.equal((await job(first.id)).confirmed_date, today)
+  assert.equal((await job(retained.id)).occurrence_on, day(14))
+  const { rows: visits } = await db.query(`select booking_id from crm_calendar_entries($1,$1)
+    where agreement_id = $2`, [day(120), p.agreementId])
+  assert.deepEqual(visits, [{ booking_id: retained.id }])
+})

@@ -48,7 +48,7 @@ begin
     case when a.next_on >= v_start then a.next_on end);
   if not p_legacy and a.next_on <= v_first then
     v_review_reason := 'The planned next visit is on or before the first confirmed visit. Choose a new next date.';
-  elsif p_legacy and exists(
+  elsif exists(
     select 1 from public.bookings v where v.agreement_id = a.id
       and v.status in ('confirmed','completed') and v.confirmed_date <> v.occurrence_on
       and v.confirmed_date >= v_start and (a.end_on is null or v.confirmed_date <= a.end_on)
@@ -209,6 +209,9 @@ begin
       lifecycle_note = case when v_row.move_actual then 'Plan moved' else lifecycle_note end
       where id = v_row.id;
   end loop;
+  if public.crm_schedule_first_move_conflict(a.id,v_from) is not null then
+    raise exception 'The plan already has a protected visit on a regular date. Review the schedule.' using errcode = '23514';
+  end if;
   update public.recurring_agreements set anchor_on = p_date,next_on = p_date where id = a.id;
   perform public.crm_reconcile_schedule(a.id,v_today);
   v_result := jsonb_build_object('booking_id',b.id,'agreement_id',a.id,'shift_days',v_delta);
@@ -294,6 +297,18 @@ begin
   if p_action in ('confirm','reschedule') then
     v_date := nullif(p_payload->>'date','')::date;
     if v_date is null then raise exception 'Visit date required' using errcode = '22023'; end if;
+    if v_booking.agreement_id is not null
+      and (v_booking.status = 'pending' or v_date is distinct from v_booking.confirmed_date)
+      and (public.crm_schedule_has_actual_visit(v_booking.agreement_id,v_date,p_booking_id)
+        or (v_date <> v_booking.occurrence_on and exists(
+          select 1 from public.crm_schedule_slots(v_booking.agreement_id,v_date,v_date) s
+          join public.recurring_agreements a on a.id = v_booking.agreement_id
+          where a.status = 'active' and a.schedule_review_reason is null
+        ) and not exists(select 1 from public.bookings existing
+          where existing.agreement_id = v_booking.agreement_id and existing.occurrence_on = v_date
+            and existing.schedule_state is distinct from 'superseded'))) then
+      raise exception 'This plan already has a visit on that date. Choose another date.' using errcode = '23514';
+    end if;
     update public.bookings set status = 'confirmed',confirmed_date = v_date,
       confirmed_time = nullif(p_payload->>'time',''),preferred_date = v_date
       where id = p_booking_id;
@@ -360,7 +375,8 @@ begin
   end if;
   v_on := coalesce(v_booking.confirmed_date,v_booking.preferred_date);
   if v_on is null then raise exception 'Set the visit date first' using errcode = '22023'; end if;
-  if exists(select 1 from public.bookings where agreement_id = p_agreement_id and occurrence_on = v_on) then
+  if public.crm_schedule_has_actual_visit(p_agreement_id,v_on)
+    or exists(select 1 from public.bookings where agreement_id = p_agreement_id and occurrence_on = v_on) then
     raise exception 'The plan already has a visit on that date' using errcode = '23514';
   end if;
   update public.bookings set agreement_id = p_agreement_id,occurrence_on = v_on,original_occurrence_on = v_on,
@@ -515,6 +531,9 @@ begin
     if exists(select 1 from public.bookings b where b.agreement_id = p_agreement_id and b.occurrence_on = v_next
       and b.status in ('canceled','skipped') and b.schedule_state is distinct from 'superseded') then
       raise exception 'An individually canceled or skipped visit occupies this date' using errcode = '23505';
+    end if;
+    if public.crm_schedule_first_move_conflict(p_agreement_id,v_next) is not null then
+      raise exception 'The plan already has a protected visit on a regular date. Review the schedule.' using errcode = '23514';
     end if;
     perform public.crm_reconcile_schedule(p_agreement_id,v_today);
     select id into v_new from public.bookings where agreement_id = p_agreement_id
