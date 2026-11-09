@@ -10,6 +10,7 @@ import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
 import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
+import type { Database } from '@/supabase/database.types'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -176,11 +177,17 @@ export async function markComplete(
 
 export async function getBookings() {
   await requireStaff()
-  const { data } = await getAdmin()
-    .from('bookings')
-    .select('*')
-    .order('created_at', { ascending: false })
-  return data ?? []
+  const db = getAdmin()
+  const bookings: Database['public']['Tables']['bookings']['Row'][] = []
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db.from('bookings').select('*')
+      .order('created_at', { ascending: false }).order('id')
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error('Could not load visits.')
+    bookings.push(...data)
+    if (data.length < pageSize) return bookings
+  }
 }
 
 function refreshJobs() {
@@ -464,7 +471,7 @@ async function emailVisitDate(bookingId: string, action: 'confirm' | 'reschedule
 
 /**
  * Log one visit from the customer page: mark it done (scheduling it on that date first if it was
- * still "To schedule") and, when an amount is given, record the payment. A plan visit books the next one.
+ * still "To schedule") and, when an amount is given, record the payment.
  * Each step has its own operation ID, so a retry after a dropped connection repeats nothing.
  */
 export async function finishVisit(input: {
@@ -582,10 +589,16 @@ export async function getJobPayments() {
 
 export async function getJobItems() {
   await requireStaff()
-  const { data, error } = await getAdmin().from('job_items')
-    .select('booking_id,kind,description,amount').order('created_at', { ascending: true })
-  if (error) throw new Error(commandError(error))
-  return data ?? []
+  const db = getAdmin()
+  const items: Pick<Database['public']['Tables']['job_items']['Row'], 'booking_id' | 'kind' | 'description' | 'amount'>[] = []
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db.from('job_items').select('booking_id,kind,description,amount')
+      .order('created_at').order('id').range(offset, offset + pageSize - 1)
+    if (error) throw new Error(commandError(error))
+    items.push(...data)
+    if (data.length < pageSize) return items
+  }
 }
 
 export async function getCustomers() {

@@ -313,3 +313,7 @@ Built from `docs/ops-plan/PLAN.md` (decisions, execution ledger in section 11) o
 ### Plan customer visit flow — 30 October 2026
 
 Owner could not log visits for existing plan customers (Liz Watson's lead visit outside her plan, stale plan "next visit", Mark complete disabled) or move one visit (Dmitre). Branch `claude/visit-flow-d5e70c`. Customer page now lists **Upcoming visits** with Done (+ payment), Move (one visit or the whole plan, optional email), Add to mowing plan and Cancel; plan card shows the real next booked visit; Start mowing plan can reuse a visit already booked at the property and schedules the first visit. Jobs card: Add to mowing plan, Move the rest of the plan. Migration `20261030120000_crm_visit_flow.sql`: next plan visit never in the past and never a second open one; `crm_attach_to_agreement`; `crm_shift_agreement`. Not applied to prod. Tests: `tests/visit-flow.test.mjs` (PGlite, all migrations). Details, root cause and the in-app fix for existing data: `docs/visit-flow/README.md`.
+
+### Calendar schedule foundation — 9 November 2026
+
+Slice 1 of daily-clarity adds bounded visit generation, date-range and attention reads, and a database-only schedule worker. Existing visit IDs, prices, acquisition records and completed work survive cutover. The compatibility commands keep individual moves and skips through a series shift. See [Calendar and service schedules](../daily-clarity/README.md) for data identity and rollout details.

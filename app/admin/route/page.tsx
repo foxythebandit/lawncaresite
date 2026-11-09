@@ -1,4 +1,4 @@
-import { getBookings } from '../actions'
+import { austinDay, getNextScheduledVisit, getScheduledVisits } from '@/lib/calendar-data'
 import DayJobs from '../DayJobs'
 import ScheduleTabs from '../ScheduleTabs'
 import Icon from '../icons'
@@ -9,20 +9,14 @@ import { dayLabel } from '@/lib/lead-summary'
 export const dynamic = 'force-dynamic'
 
 export default async function RoutePage() {
-  const all = await getBookings()
-  // Today in Austin, not UTC (after 7 pm the UTC date is already tomorrow).
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
-
-  const jobs = all
-    .filter(b => b.confirmed_date === today && b.status === 'confirmed')
-    .sort((a, b) => (a.confirmed_time ?? '99:99').localeCompare(b.confirmed_time ?? '99:99'))
+  const today = austinDay()
+  const jobs = await getScheduledVisits(today, today)
 
   const todayRevenue = jobs.reduce((s, b) => s + jobPrice(b), 0)
   const todayLabel   = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' })
 
   // No jobs today (UX audit Q11): the next scheduled visit and the leads to call back today.
-  const next = jobs.length ? null : all.filter(b => b.status === 'confirmed' && (b.confirmed_date ?? '') > today)
-    .sort((a, b) => `${a.confirmed_date}${a.confirmed_time ?? ''}`.localeCompare(`${b.confirmed_date}${b.confirmed_time ?? ''}`))[0] ?? null
+  const next = jobs.length ? null : await getNextScheduledVisit(today)
   const { data: checkBacks } = jobs.length ? { data: [] } : await adminDb().from('leads').select('id,name,phone,check_back_on')
     .in('board_column', ['in_talks', 'quoted', 'booking_request']).lte('check_back_on', today).order('check_back_on').limit(20)
 

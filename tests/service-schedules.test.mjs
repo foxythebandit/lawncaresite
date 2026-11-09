@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
 import { freshDb } from './pglite-db.mjs'
 
@@ -64,4 +65,75 @@ test('invalid and overlapping periods cannot be previewed', async () => {
   await assert.rejects(preview(definition({ frequency: 'monthly', anchor_on: '2027-01-01', pattern: 'day', day: 32 }),
     '2027-01-01', '2027-01-31'), /cadence fields/)
   await assert.rejects(preview(definition(paused), '2027-01-01', '2028-12-31'), /at most 366 days/)
+})
+
+async function legacyFacts(db, ids) {
+  const { rows } = await db.query(`select id,status,occurrence_on,confirmed_date,notes,completed_at,
+    job_total,accepted_quote_snapshot,attribution,
+    (select jsonb_agg(to_jsonb(i) order by i.id) from job_items i where i.booking_id = b.id) items,
+    (select jsonb_agg(to_jsonb(p) order by p.id) from job_payments p where p.booking_id = b.id) payments
+    from bookings b where id = any($1::uuid[]) order by id`, [ids])
+  return rows
+}
+
+test('cutover retains existing obligations and money and catches up without calendar reads', async () => {
+  const template = [{ kind: 'service', description: 'Lawn care', amount: '85.50' }]
+  const legacy = []
+  let before
+  const upgrade = await freshDb({ beforeMigration: async (db, name) => {
+    if (!name.endsWith('_crm_service_schedule_rules.sql')) return
+    const { rows: [person] } = await db.query("insert into customers(name,phone) values('Legacy Test','5125550119') returning id")
+    const { rows: [site] } = await db.query("insert into properties(customer_id,address) values($1,'1 Austin Lane') returning id", [person.id])
+    for (const status of ['active', 'paused', 'ended']) {
+      const { rows: [plan] } = await db.query(`insert into recurring_agreements(customer_id,property_id,status,
+        anchor_on,next_on,interval_unit,interval_count,price_per_visit,items_template)
+        values($1,$2,$3,'2020-01-31','2020-03-31','month',1,85.50,$4) returning id`,
+        [person.id, site.id, status, JSON.stringify(template)])
+      legacy.push({ planId: plan.id, ids: [] })
+      for (const [visitStatus, slot, actual] of [
+        ['completed', '2020-01-31', '2020-01-31'], ['confirmed', '2020-02-29', '2020-03-01'],
+        ['skipped', '2020-03-31', '2020-03-31'], ['canceled', '2020-04-30', '2020-04-30'],
+      ]) {
+        const { rows: [visit] } = await db.query(`insert into bookings(name,phone,address,customer_id,property_id,
+          agreement_id,occurrence_on,confirmed_date,status,notes,job_total,accepted_quote_snapshot,attribution,completed_at)
+          values('Legacy Test','5125550119','1 Austin Lane',$1,$2,$3,$4,$5,$6,'Save this note',59.85,
+            '{"total":59.85}', '{"first":{"source":"legacy"}}',
+            case when $6 = 'completed' then '2020-01-31 12:00:00+00'::timestamptz end) returning id`,
+          [person.id, site.id, plan.id, slot, actual, visitStatus])
+        legacy.at(-1).ids.push(visit.id)
+        if (visitStatus === 'completed') {
+          await db.query("insert into job_items(booking_id,kind,description,amount) values($1,'service','Agreed price',59.85)", [visit.id])
+          await db.query(`select public.record_job_payment($1,$2,59.85,'2020-01-31','Cash','manual')`,
+            [visit.id, randomUUID()])
+        }
+      }
+    }
+    before = await legacyFacts(db, legacy.flatMap(plan => plan.ids))
+  } })
+  try {
+    assert.deepEqual(await legacyFacts(upgrade, legacy.flatMap(plan => plan.ids)), before)
+    const { rows: [counts] } = await upgrade.query(`select
+      count(*) filter(where agreement_id = $1 and confirmed_date >= (now() at time zone 'America/Chicago')::date)::int active_future,
+      count(*) filter(where agreement_id in ($2,$3) and confirmed_date >= (now() at time zone 'America/Chicago')::date)::int inactive_future,
+      count(*) filter(where confirmed_date < (now() at time zone 'America/Chicago')::date)::int past
+      from bookings`, legacy.map(plan => plan.planId))
+    assert.ok(counts.active_future >= 2)
+    assert.equal(counts.inactive_future, 0)
+    assert.equal(counts.past, 12, 'cutover must not backfill hypothetical overdue work')
+
+    const { rows: [boundary] } = await upgrade.query(`select
+      generated_through::text as cursor, (generated_through + 90)::text as later
+      from recurring_agreements where id = $1`, [legacy[0].planId])
+    const { rows: [attention] } = await upgrade.query('select crm_calendar_attention($1) as counts', [boundary.later])
+    assert.equal(attention.counts.catching_up, true)
+    await upgrade.query('select crm_reconcile_schedules($1)', [boundary.later])
+    const { rows: [caughtUp] } = await upgrade.query('select crm_calendar_attention($1) as counts', [boundary.later])
+    assert.equal(caughtUp.counts.catching_up, false)
+    assert.equal(caughtUp.counts.overdue, attention.counts.overdue)
+    const { rows: [retry] } = await upgrade.query('select crm_reconcile_schedules($1) as changed', [boundary.later])
+    assert.equal(retry.changed, 0)
+    assert.deepEqual(await legacyFacts(upgrade, legacy.flatMap(plan => plan.ids)), before)
+  } finally {
+    await upgrade.close()
+  }
 })

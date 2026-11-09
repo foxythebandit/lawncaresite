@@ -30,12 +30,16 @@ export default async function PortalPage() {
 
   if (!user) redirect('/portal/login')
 
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select('id, email, created_at, status, confirmed_date, preferred_date, confirmed_time, address, sq_ft, frequency, price_per_visit, job_total, map_screenshot_url, completed_at, amount_charged, payment_method, payment_link')
-    .order('created_at', { ascending: false })
-
-  const visits = bookings ?? []
+  const fields = 'id, email, created_at, status, confirmed_date, preferred_date, confirmed_time, address, sq_ft, frequency, price_per_visit, job_total, map_screenshot_url, completed_at, amount_charged, payment_method, payment_link'
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
+  const [{ data: upcoming }, { data: bookings }] = await Promise.all([
+    supabase.from('bookings').select(fields).eq('status', 'confirmed')
+      .or(`confirmed_date.gte.${today},and(confirmed_date.is.null,preferred_date.gte.${today})`)
+      .order('confirmed_date', { nullsFirst: false }).order('preferred_date').order('id').limit(1).maybeSingle(),
+    supabase.from('bookings').select(fields).in('status', ['completed', 'pending'])
+      .order('created_at', { ascending: false }),
+  ])
+  const visits = upcoming ? [upcoming, ...(bookings ?? [])] : bookings ?? []
   // Only IDs already authorized by the customer's booking RLS may reach this lookup.
   // Keep payment provenance/operations private; render aggregate amounts only.
   const { data: payments, error: paymentError } = visits.length
@@ -55,9 +59,6 @@ export default async function PortalPage() {
   for (const payment of payments ?? []) paidByJob.set(payment.booking_id,
     (paidByJob.get(payment.booking_id) ?? 0) + Number(payment.amount))
 
-  const upcoming = visits.find(b =>
-    b.status === 'confirmed' && (b.confirmed_date || b.preferred_date)
-  )
   // The map bucket is private (P7); a short-lived signed link, or no image if signing fails.
   const upcomingMap = upcoming ? await signedMapUrl(upcoming.map_screenshot_url, 3600) : null
   const history = visits.filter(b => b.status === 'completed')

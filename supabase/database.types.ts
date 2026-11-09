@@ -23,16 +23,36 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "bookings": {
+            "agreement_schedule_revisions": {
                   Row: {
-                    "accepted_quote_snapshot": Json | null,"addon_interest": Json | null,"address": string,"agreement_id": string | null,"amount_charged": number | null,"attribution": NonNullable<Json>,"completed_at": string | null,"completion_operation_id": string | null,"confirmed_at": string | null,"confirmed_date": string | null,"confirmed_time": string | null,"created_at": string,"creation_operation_id": string | null,"creation_request": Json | null,"customer_id": string | null,"customer_notes": string | null,"email": string | null,"first_visit_price": number | null,"frequency": string | null,"gbraid": string | null,"gclid": string | null,"google_ad_id": string | null,"google_adgroup_id": string | null,"google_campaign_id": string | null,"id": string,"job_total": number | null,"last_mow": string | null,"last_reminder_sent_at": string | null,"lawn_size_bucket": string | null,"lead_id": string | null,"lifecycle_note": string | null,"manual_quote": boolean,"map_screenshot_url": string | null,"name": string,"next_visit_date": string | null,"notes": string | null,"notify_failed": boolean,"occurrence_on": string | null,"one_time": boolean,"overgrowth_fee": number | null,"payment_link": string | null,"payment_method": string | null,"payment_recorded_at": string | null,"phone": string,"preferred_date": string | null,"preferred_time": string | null,"price_per_visit": number | null,"property_id": string | null,"pushover_receipt": string | null,"sq_ft": number | null,"status": string,"updated_at": string,"utm_campaign": string | null,"utm_content": string | null,"utm_medium": string | null,"utm_source": string | null,"utm_term": string | null,"wbraid": string | null
+                    "agreement_id": string,"created_at": string,"definition": NonNullable<Json>,"ends_before": string | null,"id": string,"items_template": NonNullable<Json>,"starts_on": string,"visit_time": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "accepted_quote_snapshot"?: Json | null,"addon_interest"?: Json | null,"address": string,"agreement_id"?: string | null,"amount_charged"?: number | null,"attribution"?: NonNullable<Json>,"completed_at"?: string | null,"completion_operation_id"?: string | null,"confirmed_at"?: string | null,"confirmed_date"?: string | null,"confirmed_time"?: string | null,"created_at"?: string,"creation_operation_id"?: string | null,"creation_request"?: Json | null,"customer_id"?: string | null,"customer_notes"?: string | null,"email"?: string | null,"first_visit_price"?: number | null,"frequency"?: string | null,"gbraid"?: string | null,"gclid"?: string | null,"google_ad_id"?: string | null,"google_adgroup_id"?: string | null,"google_campaign_id"?: string | null,"id"?: string,"job_total"?: number | null,"last_mow"?: string | null,"last_reminder_sent_at"?: string | null,"lawn_size_bucket"?: string | null,"lead_id"?: string | null,"lifecycle_note"?: string | null,"manual_quote"?: boolean,"map_screenshot_url"?: string | null,"name": string,"next_visit_date"?: string | null,"notes"?: string | null,"notify_failed"?: boolean,"occurrence_on"?: string | null,"one_time"?: boolean,"overgrowth_fee"?: number | null,"payment_link"?: string | null,"payment_method"?: string | null,"payment_recorded_at"?: string | null,"phone": string,"preferred_date"?: string | null,"preferred_time"?: string | null,"price_per_visit"?: number | null,"property_id"?: string | null,"pushover_receipt"?: string | null,"sq_ft"?: number | null,"status"?: string,"updated_at"?: string,"utm_campaign"?: string | null,"utm_content"?: string | null,"utm_medium"?: string | null,"utm_source"?: string | null,"utm_term"?: string | null,"wbraid"?: string | null
+                    "agreement_id": string,"created_at"?: string,"definition": NonNullable<Json>,"ends_before"?: string | null,"id"?: string,"items_template": NonNullable<Json>,"starts_on": string,"visit_time"?: string | null
                   }
                   Update: {
-                    "accepted_quote_snapshot"?: Json | null,"addon_interest"?: Json | null,"address"?: string,"agreement_id"?: string | null,"amount_charged"?: number | null,"attribution"?: NonNullable<Json>,"completed_at"?: string | null,"completion_operation_id"?: string | null,"confirmed_at"?: string | null,"confirmed_date"?: string | null,"confirmed_time"?: string | null,"created_at"?: string,"creation_operation_id"?: string | null,"creation_request"?: Json | null,"customer_id"?: string | null,"customer_notes"?: string | null,"email"?: string | null,"first_visit_price"?: number | null,"frequency"?: string | null,"gbraid"?: string | null,"gclid"?: string | null,"google_ad_id"?: string | null,"google_adgroup_id"?: string | null,"google_campaign_id"?: string | null,"id"?: string,"job_total"?: number | null,"last_mow"?: string | null,"last_reminder_sent_at"?: string | null,"lawn_size_bucket"?: string | null,"lead_id"?: string | null,"lifecycle_note"?: string | null,"manual_quote"?: boolean,"map_screenshot_url"?: string | null,"name"?: string,"next_visit_date"?: string | null,"notes"?: string | null,"notify_failed"?: boolean,"occurrence_on"?: string | null,"one_time"?: boolean,"overgrowth_fee"?: number | null,"payment_link"?: string | null,"payment_method"?: string | null,"payment_recorded_at"?: string | null,"phone"?: string,"preferred_date"?: string | null,"preferred_time"?: string | null,"price_per_visit"?: number | null,"property_id"?: string | null,"pushover_receipt"?: string | null,"sq_ft"?: number | null,"status"?: string,"updated_at"?: string,"utm_campaign"?: string | null,"utm_content"?: string | null,"utm_medium"?: string | null,"utm_source"?: string | null,"utm_term"?: string | null,"wbraid"?: string | null
+                    "agreement_id"?: string,"created_at"?: string,"definition"?: NonNullable<Json>,"ends_before"?: string | null,"id"?: string,"items_template"?: NonNullable<Json>,"starts_on"?: string,"visit_time"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "agreement_schedule_revisions_agreement_id_fkey"
+      columns: ["agreement_id"]
+isOneToOne: false
+      referencedRelation: "recurring_agreements"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"bookings": {
+                  Row: {
+                    "accepted_quote_snapshot": Json | null,"addon_interest": Json | null,"address": string,"agreement_id": string | null,"amount_charged": number | null,"attribution": NonNullable<Json>,"completed_at": string | null,"completion_operation_id": string | null,"confirmed_at": string | null,"confirmed_date": string | null,"confirmed_time": string | null,"created_at": string,"creation_operation_id": string | null,"creation_request": Json | null,"customer_id": string | null,"customer_notes": string | null,"email": string | null,"first_visit_price": number | null,"frequency": string | null,"gbraid": string | null,"gclid": string | null,"google_ad_id": string | null,"google_adgroup_id": string | null,"google_campaign_id": string | null,"id": string,"job_total": number | null,"last_mow": string | null,"last_reminder_sent_at": string | null,"lawn_size_bucket": string | null,"lead_id": string | null,"lifecycle_note": string | null,"manual_quote": boolean,"map_screenshot_url": string | null,"name": string,"next_visit_date": string | null,"notes": string | null,"notify_failed": boolean,"occurrence_on": string | null,"one_time": boolean,"original_occurrence_on": string | null,"overgrowth_fee": number | null,"payment_link": string | null,"payment_method": string | null,"payment_recorded_at": string | null,"phone": string,"preferred_date": string | null,"preferred_time": string | null,"price_per_visit": number | null,"property_id": string | null,"pushover_receipt": string | null,"schedule_revision_id": string | null,"schedule_state": string | null,"sq_ft": number | null,"status": string,"updated_at": string,"utm_campaign": string | null,"utm_content": string | null,"utm_medium": string | null,"utm_source": string | null,"utm_term": string | null,"wbraid": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_quote_snapshot"?: Json | null,"addon_interest"?: Json | null,"address": string,"agreement_id"?: string | null,"amount_charged"?: number | null,"attribution"?: NonNullable<Json>,"completed_at"?: string | null,"completion_operation_id"?: string | null,"confirmed_at"?: string | null,"confirmed_date"?: string | null,"confirmed_time"?: string | null,"created_at"?: string,"creation_operation_id"?: string | null,"creation_request"?: Json | null,"customer_id"?: string | null,"customer_notes"?: string | null,"email"?: string | null,"first_visit_price"?: number | null,"frequency"?: string | null,"gbraid"?: string | null,"gclid"?: string | null,"google_ad_id"?: string | null,"google_adgroup_id"?: string | null,"google_campaign_id"?: string | null,"id"?: string,"job_total"?: number | null,"last_mow"?: string | null,"last_reminder_sent_at"?: string | null,"lawn_size_bucket"?: string | null,"lead_id"?: string | null,"lifecycle_note"?: string | null,"manual_quote"?: boolean,"map_screenshot_url"?: string | null,"name": string,"next_visit_date"?: string | null,"notes"?: string | null,"notify_failed"?: boolean,"occurrence_on"?: string | null,"one_time"?: boolean,"original_occurrence_on"?: string | null,"overgrowth_fee"?: number | null,"payment_link"?: string | null,"payment_method"?: string | null,"payment_recorded_at"?: string | null,"phone": string,"preferred_date"?: string | null,"preferred_time"?: string | null,"price_per_visit"?: number | null,"property_id"?: string | null,"pushover_receipt"?: string | null,"schedule_revision_id"?: string | null,"schedule_state"?: string | null,"sq_ft"?: number | null,"status"?: string,"updated_at"?: string,"utm_campaign"?: string | null,"utm_content"?: string | null,"utm_medium"?: string | null,"utm_source"?: string | null,"utm_term"?: string | null,"wbraid"?: string | null
+                  }
+                  Update: {
+                    "accepted_quote_snapshot"?: Json | null,"addon_interest"?: Json | null,"address"?: string,"agreement_id"?: string | null,"amount_charged"?: number | null,"attribution"?: NonNullable<Json>,"completed_at"?: string | null,"completion_operation_id"?: string | null,"confirmed_at"?: string | null,"confirmed_date"?: string | null,"confirmed_time"?: string | null,"created_at"?: string,"creation_operation_id"?: string | null,"creation_request"?: Json | null,"customer_id"?: string | null,"customer_notes"?: string | null,"email"?: string | null,"first_visit_price"?: number | null,"frequency"?: string | null,"gbraid"?: string | null,"gclid"?: string | null,"google_ad_id"?: string | null,"google_adgroup_id"?: string | null,"google_campaign_id"?: string | null,"id"?: string,"job_total"?: number | null,"last_mow"?: string | null,"last_reminder_sent_at"?: string | null,"lawn_size_bucket"?: string | null,"lead_id"?: string | null,"lifecycle_note"?: string | null,"manual_quote"?: boolean,"map_screenshot_url"?: string | null,"name"?: string,"next_visit_date"?: string | null,"notes"?: string | null,"notify_failed"?: boolean,"occurrence_on"?: string | null,"one_time"?: boolean,"original_occurrence_on"?: string | null,"overgrowth_fee"?: number | null,"payment_link"?: string | null,"payment_method"?: string | null,"payment_recorded_at"?: string | null,"phone"?: string,"preferred_date"?: string | null,"preferred_time"?: string | null,"price_per_visit"?: number | null,"property_id"?: string | null,"pushover_receipt"?: string | null,"schedule_revision_id"?: string | null,"schedule_state"?: string | null,"sq_ft"?: number | null,"status"?: string,"updated_at"?: string,"utm_campaign"?: string | null,"utm_content"?: string | null,"utm_medium"?: string | null,"utm_source"?: string | null,"utm_term"?: string | null,"wbraid"?: string | null
                   }
                   Relationships: [
                     {
@@ -65,6 +85,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "properties"
       referencedColumns: ["id","customer_id"]
+    },{
+      foreignKeyName: "bookings_schedule_revision_fk"
+      columns: ["schedule_revision_id","agreement_id"]
+isOneToOne: false
+      referencedRelation: "agreement_schedule_revisions"
+      referencedColumns: ["id","agreement_id"]
     }
                   ]
                 },"crm_operations": {
@@ -283,14 +309,14 @@ isOneToOne: false
                   ]
                 },"recurring_agreements": {
                   Row: {
-                    "anchor_on": string,"created_at": string,"customer_id": string,"end_on": string | null,"id": string,"interval_count": number,"interval_unit": string,"items_template": NonNullable<Json>,"next_on": string,"price_per_visit": number | null,"property_id": string,"status": string,"updated_at": string
+                    "anchor_on": string,"created_at": string,"customer_id": string,"end_on": string | null,"generated_through": string | null,"generation_starts_on": string | null,"id": string,"interval_count": number,"interval_unit": string,"items_template": NonNullable<Json>,"next_on": string,"price_per_visit": number | null,"property_id": string,"schedule_source_booking_id": string | null,"status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "anchor_on": string,"created_at"?: string,"customer_id": string,"end_on"?: string | null,"id"?: string,"interval_count": number,"interval_unit": string,"items_template"?: NonNullable<Json>,"next_on": string,"price_per_visit"?: number | null,"property_id": string,"status"?: string,"updated_at"?: string
+                    "anchor_on": string,"created_at"?: string,"customer_id": string,"end_on"?: string | null,"generated_through"?: string | null,"generation_starts_on"?: string | null,"id"?: string,"interval_count": number,"interval_unit": string,"items_template"?: NonNullable<Json>,"next_on": string,"price_per_visit"?: number | null,"property_id": string,"schedule_source_booking_id"?: string | null,"status"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "anchor_on"?: string,"created_at"?: string,"customer_id"?: string,"end_on"?: string | null,"id"?: string,"interval_count"?: number,"interval_unit"?: string,"items_template"?: NonNullable<Json>,"next_on"?: string,"price_per_visit"?: number | null,"property_id"?: string,"status"?: string,"updated_at"?: string
+                    "anchor_on"?: string,"created_at"?: string,"customer_id"?: string,"end_on"?: string | null,"generated_through"?: string | null,"generation_starts_on"?: string | null,"id"?: string,"interval_count"?: number,"interval_unit"?: string,"items_template"?: NonNullable<Json>,"next_on"?: string,"price_per_visit"?: number | null,"property_id"?: string,"schedule_source_booking_id"?: string | null,"status"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -304,6 +330,12 @@ isOneToOne: false
       columns: ["customer_id"]
 isOneToOne: false
       referencedRelation: "customers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "recurring_agreements_schedule_source_booking_id_fkey"
+      columns: ["schedule_source_booking_id"]
+isOneToOne: false
+      referencedRelation: "bookings"
       referencedColumns: ["id"]
     }
                   ]
@@ -370,6 +402,9 @@ isOneToOne: false
 "create_job_from_quote":
 { Args: { "p_expected_updated_at": string,"p_items": Json,"p_job": Json,"p_lead_id": string,"p_operation_id": string }; Returns: Json
                            },
+"crm_activate_schedule":
+{ Args: { "p_agreement_id": string,"p_source_id": string }; Returns: undefined
+                           },
 "crm_agreement_command":
 { Args: { "p_action": string,"p_agreement_id": string,"p_expected_updated_at": string,"p_operation_id": string,"p_payload": Json }; Returns: Json
                            },
@@ -384,6 +419,14 @@ isOneToOne: false
                            },
 "crm_attach_to_agreement":
 { Args: { "p_agreement_id": string,"p_booking_id": string,"p_expected_updated_at": string,"p_operation_id": string }; Returns: Json
+                           },
+"crm_calendar_attention":
+{ Args: { "p_today"?: string }; Returns: Json
+                           },
+"crm_calendar_entries":
+{ Args: { "p_from": string,"p_through": string }; Returns: {
+              "address": string,"agreement_id": string,"booking_id": string,"cadence_on": string,"customer_id": string,"job_total": number,"name": string,"property_id": string,"revision_id": string,"service_on": string,"visit_status": string,"visit_time": string
+            }[]
                            },
 "crm_claim_lead":
 { Args: { "p_call_sid": string,"p_lead_id": string,"p_staff_name": string,"p_staff_phone": string }; Returns: Json
@@ -403,11 +446,17 @@ isOneToOne: false
 "crm_job_command":
 { Args: { "p_action": string,"p_booking_id": string,"p_expected_updated_at": string,"p_operation_id": string,"p_payload": Json }; Returns: Json
                            },
+"crm_legacy_schedule":
+{ Args: { "p_anchor": string,"p_count": number,"p_first"?: string,"p_unit": string }; Returns: Json
+                           },
 "crm_link_job":
 { Args: { "p_booking_id": string,"p_customer": Json,"p_customer_id": string,"p_expected_updated_at": string,"p_operation_id": string,"p_property": Json,"p_property_id": string }; Returns: Json
                            },
 "crm_log_call":
 { Args: { "p_actor_email": string,"p_detail": Json,"p_lead_id": string,"p_operation_id": string,"p_outcome": string }; Returns: Json
+                           },
+"crm_materialize_schedule_visit":
+{ Args: { "p_agreement_id": string,"p_on": string,"p_revision_id": string }; Returns: string
                            },
 "crm_move_lead":
 { Args: { "p_actor_email": string,"p_column": string,"p_detail": Json,"p_lead_id": string }; Returns: Json
@@ -429,8 +478,22 @@ isOneToOne: false
 "crm_phone_recording":
 { Args: { "p_alert_call_id": string,"p_call_sid": string,"p_duration": number,"p_recording_sid": string }; Returns: Json
                            },
+"crm_reconcile_schedule":
+{ Args: { "p_agreement_id": string,"p_today"?: string }; Returns: string
+                           },
+"crm_reconcile_schedules":
+{ Args: { "p_today"?: string }; Returns: number
+                           },
 "crm_replace_job_items":
 { Args: { "p_booking_id": string,"p_expected_updated_at": string,"p_items": Json,"p_operation_id": string }; Returns: Json
+                           },
+"crm_schedule_dates":
+{ Args: { "p_definition": Json,"p_from": string,"p_through": string }; Returns: string[]
+                           },
+"crm_schedule_slots":
+{ Args: { "p_agreement_id": string,"p_from": string,"p_through": string }; Returns: {
+              "cadence_on": string,"revision_id": string
+            }[]
                            },
 "crm_shift_agreement":
 { Args: { "p_booking_id": string,"p_date": string,"p_expected_updated_at": string,"p_operation_id": string,"p_time": string }; Returns: Json
@@ -443,6 +506,12 @@ isOneToOne: false
                            },
 "crm_validate_items":
 { Args: { "p_items": Json }; Returns: number
+                           },
+"crm_validate_schedule":
+{ Args: { "p_definition": Json }; Returns: boolean
+                           },
+"crm_write_schedule_revision":
+{ Args: { "p_agreement_id": string,"p_definition": Json,"p_from": string,"p_items": Json,"p_time": string }; Returns: string
                            },
 "record_intake":
 { Args: { "p_booking"?: Json,"p_existing_lead"?: string,"p_hash": string,"p_lead": Json,"p_source": string,"p_submission": string }; Returns: Json

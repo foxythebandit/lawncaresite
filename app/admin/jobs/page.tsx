@@ -22,7 +22,7 @@ export default async function AdminPage({
   // The map bucket is private (P7): sign each screenshot on the server; unsigned ones show no image.
   const signedMaps = await signMapUrls(all.map(b => b.map_screenshot_url))
   // Visits without a saved map image show the lead's tracing instead, like the lead page.
-  const tracedLeadIds = [...new Set(all.filter(b => b.lead_id && !signedMaps.get(b.map_screenshot_url)).map(b => b.lead_id as string))]
+  const tracedLeadIds = [...new Set(all.filter(b => b.lead_id && !signedMaps.get(b.map_screenshot_url ?? '')).map(b => b.lead_id as string))]
   const { data: tracings } = tracedLeadIds.length ? await adminDb().from('leads').select('id,lawn_tracing').in('id', tracedLeadIds) : { data: [] }
   const shapesByLead = new Map((tracings ?? []).map(row => [row.id as string, tracedShapes(row.lawn_tracing)]))
 
@@ -159,7 +159,7 @@ export default async function AdminPage({
               groups.map(group => <section key={group.key} className="admin-list-group" aria-label={group.label}>
                 <h2 className="admin-list-group-head">{group.label} <span>{group.rows.length}</span></h2>
                 {group.rows.map(b => (
-                <BookingCard key={b.id} shapes={(b.lead_id && shapesByLead.get(b.lead_id)) || []} booking={{ ...b, map_screenshot_url: signedMaps.get(b.map_screenshot_url) ?? null } as any}
+                <BookingCard key={b.id} shapes={(b.lead_id && shapesByLead.get(b.lead_id)) || []} booking={{ ...b, map_screenshot_url: signedMaps.get(b.map_screenshot_url ?? '') ?? null } as any}
                   emailConfigured={Boolean(process.env.RESEND_API_KEY)}
                   historyCount={visitCounts.get(b.customer_id ?? b.id) ?? 1}
                   quotedVisit={!!b.lead_id && quotedVisitByLead.get(b.lead_id) === b.id}
@@ -167,11 +167,11 @@ export default async function AdminPage({
                   agreement={agreements.find(a => a.id === b.agreement_id) as any}
                   customerPlan={(!b.agreement_id && b.customer_id && agreements.find(a => a.status === 'active'
                     && a.customer_id === b.customer_id && a.property_id === b.property_id)) as any || null}
-                  futureJobIds={all.filter(row => row.agreement_id === b.agreement_id
-                    && Boolean(b.agreement_id) && ['pending','confirmed'].includes(row.status)
-                    && (!((row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) as string | null)
-                      || (row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) >= chicagoDate))
-                    .map(row => row.id).sort()}
+                  futureJobIds={all.filter(row => {
+                    const date = row.confirmed_date ?? row.preferred_date ?? row.occurrence_on
+                    return row.agreement_id === b.agreement_id && !!b.agreement_id
+                      && ['pending','confirmed'].includes(row.status) && (!date || date >= chicagoDate)
+                  }).map(row => row.id).sort()}
                   items={allItems.filter(item => item.booking_id === b.id).map(item => ({
                     kind: item.kind as 'service' | 'discount', description: item.description,
                     amount: String(item.amount),

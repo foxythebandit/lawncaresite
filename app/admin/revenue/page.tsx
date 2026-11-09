@@ -23,8 +23,9 @@ export default async function RevenuePage() {
     getBookings(), getExtraCharges(), getJobPayments(), getAgreements(), getCustomers(),
   ])
 
-  const completed = all.filter(b => b.status === 'completed' && b.completed_at)
-  completed.sort((a, b) => b.completed_at!.localeCompare(a.completed_at!))
+  const completed = all.filter((b): b is typeof b & { completed_at: string } =>
+    b.status === 'completed' && !!b.completed_at)
+  completed.sort((a, b) => b.completed_at.localeCompare(a.completed_at))
 
   const monthMap = new Map<string, number>()
   for (const payment of payments) {

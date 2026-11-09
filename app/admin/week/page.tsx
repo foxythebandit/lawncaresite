@@ -1,4 +1,4 @@
-import { getBookings } from '../actions'
+import { austinDay, getScheduledVisits } from '@/lib/calendar-data'
 import DayJobs from '../DayJobs'
 import ScheduleTabs from '../ScheduleTabs'
 import { formatMoney, formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
@@ -10,23 +10,21 @@ function dateKey(d: Date) {
 }
 
 export default async function WeekPage() {
-  const all = await getBookings()
-
-  const todayDate = new Date()
-  todayDate.setHours(0, 0, 0, 0)
-  const todayKey = dateKey(todayDate)
+  const todayKey = austinDay()
+  const todayDate = new Date(`${todayKey}T12:00:00Z`)
+  const lastDate = new Date(todayDate)
+  lastDate.setUTCDate(lastDate.getUTCDate() + 6)
+  const all = await getScheduledVisits(todayKey, dateKey(lastDate))
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(todayDate)
-    d.setDate(d.getDate() + i)
+    d.setUTCDate(d.getUTCDate() + i)
     const key = dateKey(d)
-    const jobs = all
-      .filter(b => b.confirmed_date === key && b.status === 'confirmed')
-      .sort((a, b) => (a.confirmed_time ?? '99:99').localeCompare(b.confirmed_time ?? '99:99'))
+    const jobs = all.filter(b => b.confirmed_date === key)
     return {
       key,
       isToday: key === todayKey,
-      label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+      label: d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' }),
       jobs,
       revenue: jobs.reduce((s, b) => s + jobPrice(b), 0),
     }

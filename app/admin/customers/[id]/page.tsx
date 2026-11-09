@@ -46,7 +46,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     .sort((a, b) => (visitDate(b) ?? b.created_at).localeCompare(visitDate(a) ?? a.created_at))
   const activePlans = agreements.filter(agreement => agreement.status === 'active')
   const needsPlan = (job: (typeof jobs)[number]) => !job.agreement_id && !job.one_time
-    && Boolean(job.frequency?.trim()) && !/^(one[ -]?time|single|once)$/i.test(job.frequency.trim())
+    && !!job.frequency?.trim() && !/^(one[ -]?time|single|once)$/i.test(job.frequency.trim())
   const upcomingVisits: UpcomingVisit[] = openJobs.map(job => ({
     id: job.id, updatedAt: job.updated_at, status: job.status, date: visitDate(job), time: job.confirmed_time ?? null,
     address: job.address, price: jobPrice(job), inPlan: Boolean(job.agreement_id),
