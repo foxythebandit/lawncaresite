@@ -101,7 +101,7 @@ returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare a public.recurring_agreements; b public.bookings; r public.agreement_schedule_revisions;
   v_agreement_id uuid; v_result jsonb; v_ids uuid[]; v_slots date[]; v_target date; v_rev uuid; v_from date;
   v_row record; v_delta integer; v_request jsonb := jsonb_build_object('date',p_date,'time',p_time);
-  v_today date := (now() at time zone 'America/Chicago')::date;
+  v_today date := (now() at time zone 'America/Chicago')::date; v_time text := nullif(p_time,'');
 begin
   if p_date is null then raise exception 'Visit date required' using errcode = '22023'; end if;
   v_result := public.crm_operation_reply(p_operation_id,'shift_agreement',p_booking_id,v_request);
@@ -126,6 +126,37 @@ begin
   if exists(select 1 from public.job_payments where booking_id = b.id)
     or b.amount_charged is not null or b.payment_link is not null then
     raise exception 'Review this visit’s payment before moving the plan' using errcode = '23514';
+  end if;
+  if p_date = coalesce(b.confirmed_date,b.preferred_date) then
+    if b.status = 'pending' then
+      perform public.crm_job_command(b.id,b.updated_at,gen_random_uuid(),'confirm',v_request);
+    end if;
+    -- Keep each future rule segment and the worker cursor. Only the window changes.
+    for r in select * from public.agreement_schedule_revisions rev
+      where rev.agreement_id = a.id and rev.visit_time is distinct from v_time
+        and (rev.ends_before is null or rev.ends_before > greatest(rev.starts_on,b.occurrence_on,v_today))
+      order by rev.starts_on
+    loop
+      v_from := greatest(r.starts_on,b.occurrence_on,v_today);
+      update public.agreement_schedule_revisions set ends_before = v_from where id = r.id;
+      insert into public.agreement_schedule_revisions(agreement_id,starts_on,ends_before,definition,items_template,visit_time)
+        values(a.id,v_from,r.ends_before,r.definition,r.items_template,v_time) returning id into v_rev;
+      update public.bookings v set confirmed_time = v_time,schedule_revision_id = v_rev
+        where v.agreement_id = a.id and v.schedule_state = 'generated' and v.status = 'confirmed'
+          and v.occurrence_on >= v_from and (r.ends_before is null or v.occurrence_on < r.ends_before)
+          and v.amount_charged is null and v.payment_link is null
+          and not exists(select 1 from public.job_payments p where p.booking_id = v.id);
+    end loop;
+    update public.bookings set confirmed_time = v_time
+      where id = b.id and confirmed_time is distinct from v_time;
+    -- Keep agreement-version checks current for other staff operations.
+    if v_rev is not null then
+      update public.recurring_agreements set updated_at = now() where id = a.id;
+    end if;
+    v_result := jsonb_build_object('booking_id',b.id,'agreement_id',a.id,'shift_days',0);
+    insert into public.crm_operations(id,action,target_id,request,result)
+      values(p_operation_id,'shift_agreement',p_booking_id,v_request,v_result);
+    return v_result || '{"duplicate":false}'::jsonb;
   end if;
   v_delta := p_date - b.occurrence_on;
   v_from := least(p_date,b.occurrence_on);

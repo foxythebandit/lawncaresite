@@ -321,3 +321,5 @@ Slice 1 of daily-clarity adds bounded visit generation, date-range and attention
 Slice 1 review fixes preserve actual dates in the next-visit summary, remap monthly shifts by cadence order and route ambiguous first dates or legacy moves to schedule review. The existing plan controls can restart from an explicit date after saved work. Tests cover exact-cents repricing with protected exclusions, native concurrent generation and the customer portal’s owned past and upcoming visits.
 
 The second Slice 1 review fix checks saved and projected dates before single moves or series shifts. A pre-existing collision keeps the saved visit visible and pauses that plan’s generation without stopping other agreements.
+
+A time-only plan edit keeps the saved date and cadence slot for each visit, including an explicit next date and any individual moves or skips. The new window carries forward on the existing rule segments without changing their dates or prices.

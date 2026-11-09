@@ -37,7 +37,7 @@ async function openPlanVisits(agreementId) {
 
 /** Same calls as startCustomerPlan on the customer page; first visit confirmed on its date. */
 async function customerWithPlan(firstOn, price = '85.00', confirm = true,
-  { nextOn = day(14, firstOn), unit = 'week', count = 2 } = {}) {
+  { nextOn = day(14, firstOn), unit = 'week', count = 2, time = null } = {}) {
   const { rows: [customer] } = await db.query(`insert into customers(name, phone) values('Liz Test', '5125550100') returning id`)
   // Customers come from a linked lead job; later jobs copy its acquisition.
   await db.query(`insert into bookings(name, phone, address, customer_id, status, one_time)
@@ -50,7 +50,7 @@ async function customerWithPlan(firstOn, price = '85.00', confirm = true,
     { anchor_on: firstOn, next_on: nextOn, end_on: null, interval_unit: unit, interval_count: count, items_template: items })
   if (confirm) {
     first = await job(first.id)
-    await call('crm_job_command', first.id, first.updated_at, id(), 'confirm', { date: firstOn, time: null })
+    await call('crm_job_command', first.id, first.updated_at, id(), 'confirm', { date: firstOn, time })
   }
   return { customerId: customer.id, propertyId: created.property_id, agreementId: started.agreement_id, firstId: first.id }
 }
@@ -378,4 +378,92 @@ test('moving a plan cannot create a projected regular visit on a retained far-fu
   const { rows: visits } = await db.query(`select booking_id from crm_calendar_entries($1,$1)
     where agreement_id = $2`, [day(120), p.agreementId])
   assert.deepEqual(visits, [{ booking_id: retained.id }])
+})
+
+async function savedPlanFacts(agreementId) {
+  const { rows } = await db.query(`select to_jsonb(b) - array['updated_at','schedule_revision_id'] as visit,
+    (select jsonb_agg(i order by i.id) from job_items i where i.booking_id = b.id) as items,
+    (select jsonb_agg(p order by p.id) from job_payments p where p.booking_id = b.id) as payments
+    from bookings b where b.agreement_id = $1 order by b.occurrence_on`, [agreementId])
+  return rows
+}
+
+test('a time-only monthly plan edit preserves the explicit next date, saved exceptions and future cadence', async () => {
+  const firstOn = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10)
+  const nextOn = day(1, firstOn)
+  const p = await customerWithPlan(firstOn, '85.50', true, { nextOn, unit: 'month', count: 1, time: 'Morning' })
+  await call('crm_reconcile_schedule', p.agreementId, day(35))
+  const [, explicit, { visit: moved }, { visit: skipped }] = await savedPlanFacts(p.agreementId)
+  assert.equal(explicit.visit.occurrence_on, nextOn)
+  const movedTo = day(2, moved.confirmed_date)
+  await call('crm_job_command', moved.id, (await job(moved.id)).updated_at, id(), 'reschedule', { date: movedTo, time: 'Any time' })
+  await call('crm_job_command', skipped.id, (await job(skipped.id)).updated_at, id(), 'skip', {})
+
+  const projection = async () => (await db.query(`select booking_id,revision_id,service_on::text,visit_time,job_total::text
+    from crm_calendar_entries($1,$2) where agreement_id = $3 order by service_on`,
+  [day(130), day(220), p.agreementId])).rows
+  const before = await savedPlanFacts(p.agreementId)
+  const priorPlan = await plan(p.agreementId)
+  const projected = await projection()
+  assert.ok(projected.length > 0 && projected.every(row => !row.booking_id && row.visit_time === 'Morning'))
+  const first = await job(p.firstId)
+  const operation = id()
+  const change = () => call('crm_shift_agreement', first.id, first.updated_at, operation, firstOn, 'Afternoon')
+  assert.equal((await change()).shift_days, 0)
+  assert.equal((await change()).duplicate, true)
+  assert.deepEqual(await savedPlanFacts(p.agreementId), before.map(row => row.visit.id === first.id
+    || row.visit.schedule_state === 'generated'
+    ? { ...row, visit: { ...row.visit, confirmed_time: 'Afternoon' } } : row))
+  const revised = await plan(p.agreementId)
+  assert.equal(revised.anchor_on, priorPlan.anchor_on)
+  assert.equal(revised.next_on, priorPlan.next_on)
+  assert.equal(iso(revised.generated_through), iso(priorPlan.generated_through))
+  assert.deepEqual((await projection()).map(({ service_on, visit_time }) => ({ service_on, visit_time })),
+    projected.map(({ service_on }) => ({ service_on, visit_time: 'Afternoon' })))
+  await assert.rejects(call('crm_materialize_schedule_visit', p.agreementId, projected[0].revision_id, projected[0].service_on),
+    /Schedule changed/)
+
+  await call('crm_reconcile_schedule', p.agreementId, day(130))
+  const materialized = await projection()
+  assert.ok(materialized.every(row => row.booking_id))
+  assert.deepEqual(materialized.map(({ service_on, visit_time, job_total }) => ({ service_on, visit_time, job_total })),
+    projected.map(({ service_on, job_total }) => ({ service_on, visit_time: 'Afternoon', job_total })))
+})
+
+test('changing a moved visit’s time keeps both future rule segments and protected visit facts', async () => {
+  const p = await customerWithPlan(day(2), '85.50', true, { time: 'Morning' })
+  const savedAt = async offset => (await db.query('select id,updated_at from bookings where agreement_id = $1 and occurrence_on = $2',
+    [p.agreementId, day(offset)])).rows[0]
+  const shifted = await savedAt(44)
+  await call('crm_shift_agreement', shifted.id, shifted.updated_at, id(), day(46), 'Morning')
+  const selected = await savedAt(16)
+  await call('crm_job_command', selected.id, selected.updated_at, id(), 'reschedule', { date: day(20), time: 'Afternoon' })
+  await call('record_job_payment', shifted.id, id(), '17.45', today, 'Cash', 'manual')
+  const completed = await savedAt(60)
+  await call('complete_job', completed.id, completed.updated_at, id(), day(60))
+
+  const before = await savedPlanFacts(p.agreementId)
+  const revisions = async () => (await db.query(`select starts_on::text,ends_before::text,definition,items_template,visit_time
+    from agreement_schedule_revisions where agreement_id = $1 and (ends_before is null or starts_on < ends_before)
+    order by starts_on`, [p.agreementId])).rows
+  const previousRevisions = await revisions()
+  assert.equal(previousRevisions.length, 2, 'a later date move left two distinct future rule segments')
+  const moved = await job(selected.id)
+  assert.equal((await call('crm_shift_agreement', moved.id, moved.updated_at, id(), day(20), '09:30')).shift_days, 0)
+  assert.deepEqual(await revisions(), previousRevisions.map(row => ({ ...row, visit_time: '09:30' })))
+  assert.deepEqual(await savedPlanFacts(p.agreementId), before.map(row => row.visit.id === moved.id
+    || (row.visit.schedule_state === 'generated' && row.visit.status === 'confirmed' && !row.payments)
+    ? { ...row, visit: { ...row.visit, confirmed_time: '09:30' } } : row))
+})
+
+test('confirming a pending first visit without moving its date preserves the agreed next date', async () => {
+  const firstOn = day(3)
+  const nextOn = day(10)
+  const p = await customerWithPlan(firstOn, '85.50', false, { nextOn })
+  const pending = await job(p.firstId)
+  await call('crm_shift_agreement', pending.id, pending.updated_at, id(), firstOn, 'Morning')
+  const confirmed = await job(p.firstId)
+  assert.equal(confirmed.confirmed_date, firstOn)
+  assert.equal(confirmed.confirmed_time, 'Morning')
+  assert.ok((await openPlanVisits(p.agreementId)).includes(nextOn))
 })
