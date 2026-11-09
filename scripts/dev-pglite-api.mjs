@@ -169,5 +169,23 @@ async function seed() {
     { anchor_on: day(7), next_on: day(14), end_on: null, interval_unit: 'week', interval_count: 1, items_template: weekly })
   dmFirst = await job(dmFirst.id)
   await call('crm_job_command', dmFirst.id, dmFirst.updated_at, id(), 'confirm', { date: day(7), time: 'Afternoon' })
-  console.log(`Liz: /admin/customers/${liz.id}\nDmitre: /admin/customers/${dm.id}`)
+
+  // Rosa: a bi-weekly mowing plan and a monthly $300 maintenance plan at the same house (Edit plan, 6 Nov).
+  const { rows: [rosa] } = await db.query(`insert into customers(name, phone, email) values('Rosa Diaz', '5125550123', 'rosa@example.test') returning id`)
+  await db.query(`insert into bookings(name, phone, address, customer_id, status, one_time) values('Rosa Diaz', '5125550123', '88 Barton Hills Dr, Austin, TX', $1, 'completed', true)`, [rosa.id])
+  let rosaHome = null
+  for (const [service, price, unit, count, label, on] of [['Lawn care', '60.00', 'week', 2, 'Bi-weekly', day(3)], ['Maintenance', '300.00', 'month', 1, 'Monthly', day(10)]]) {
+    const planItems = [{ kind: 'service', description: service, amount: price }]
+    const made = await call('crm_create_customer_job', id(), rosa.id, rosaHome, rosaHome ? null : { address: '88 Barton Hills Dr, Austin, TX' },
+      { preferred_date: on, notes: '', one_time: false, frequency: label }, planItems)
+    rosaHome = made.property_id
+    let visit = await job(made.booking_id)
+    await call('crm_job_command', visit.id, visit.updated_at, id(), 'confirm', { date: on, time: null })
+    visit = await job(visit.id)
+    const next = new Date(`${on}T12:00:00Z`)
+    if (unit === 'week') next.setUTCDate(next.getUTCDate() + 7 * count); else next.setUTCMonth(next.getUTCMonth() + count)
+    await call('crm_start_agreement', visit.id, visit.updated_at, id(),
+      { anchor_on: on, next_on: next.toISOString().slice(0, 10), end_on: null, interval_unit: unit, interval_count: count, items_template: planItems })
+  }
+  console.log(`Liz: /admin/customers/${liz.id}\nDmitre: /admin/customers/${dm.id}\nRosa (mowing + maintenance): /admin/customers/${rosa.id}`)
 }
