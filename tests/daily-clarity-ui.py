@@ -74,7 +74,7 @@ def week_columns(page):
     assert columns.evaluate_all("""(days) => {
         const grid = days[0].parentElement.getBoundingClientRect()
         const firstTop = days[0].getBoundingClientRect().top
-        return days.every(day => {
+        return grid.left >= 0 && grid.right <= document.documentElement.clientWidth && days.every(day => {
             const box = day.getBoundingClientRect()
             return box.left >= grid.left && box.right <= grid.right + 1 && box.top === firstTop
         })
@@ -1149,6 +1149,8 @@ try:
             shot(mobile, f"after-week-{width}", full_page=False)
             for index in range(7):
                 event = columns.nth(index).get_by_role("link").first
+                bounds = event.bounding_box()
+                assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= width
                 target = BASE + event.get_attribute("href")
                 return_to = parse_qs(urlsplit(target).query)["returnTo"][0]
                 event.click()
@@ -1165,7 +1167,7 @@ try:
                 week_columns(mobile)
                 mobile.get_by_role("link", name="Previous week", exact=True).click()
                 mobile.wait_for_url(re.compile("date=" + day(6)))
-                mobile.get_by_role("link", name="Today", exact=True).click()
+                mobile.get_by_role("region", name="Service calendar").get_by_role("link", name="Today", exact=True).click()
                 mobile.wait_for_url(re.compile("date=" + TODAY.isoformat()))
                 expect(mobile.locator(".work-cal-day[aria-current=date]")).to_have_count(1)
                 mobile.goto(calendar("week", (TODAY - timedelta(days=8)).isoformat()))
