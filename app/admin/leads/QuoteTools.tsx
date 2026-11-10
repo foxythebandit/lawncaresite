@@ -9,8 +9,8 @@ import { addressForLookup } from '@/lib/address-text'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { tracedShapes } from './TracingMap'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
-import { frequencyLabel, quoteOffer, type OfferFrequency } from '@/lib/quote-offer'
-import { emailMoney, MAP_CID, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
+import { frequencyLabel, introductoryPrice, quoteOffer, type IntroChoice, type IntroEligibility, type OfferFrequency } from '@/lib/quote-offer'
+import { emailMoney, MAP_CID, quoteEmailBreakdown, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
 import { renderLawnMapImage } from './lawn-map-image'
 import { formatMoney } from '@/lib/crm-jobs'
 import { addLeadNote, requestStaffQuoteVisit, cancelLeadBooking, emailLeadQuote, previewLeadBookingCancellation, previewLeadQuote, retryLeadQuote, setLeadQuoteDecision, updateLeadContact } from './quote-actions'
@@ -19,6 +19,8 @@ import type { SentOfferSummary } from '@/lib/sent-offer'
 import type { QuoteStatus } from '@/lib/crm-contracts'
 import { uuid } from '@/lib/uuid'
 import Sheet from './Sheet'
+import ExpiredQuoteReview from './ExpiredQuoteReview'
+import IntroPriceChoice from './IntroPriceChoice'
 
 /**
  * The existing quote tools (price, Book visit, Email quote, Text price, Customer said no, Reopen,
@@ -28,7 +30,7 @@ export type QuoteLead = {
   id: string; name: string | null; phone: string; email: string | null; address: string | null
   sq_ft: number | null; services: string[] | null; frequency: string | null
   updated_at: string; quote_saved_at: string | null; quote_confirmed_at: string | null
-  quote_status: QuoteStatus; quote_draft: QuoteDraft | null; answers: unknown
+  quote_status: QuoteStatus; quote_draft: QuoteDraft | null; accepted_quote_snapshot?: QuoteDraft | null; answers: unknown
   /** The customer's website tracing; seeds the staff map when there is no saved quote yet. */
   lawn_tracing?: unknown
 }
@@ -38,6 +40,7 @@ type Result = { success: true; updatedAt: string } | { error: string; conflict?:
 
 type QuoteState = {
   lead: QuoteLead; activities: QuoteActivity[]; bookings: QuoteBooking[]; sentOffers: SentOfferSummary[]
+  introEligibility: IntroEligibility
   version: string; setVersion: (v: string) => void; draft: QuoteDraft | null; setDraft: (d: QuoteDraft | null) => void
   reviewed: boolean; setReviewed: (v: boolean) => void; quoteStatus: QuoteStatus; setQuoteStatus: (s: QuoteStatus) => void
   propertyChanged: boolean; addressNeedsReview: boolean
@@ -52,8 +55,8 @@ function dateText(value: string) {
   return new Date(value).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export function QuoteProvider({ lead, activities, bookings, sentOffers = [], children }: {
-  lead: QuoteLead; activities: QuoteActivity[]; bookings: QuoteBooking[]; sentOffers?: SentOfferSummary[]; children: React.ReactNode
+export function QuoteProvider({ lead, activities, bookings, sentOffers = [], introEligibility, children }: {
+  lead: QuoteLead; activities: QuoteActivity[]; bookings: QuoteBooking[]; sentOffers?: SentOfferSummary[]; introEligibility: IntroEligibility; children: React.ReactNode
 }) {
   const [version, setVersion] = useState(lead.updated_at)
   const [draft, setDraft] = useState<QuoteDraft | null>(lead.quote_draft)
@@ -74,7 +77,7 @@ export function QuoteProvider({ lead, activities, bookings, sentOffers = [], chi
   const addressNeedsReview = !!lead.answers && typeof lead.answers === 'object' && !Array.isArray(lead.answers)
     && (lead.answers as { address_needs_review?: unknown }).address_needs_review === true
   const feedbackIsError = feedback.startsWith('Could') || feedback.includes('changed') || feedback.includes('failed') || feedback.startsWith('Enter') || feedback.startsWith('The ')
-  return <Quote.Provider value={{ lead, activities, bookings, sentOffers, version, setVersion, draft, setDraft, reviewed, setReviewed,
+  return <Quote.Provider value={{ lead, activities, bookings, sentOffers, introEligibility, version, setVersion, draft, setDraft, reviewed, setReviewed,
     quoteStatus, setQuoteStatus, propertyChanged, addressNeedsReview, feedback, setFeedback, calcOpen, setCalcOpen }}>
     {children}
     {feedback && <div className={`crm-toast${feedbackIsError ? ' crm-toast-error' : ''}`} role={feedbackIsError ? 'alert' : 'status'}>
@@ -132,9 +135,10 @@ export function EditPriceButton({ hasPrice }: { hasPrice: boolean }) {
 
 /** Quote actions inside the Price card: book, text or email the price, said no, visits. */
 export function QuotePanel() {
-  const { lead, bookings, sentOffers, version, draft, setQuoteStatus, propertyChanged, setFeedback } = useQuote()
+  const { lead, bookings, sentOffers, introEligibility, version, draft, setQuoteStatus, propertyChanged, setFeedback } = useQuote()
   const { run, pending, startTransition, router } = useRun()
   const [emailOpen, setEmailOpen] = useState(false)
+  const [introChoice, setIntroChoice] = useState<IntroChoice | null>(null)
   const [emailBody, setEmailBody] = useState('')
   const bookingOperation = useRef<string | null>(null)
   const [bookingOpen, setBookingOpen] = useState(false)
@@ -143,23 +147,6 @@ export function QuotePanel() {
     futureJobs: { id: string; date: string | null }[]
   } | null>(null)
 
-  // Follow-up after the phone call: recap the agreed price and ask for the booking.
-  function quoteSummary(quote: QuoteDraft) {
-    if (currentSent?.publicUrl) return `QuietGreen quote ${currentSent.version}: ${currentSent.publicUrl}
-Reply with a preferred date and we’ll confirm the visit.`
-
-    const firstName = lead.name?.trim().split(/\s+/)[0]
-    const offer = quoteOffer(quote)
-    const quoted = offer.options.find(o => o.freq === offer.quoted) ?? offer.options[0]
-    const dollars = (value: number) => Number.isInteger(value) ? `$${value}` : formatMoney(value)
-    const price = dollars(quoted.price)
-    const deal = offer.recurring && quoted.freq !== 'onetime'
-      ? `${frequencyLabel(quoted.freq).toLowerCase()} mowing is ${price} a visit${quoted.firstVisit !== quoted.price ? `, and your first visit is just ${dollars(quoted.firstVisit)}` : ''}`
-      : `your ${lead.services?.join(' + ').toLowerCase() || 'job'} comes to ${price}`
-    const measured = offer.sqFt ? `Your lawn measured ${offer.sqFt.toLocaleString('en-US')} sq ft, so ` : 'So '
-    const close = 'Reply with a preferred date and we’ll confirm your visit.'
-    return `Hi${firstName ? ` ${firstName}` : ''}, QuietGreen here, great talking with you! ${measured}${deal}. ${close}`
-  }
   function openEmail() {
     if (!draft) return
     const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
@@ -173,6 +160,23 @@ Reply with a preferred date and we’ll confirm the visit.`
   }
   const { booking, quoteState } = useQuoteState()
   const currentSent = sentOffers.find(offer => offer.state === 'sent' && offer.sent_at && !offer.replaced)
+  const agreementDraft = lead.quote_status === 'accepted' ? lead.accepted_quote_snapshot : draft
+  const introductory = introductoryPrice(lead.quote_status === 'accepted' ? 'ineligible' : introEligibility, introChoice)
+  const draftTerms = agreementDraft?.sections
+    ? quoteEmailBreakdown(agreementDraft, { when: '', addOns: [] }, introductory === true) : null
+  const first = draftTerms?.rows[0]
+  const needsIntroChoice = !currentSent && draftTerms?.mowing && introductory === null
+  const canBook = Boolean(currentSent || (first && !needsIntroChoice))
+  const firstPrice = first?.firstVisitCents ?? first?.perVisitCents
+  const text = currentSent?.publicUrl
+    ? `QuietGreen quote ${currentSent.version}: ${currentSent.publicUrl}
+Reply with a preferred date and we’ll confirm the visit.`
+    : draftTerms && first && !needsIntroChoice
+      ? `QuietGreen here. ${draftTerms.mowing && first.freq !== 'onetime' ? `${first.label} mowing` : draftTerms.mowing ? 'One-time mowing' : first.label}: ${emailMoney(first.perVisitCents)}${first.freq === 'onetime' ? '' : ' per visit'}${first.firstVisitCents != null ? `. First visit ${emailMoney(first.firstVisitCents)}` : ''}. Reply with a preferred date and we’ll confirm your visit.`
+      : null
+  const textPrice = text && <a className="crm-button" href={smsHref(text)}><Icon name="message" size={15} />
+    {currentSent ? 'Text price' : 'Text draft price'}</a>
+
   const pendingSend = sentOffers.find(offer => ['sending', 'unknown'].includes(offer.state))
   const emailButton = currentSent ? currentSent.accepted_booking_id ? 'Email new proposal' : 'Email revised quote' : 'Email quote'
   const bookedCustomerId = bookings.find(b => b.customer_id)?.customer_id ?? null
@@ -200,11 +204,13 @@ Reply with a preferred date and we’ll confirm the visit.`
     })
   }
   function submitBooking() {
+    if (!canBook) return
     bookingOperation.current ??= uuid()
     const operationId = bookingOperation.current
     setFeedback('')
     startTransition(async () => {
-      const result = await requestStaffQuoteVisit(lead.id, version, operationId, currentSent?.state === 'sent' ? currentSent.id : null)
+      const result = await requestStaffQuoteVisit(lead.id, version, operationId, currentSent?.id ?? null,
+        first && firstPrice != null ? { introChoice, firstCents: firstPrice, standardCents: first.perVisitCents } : undefined)
         .catch(() => ({ error: 'Could not save the request. Retry to check whether it was saved.' }))
       if ('error' in result) { setFeedback(result.error ?? 'Could not save the request.'); return }
       bookingOperation.current = null
@@ -216,16 +222,18 @@ Reply with a preferred date and we’ll confirm the visit.`
     {sentOffers.length > 0 && <section className="crm-booking-request" aria-label="Sent quotes">
       <h3>Sent quotes</h3>
       {sentOffers.map(offer => <div key={offer.id} className="crm-kv">
-        <div><dt>Quote {offer.version}</dt><dd>{offer.state === 'failed' ? 'Email rejected' : offer.sent_at
+        <div><dt>Quote {offer.version}</dt><dd>{offer.state === 'failed' ? 'Email rejected' : offer.state === 'closed' ? 'Closed after review · Delivery unconfirmed' : offer.sent_at
           ? `${offer.accepted_booking_id ? 'Accepted · ' : offer.replaced ? 'Replaced · ' : offer.state === 'review' ? 'Needs review · ' : ''}Email sent ${dateText(offer.sent_at)}`
           : 'Email delivery unconfirmed'} · {offer.recipient}</dd></div>
         {offer.rows.map((row, index) => <p key={index} className="crm-hint">
           {row.label}{row.when ? ` · ${row.when}` : ''} · {row.firstVisitCents !== null ? `First visit ${emailMoney(row.firstVisitCents)} · ` : ''}
           {emailMoney(row.perVisitCents)}{row.freq === 'onetime' ? ' standard' : ' per visit'}
         </p>)}
-        {offer.href && <Link className="crm-button crm-button-sm" href={offer.href}>View sent terms</Link>}
+        {offer.href && <Link className="crm-button crm-button-sm" href={offer.href}>{offer.sent_at ? 'View sent terms' : 'View reviewed terms'}</Link>}
       </div>)}
-      {pendingSend && <button type="button" className="crm-button crm-button-sm" disabled={pending} onClick={() => {
+      {pendingSend?.retryExpired ? <ExpiredQuoteReview key={pendingSend.id} leadId={lead.id} offer={pendingSend}
+        attemptedAt={dateText(pendingSend.created_at)} onSaved={message => { setFeedback(message); router.refresh() }} />
+        : pendingSend && <button type="button" className="crm-button crm-button-sm" disabled={pending} onClick={() => {
         startTransition(async () => {
           const result = await retryLeadQuote(lead.id, pendingSend.id).catch(() => ({ error: 'Could not check the email attempt.' }))
           setFeedback('error' in result ? result.error : result.warning ?? 'Quote emailed.')
@@ -233,11 +241,14 @@ Reply with a preferred date and we’ll confirm the visit.`
         })
       }}>Check or retry email</button>}
     </section>}
+    {!currentSent && draftTerms?.mowing && introEligibility === 'review' && lead.quote_status !== 'accepted'
+      && ['draft','quoted','accepted','canceled'].includes(quoteState) && !emailOpen
+      && <IntroPriceChoice value={introChoice} onChange={choice => { setIntroChoice(choice); bookingOperation.current = null }} />}
     {draft && quoteState === 'draft' && !emailOpen && <div className="crm-action-row">
-      <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />{currentSent ? 'Text price' : 'Text draft price'}</a>
+      {textPrice}
       <button type="button" className="crm-button" disabled={!!pendingSend} onClick={openEmail}><Icon name="mail" size={15} />{emailButton}</button>
     </div>}
-    {draft && emailOpen && <QuoteEmail draft={draft} message={emailBody} onClose={() => setEmailOpen(false)} />}
+    {draft && emailOpen && <QuoteEmail draft={draft} message={emailBody} initialIntroChoice={introChoice} onClose={() => setEmailOpen(false)} />}
 
     {needsSeparateProposal && !emailOpen && <div className="crm-booking-request">
       <p>The canceled visit stays linked to the accepted quote. Agree the new visit as a separate proposal or service.</p>
@@ -248,8 +259,8 @@ Reply with a preferred date and we’ll confirm the visit.`
     </div>}
 
     {!needsSeparateProposal && (quoteState === 'quoted' || quoteState === 'accepted' || quoteState === 'canceled') && !bookingOpen && !emailOpen && !propertyChanged && booking?.status !== 'pending' && <div className="crm-action-row">
-      <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={() => setBookingOpen(true)}>{quoteState === 'canceled' ? 'Book again' : 'Book visit'}</button>
-      {draft && quoteState !== 'canceled' && <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />{currentSent ? 'Text price' : 'Text draft price'}</a>}
+      <button type="button" className="crm-button crm-button-primary" disabled={pending || !canBook} onClick={() => setBookingOpen(true)}>{quoteState === 'canceled' ? 'Book again' : 'Book visit'}</button>
+      {quoteState !== 'canceled' && textPrice}
       {draft && quoteState !== 'canceled' && !emailOpen && <button type="button" className="crm-button" disabled={!!pendingSend} onClick={openEmail}><Icon name="mail" size={15} />{emailButton}</button>}
       {quoteState === 'quoted' && <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => run(() => setLeadQuoteDecision(lead.id, version, 'declined'), () => setQuoteStatus('declined'))}>Customer said no</button>}
       {quoteState === 'accepted' && <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => run(() => setLeadQuoteDecision(lead.id, version, 'canceled'), () => setQuoteStatus('canceled'))}>Cancel acceptance</button>}
@@ -262,8 +273,9 @@ Reply with a preferred date and we’ll confirm the visit.`
       <h3>Record the agreed service</h3>
       <p>{currentSent ? `Use the exact terms from sent quote ${currentSent.version}.` : 'Use the reviewed price and service from this quote.'}
         {' '}Then review the customer, property, and first visit date.</p>
+      {!currentSent && first && firstPrice != null && <p>First visit {emailMoney(firstPrice)}{first.freq !== 'onetime' && ` · ${emailMoney(first.perVisitCents)} per visit`}</p>}
       <div className="crm-action-row">
-        <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={submitBooking}>Record acceptance & review visit</button>
+        <button type="button" className="crm-button crm-button-primary" disabled={pending || !canBook} onClick={submitBooking}>Record acceptance & review visit</button>
         <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => setBookingOpen(false)}>Cancel</button>
       </div>
     </div>}
@@ -304,10 +316,11 @@ Reply with a preferred date and we’ll confirm the visit.`
  * Email quote: write it, preview the exact email (map picture, prices by plan, add-ons, first visit),
  * then send. Nothing reaches the customer until "Send" on the preview.
  */
-function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteDraft; message: string; onClose: () => void }) {
-  const { lead, version, setVersion, setFeedback } = useQuote()
+function QuoteEmail({ draft, message: initialMessage, initialIntroChoice, onClose }: { draft: QuoteDraft; message: string; initialIntroChoice: IntroChoice | null; onClose: () => void }) {
+  const { lead, introEligibility, version, setVersion, setFeedback } = useQuote()
   const { pending, startTransition, router } = useRun()
   const mowing = quoteOffer(draft).recurring
+  const [introChoice, setIntroChoice] = useState(initialIntroChoice)
   const [frequency, setFrequency] = useState<OfferFrequency>('onetime')
   const [to, setTo] = useState(lead.email ?? '')
   const [message, setMessage] = useState(initialMessage)
@@ -322,7 +335,7 @@ function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteD
   const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
 
   function options(): QuoteEmailOptions {
-    return { message, when, ...(mowing ? {} : { frequency }),
+    return { message, when, ...(mowing ? { introChoice } : { frequency }),
       addOns: addOns.map(a => ({ label: a.label, cents: Math.round(Number(a.price) * 100) })) }
   }
   function showPreview() {
@@ -382,6 +395,7 @@ function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteD
       <option value="onetime">Single visit</option><option value="weekly">Weekly</option>
       <option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
     </select></label>}
+    {mowing && introEligibility === 'review' && <IntroPriceChoice value={introChoice} onChange={setIntroChoice} />}
     <label className="crm-field">Timing note (optional)<input maxLength={80} value={when}
       onChange={event => setWhen(event.target.value)} placeholder="For example, start after the leaves clear" /></label>
     <div className="crm-field" role="group" aria-label="Add-ons">{(mowing ? draft.freq : frequency) !== 'onetime' ? 'Add-ons (per visit)' : 'Add-ons'}
@@ -394,7 +408,7 @@ function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteD
     </div>
     {error && <p className="crm-hint" role="alert">{error}</p>}
     <div className="crm-action-row">
-      <button type="button" className="crm-button crm-button-primary" disabled={pending || !to.trim()} onClick={showPreview}>{pending ? 'Drawing map…' : 'Preview email'}</button>
+      <button type="button" className="crm-button crm-button-primary" disabled={pending || !to.trim() || (mowing && introEligibility === 'review' && !introChoice)} onClick={showPreview}>{pending ? 'Drawing map…' : 'Preview email'}</button>
       <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={onClose}>Cancel</button>
     </div>
   </div>

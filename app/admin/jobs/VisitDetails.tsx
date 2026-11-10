@@ -29,7 +29,7 @@ type Target = { bookingId: string; occurrence?: never } | { bookingId?: never; o
 type Customer = Pick<Tables<'customers'>, 'id' | 'name' | 'phone'>
 type Property = Pick<Tables<'properties'>, 'id' | 'customer_id' | 'address'>
 type Payment = Pick<Tables<'job_payments'>, 'id' | 'amount' | 'paid_on' | 'method' | 'provenance'>
-type Candidate = Pick<Agreement, 'id' | 'interval_count' | 'interval_unit' | 'price_per_visit' | 'next_on'> & { service_labels?: { name: string } | null }
+type Candidate = Pick<Agreement, 'id' | 'interval_count' | 'interval_unit' | 'price_per_visit'> & { nextOn?: string; service_labels?: { name: string } | null }
 type Result = { success: boolean; error?: string; data?: Record<string, unknown> }
 const PANELS = {
   complete: 'Mark done',
@@ -68,11 +68,11 @@ function addonDetails(addons: Record<string, unknown>) {
   }).join(' · ')
 }
 
-export default function VisitDetails({ bookingId, occurrence, booking, today, back, agreement, reviewReason, scheduleSummary, simpleShift, serviceLabel, customers, properties, candidates, items, payments,
+export default function VisitDetails({ bookingId, occurrence, booking, today, back, agreement, nextScheduleOn, reviewReason, scheduleSummary, simpleShift, serviceLabel, customers, properties, candidates, items, payments,
   quotedVisit, mapUrl, shapes, emailConfigured, firstReview }: {
-  booking: Booking; today: string; back: string; agreement: Agreement | null; reviewReason: string | null; scheduleSummary: string | null; simpleShift: boolean; serviceLabel?: string
+  booking: Booking; today: string; back: string; agreement: Agreement | null; nextScheduleOn: string | null; reviewReason: string | null; scheduleSummary: string | null; simpleShift: boolean; serviceLabel?: string
   customers: Customer[]; properties: Property[]; candidates: Candidate[]; items: JobLine[]; payments: Payment[]
-  firstReview?: { terms: FirstVisitTerms; leadVersion: string | null; customerId: string | null; propertyId: string | null; labels: { id: string; name: string; semantic_key: string | null }[] }
+  firstReview?: { terms: FirstVisitTerms; hasIntro: boolean; ineligibleCustomers: string[]; possiblePhoneMatch: boolean; leadVersion: string | null; customerId: string | null; propertyId: string | null; labels: { id: string; name: string; semantic_key: string | null }[] }
   quotedVisit: boolean; mapUrl: string | null; shapes: Shape[]; emailConfigured: boolean
 } & Target) {
   const router = useRouter()
@@ -121,6 +121,14 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const phoneDigits = booking.phone.replace(/\D/g, '').slice(-10)
   const samePhone = phoneDigits.length === 10
     ? customers.filter(c => c.phone?.replace(/\D/g, '').slice(-10) === phoneDigits) : []
+
+  const acceptedAddress = booking.accepted_quote_snapshot && typeof booking.accepted_quote_snapshot === 'object'
+    && !Array.isArray(booking.accepted_quote_snapshot) && typeof booking.accepted_quote_snapshot.address === 'string'
+    ? booking.accepted_quote_snapshot.address : booking.address
+  const selectedAddress = properties.find(property => property.id === selectedProperty)?.address
+  const differentAddress = firstReview?.terms.locked && selectedAddress != null && selectedAddress !== acceptedAddress.trim()
+  const returningCustomer = firstReview?.ineligibleCustomers.includes(selectedCustomer)
+  const reviewIntro = firstReview?.hasIntro && (returningCustomer || firstReview.possiblePhoneMatch)
 
   useEffect(() => { if (panel) editorHeading.current?.focus() }, [panel])
 
@@ -184,7 +192,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
 
   function runVisit(key: string, edit: ProjectedVisitEdit,
     saved: (id: string, operationId: string) => Promise<Result>, success: string) {
-    run(key, operationId => occurrence ? editProjectedVisit({ ...occurrence, operationId, ...edit })
+    run(key, operationId => occurrence ? editProjectedVisit({ ...occurrence, operationId, expectedItems: items, ...edit })
       : saved(bookingId, operationId), success)
   }
   function save(event: FormEvent<HTMLFormElement>) {
@@ -202,7 +210,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           date, time, email, customerId: selectedCustomer === 'new' ? null : selectedCustomer,
           propertyId: selectedProperty === 'new' ? null : selectedProperty, name: field(form, 'name'), address: field(form, 'address'),
           labelId: field(form, 'label') || null, frequency: firstReview.terms.locked ? firstReview.terms.frequency : field(form, 'frequency'),
-          reviewedTerms: form.has('reviewed-terms') }), 'Visit confirmed.')
+          reviewedTerms: form.has('reviewed-terms'), reviewedIntro: form.has('reviewed-intro'),
+          reviewedPropertyAddress: form.has('reviewed-property') ? selectedAddress ?? null : null }), 'Visit confirmed.')
       } else if (wholeMove && agreement) {
         const request = { agreementId: agreement.id, date, time, email,
           ...(occurrence ? { revisionId: occurrence.revisionId, on: occurrence.on } : { bookingId, version: versions.current.visit }) }
@@ -315,7 +324,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
               {firstReview.terms.frequency !== 'onetime' && <> · {frequencyLabel(firstReview.terms.frequency)} {formatMoney(firstReview.terms.regular_total)} per visit</>}
             </p>}
             <div className="work-visit-fields work-visit-identity">
-              {booking.customer_id ? <p>Linked customer · {name}</p> : <label className="crm-field">Customer<select name="customer" value={selectedCustomer} required
+              {booking.customer_id ? <p>Linked customer · {name}</p> : <label className="crm-field">Customer<select aria-label="Customer" name="customer" value={selectedCustomer} required
                 onChange={event => { setSelectedCustomer(event.target.value); setSelectedProperty('new') }}>
                 {samePhone.length > 0 && <option value="" disabled>Choose a customer</option>}
                 <option value="new">Create new customer</option>
@@ -323,7 +332,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
                 {customers.filter(c => !samePhone.includes(c)).map(c => <option key={c.id} value={c.id}>{customerDisplayName(c)} · {formatPhone(c.phone)}</option>)}
               </select></label>}
               {selectedCustomer === 'new' && <label className="crm-field">New customer name<input name="name" maxLength={150} defaultValue={name} required /></label>}
-              {booking.property_id ? <p>Linked property · {booking.address}</p> : selectedCustomer && selectedCustomer !== 'new' && <label className="crm-field">Property<select name="property" value={selectedProperty}
+              {booking.property_id ? <p>Linked property · {selectedAddress ?? booking.address}</p> : selectedCustomer && selectedCustomer !== 'new' && <label className="crm-field">Property<select aria-label="Property" name="property" value={selectedProperty}
                 onChange={event => setSelectedProperty(event.target.value)}>
                 <option value="new">Create new property</option>
                 {properties.filter(p => p.customer_id === selectedCustomer).map(p => <option key={p.id} value={p.id}>{p.address}</option>)}
@@ -340,6 +349,21 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
                 <option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
               </select></label>}
             </div>
+            {differentAddress && <div key={selectedProperty} className="work-visit-address-review">
+              <dl className="work-visit-records">
+                <div><dt>Quoted address</dt><dd>{acceptedAddress}</dd></div>
+                <div><dt>Selected property</dt><dd>{selectedAddress}</dd></div>
+              </dl>
+              <label className="crm-check"><input type="checkbox" name="reviewed-property" required />
+                I verified that the quoted work belongs at the selected property.</label>
+            </div>}
+            {reviewIntro && <div key={selectedCustomer}>
+              <p className="crm-muted">{returningCustomer
+                ? 'This customer has prior mowing or an existing introductory offer. This visit keeps the promised price without adding a new offer.'
+                : 'A possible phone match has a customer record. Review the selected identity and first-mow price.'}</p>
+              <label className="crm-check"><input type="checkbox" name="reviewed-intro" required />
+                I reviewed the customer’s mowing history and the promised introductory price.</label>
+            </div>}
             {(firstReview.terms.needs_review || firstReview.terms.items_changed) && <label className="crm-check"><input type="checkbox" name="reviewed-terms" required />
               I reviewed the original quote and agreed this service with the customer.</label>}
           </>}
@@ -370,6 +394,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
               onChange={() => { setIntroReview(null); setError('') }} /></label>
             {introReview?.earlierVisitId && <p><Link href={visitHref({ booking_id: introReview.earlierVisitId, agreement_id: null,
               revision_id: null, cadence_on: null }, back)}>Review the earlier visit</Link></p>}
+            {introReview?.earlierOccurrence && <p><Link href={visitHref({ booking_id: null,
+              agreement_id: introReview.earlierOccurrence.agreementId, revision_id: introReview.earlierOccurrence.revisionId,
+              cadence_on: introReview.earlierOccurrence.on }, back)}>Review the earlier visit</Link></p>}
             {introReview?.allocatedAmount != null && <ul className="work-visit-records">
               <li>Visit holding the introductory price{introReview.allocatedOn ? ` · ${dateText(introReview.allocatedOn)}` : ''}
                 <strong>{formatMoney(introReview.allocatedAmount)}{introReview.move && ` → ${formatMoney(introReview.replacementAmount)}`}</strong></li>
@@ -444,7 +471,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           {candidates.length > 0 && <>
             <label className="crm-field">Choose a service schedule<select name="plan" required defaultValue="">
               <option value="" disabled>Select schedule</option>
-              {candidates.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.service_labels?.name ?? 'Saved service'} · {cadence(candidate)} · {formatMoney(candidate.price_per_visit)} per visit · Next {dateText(candidate.next_on)}</option>)}
+              {candidates.map(candidate => <option key={candidate.id} value={candidate.id}>{candidate.service_labels?.name ?? 'Saved service'} · {cadence(candidate)} · {formatMoney(candidate.price_per_visit)} per visit{candidate.nextOn && ` · Next ${dateText(candidate.nextOn)}`}</option>)}
             </select></label>
             <p className="crm-muted">This visit keeps its agreed price when it joins.</p>
           </>}
@@ -513,7 +540,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         <h2>Service schedule</h2>
         {agreement ? <>
           <p>{scheduleSummary ?? cadence(agreement)} · {formatMoney(agreement.price_per_visit)} per visit</p>
-          <p className="crm-muted">{reviewReason ? 'Needs schedule review' : awaitingFirst ? 'Awaiting first-visit confirmation' : agreement.status === 'active' ? `Active · Next ${dateText(agreement.next_on)}` : agreement.status === 'paused' ? 'Paused' : 'Ended'}</p>
+          <p className="crm-muted">{reviewReason ? 'Needs schedule review' : awaitingFirst ? 'Awaiting first-visit confirmation'
+            : agreement.status === 'active' ? <>Active{nextScheduleOn && ` · Next ${dateText(nextScheduleOn)}`}</>
+            : agreement.status === 'paused' ? 'Paused' : 'Ended'}</p>
           {occurrence && reviewReason && <p className="crm-muted">{reviewReason}</p>}
         </> : <p className="crm-muted">{needsSchedule ? 'Review the schedule for this recurring visit.' : 'No repeating schedule for this visit.'}</p>}
         {!awaitingFirst && (agreement || current || booking.status === 'completed') && <div className="work-visit-actions">{edit(agreement ? 'Edit schedule' : 'Set schedule', 'schedule')}</div>}

@@ -27,7 +27,8 @@ select is(
   array(select p.oid::regprocedure::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and (p.proname like 'crm_intro_%' or p.proname in ('crm_confirm_first_visit','crm_first_visit_terms',
-        'crm_register_intro','crm_website_booking_terms','crm_staff_quote_request','crm_record_booked_call','complete_job'))
+        'crm_register_intro','crm_website_booking_terms','crm_staff_quote_request','crm_calendar_projected_items',
+        'crm_schedule_first_projected_slot','crm_schedule_next_dates','crm_record_booked_call','complete_job'))
       and (has_function_privilege('anon',p.oid,'EXECUTE') or has_function_privilege('authenticated',p.oid,'EXECUTE'))
     order by 1),
   array[]::text[],

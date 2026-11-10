@@ -2,9 +2,12 @@
 import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { CreateEmailOptions } from 'resend'
+import type { IntroChoice } from './quote-offer'
 import type { QuoteDraft } from './quote-draft'
 import type { QuoteEmailBreakdown } from './quote-email'
 import { adminDb } from './supabase/admin'
+
+export const QUOTE_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -14,6 +17,7 @@ export type OfferTerms = QuoteEmailBreakdown & {
   firstName: string | null
   message: string
   mowing: boolean
+  introChoice?: IntroChoice | null
 }
 
 export type SentOffer = {
@@ -23,7 +27,7 @@ export type SentOffer = {
   terms: OfferTerms
   message: CreateEmailOptions
   recipient: string
-  state: 'sending' | 'unknown' | 'failed' | 'sent' | 'review'
+  state: 'sending' | 'unknown' | 'failed' | 'sent' | 'review' | 'closed'
   created_at: string
   sent_at: string | null
   replaced_by: string | null
@@ -32,6 +36,8 @@ export type SentOffer = {
 
 export type SentOfferSummary = Pick<SentOffer, 'id' | 'version' | 'recipient' | 'state' | 'created_at' | 'sent_at' | 'accepted_booking_id'> & {
   href: string | null
+  subject: string | null
+  retryExpired: boolean
   replaced: boolean
   rows: QuoteEmailBreakdown['rows']
   publicUrl: string | null

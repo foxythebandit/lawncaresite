@@ -15,22 +15,25 @@ export default async function CustomerQuotePage({ params }: { params: Promise<{ 
   const reference = verifiedOffer(token)
   if (reference) {
     const { data: offer } = await adminDb().from('sent_offers')
-      .select('terms,recipient,state,sent_at,replaced_by,accepted_booking_id')
+      .select('terms,recipient,state,sent_at,replaced_by,accepted_booking_id,version')
       .eq('lead_id', reference.leadId).eq('id', reference.offerId).maybeSingle()
     const terms = offer?.terms as OfferTerms | undefined
-    if (!offer?.sent_at || !terms?.address) return <Unavailable />
+    if (!offer || (!offer.sent_at && offer.state !== 'closed') || !terms?.address) return <Unavailable />
     const { address, firstName, sqFt, mowing, rows, message, draft } = terms
-    const latest = offer.replaced_by
-      ? await adminDb().from('sent_offers').select('id').eq('lead_id', reference.leadId).eq('state', 'sent').is('replaced_by', null).order('version', { ascending: false }).limit(1).maybeSingle()
+    const latest = offer.replaced_by || offer.state === 'closed'
+      ? await adminDb().from('sent_offers').select('id').eq('lead_id', reference.leadId).eq('state', 'sent').is('replaced_by', null)
+        .gt('version', offer.version).order('version', { ascending: false }).limit(1).maybeSingle()
       : null
-    const notice = offer.replaced_by ? <div className="qb-card">
+    const revised = latest?.data?.id ?? offer.replaced_by
+    const notice = revised ? <div className="qb-card">
       <h2>A revised quote is available</h2><p className="qb-sub">This page shows the original terms.</p>
-      <Link className="qb-link" href={offerPath(reference.leadId, latest?.data?.id ?? offer.replaced_by)}>Review the revised quote ›</Link>
+      <Link className="qb-link" href={offerPath(reference.leadId, revised)}>Review the revised quote ›</Link>
     </div> : offer.accepted_booking_id ? <p className="qb-sub">We’ve received your request for this quote. We’ll contact you about your first visit.</p>
+      : offer.state === 'closed' ? <p className="qb-sub">This quote needs staff review. Reply to our email or call us to continue.</p>
       : offer.state === 'review' ? <p className="qb-sub">This proposal needs review. Reply to our email to discuss it.</p> : null
     return <QuoteBooking token={token} firstName={firstName} address={address}
       offer={{ sqFt, mowing, rows, message }} sections={draft.sections.map(({ name, sqFt, coords }) => ({ name, sqFt: Math.round(sqFt), coords }))}
-      email={offer.recipient} notice={notice} closed={!!(offer.replaced_by || offer.accepted_booking_id || offer.state === 'review')} />
+      email={offer.recipient} notice={notice} closed={!!(offer.replaced_by || offer.accepted_booking_id || offer.state === 'review' || offer.state === 'closed')} />
   }
 
   const id = verifiedLead(token)

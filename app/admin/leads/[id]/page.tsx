@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
-import { offerPath, type OfferTerms, type SentOfferSummary } from '@/lib/sent-offer'
+import { QUOTE_RETRY_WINDOW_MS, offerPath, type OfferTerms, type SentOfferSummary } from '@/lib/sent-offer'
+import type { IntroEligibility } from '@/lib/quote-offer'
 import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
 import { ago, alertLegHistory, allPrices, dayLabel, historyItem, money, phoneDisplay, requestBookings, summarizeLead,
   type HistoryIcon, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
@@ -74,34 +75,37 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   // customers.phone is stored in mixed formats: match the ten digits in order on the server, then exactly below.
   const phonePattern = phoneDigits.length === 10 ? `%${phoneDigits.split('').join('%')}%` : null
   const customerFields = 'id,name,phone,created_at'
-  const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }, { data: offerRows }] = await Promise.all([
+  const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }, { data: offerRows }, { data: introState }] = await Promise.all([
     db.from('lead_activities').select('id,kind,outcome,body,actor_email,occurred_at,data').eq('lead_id', id).order('occurred_at').limit(200),
     db.from('intake_events').select('id,source,submission_id,booking_id,created_at,staff_alerts(*)').eq('lead_id', id).order('created_at'),
     db.from('bookings').select('*').eq('lead_id', id).order('created_at'),
     phonePattern ? db.from('customers').select(customerFields).ilike('phone', phonePattern).limit(25) : { data: [] as Customer[] },
     lead.customer_id ? db.from('customers').select(customerFields).eq('id', lead.customer_id).maybeSingle() : { data: null as Customer | null },
     db.from('lead_calls').select('id,leg,staff_name,staff_phone,caller_id,result,status,duration_seconds,recording_sid,answered_at,ended_at,created_at').eq('lead_id', id).order('created_at'),
-    db.from('sent_offers').select('id,version,recipient,state,created_at,sent_at,replaced_by,accepted_booking_id,terms').eq('lead_id', id).order('version', { ascending: false }).limit(10),
+    db.from('sent_offers').select('id,version,recipient,state,created_at,sent_at,replaced_by,accepted_booking_id,terms,subject:message->>subject').eq('lead_id', id).order('version', { ascending: false }).limit(10),
+    db.rpc('crm_intro_lead_eligibility', { p_lead_id: id }).throwOnError(),
   ])
+  const introEligibility = introState as IntroEligibility
   // Same-phone customers are suggestions only; staff confirms before linking.
   const customerMatches = ((phoneCustomers ?? []) as Customer[]).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits)
   const existing = linkedCustomer ?? customerMatches[0] ?? null
-  const existedBefore = !!existing && Date.parse(existing.created_at) < Date.parse(lead.created_at)
+  const existedBefore = !!linkedCustomer && Date.parse(linkedCustomer.created_at) < Date.parse(lead.created_at)
+  // One request timestamp for relative labels and retry windows.
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now()
   const sentOffers = (offerRows ?? []).map(({ replaced_by, terms, ...offer }) => {
-    const href = offer.sent_at ? offerPath(id, offer.id) : null
-    return { ...offer, replaced: !!replaced_by, href, rows: href ? (terms as OfferTerms).rows : [],
+    const href = offer.sent_at || offer.state === 'closed' ? offerPath(id, offer.id) : null
+    return { ...offer, replaced: !!replaced_by, href, rows: href ? (terms as OfferTerms).rows ?? [] : [],
+      retryExpired: now - Date.parse(offer.created_at) >= QUOTE_RETRY_WINDOW_MS,
       publicUrl: href ? new URL(href, process.env.CRM_BASE_URL ?? 'https://quietgreen.co').href : null }
   }) as SentOfferSummary[]
-  const hasSentTerms = sentOffers.some(offer => offer.href)
+  const hasSentTerms = sentOffers.some(offer => offer.sent_at)
   const calculatorAmount = lead.quote_draft ? quoteTotalCents(lead.quote_draft as QuoteDraft) : null
   const activeSent = sentOffers.find(offer => offer.state === 'sent' && !offer.replaced)
   const phoneOffer = activeSent?.rows.length === 1 ? activeSent.rows[0] : null
   const priceOffer = sentOffers.find(offer => offer.href && offer.accepted_booking_id)
     ?? sentOffers.find(offer => offer.href && offer.state === 'sent' && !offer.replaced)
   const sentPrice = priceOffer?.rows.length === 1 ? priceOffer.rows[0] : null
-  // One request timestamp for every relative label on the page.
-  // eslint-disable-next-line react-hooks/purity
-  const now = Date.now()
   const addressChanged = (activities ?? []).some(a => a.outcome === 'contact_address_changed')
   const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: existedBefore, addressChanged, now })
   const answers = asObject(lead.answers)
@@ -182,8 +186,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     : s.column === 'customer' && existing ? <Link className="crm-button crm-button-primary" href={`/admin/customers/${existing.id}`}><Icon name="users" size={17} />Open customer</Link>
     : null
 
-  return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={phoneOffer?.perVisitCents ?? price?.cents ?? null} frequency={phoneOffer?.freq ?? price?.frequency ?? normalizeFrequency(lead.frequency)}>
-    <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} sentOffers={sentOffers}>
+  return <LeadLive introEligibility={introEligibility} services={serviceLabels(lead.services)} leadId={lead.id} name={s.name} column={s.column} priceCents={phoneOffer?.perVisitCents ?? price?.cents ?? null} frequency={phoneOffer?.freq ?? price?.frequency ?? normalizeFrequency(lead.frequency)}>
+    <QuoteProvider introEligibility={introEligibility} lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} sentOffers={sentOffers}>
       <div className="crm-workspace crm-lead2">
         <div className="crm-lead2-top">
           <Link className="crm-back" href="/admin/leads"><Icon name="arrowLeft" size={15} />Board</Link>
@@ -283,7 +287,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 {existing && <li>
                   <span className="crm-history-time" />
                   <Icon name="users" size={15} className="crm-history-icon" />
-                  <span className="crm-history-text"><Link href={`/admin/customers/${existing.id}`}>{existedBefore ? 'Existing customer' : 'Customer'} · {existing.name ?? phoneDisplay(existing.phone)}</Link></span>
+                  <span className="crm-history-text"><Link href={`/admin/customers/${existing.id}`}>{!linkedCustomer ? 'Possible phone match' : existedBefore ? 'Existing customer' : 'Customer'} · {existing.name ?? phoneDisplay(existing.phone)}</Link></span>
                 </li>}
               </ol>
             </Block>

@@ -67,7 +67,7 @@ export function callVisitItems(cents: number, freq: OfferFrequency, description:
   return { items, plan, firstVisitPrice: first < cents && first % 100 === 0 ? first / 100 : null }
 }
 export type IntroCompletionReview = {
-  token?: string; earlierVisitId?: string; allocatedAmount?: number; allocatedOn?: string
+  token?: string; earlierVisitId?: string; earlierOccurrence?: { agreementId: string; revisionId: string; on: string }; allocatedAmount?: number; allocatedOn?: string
   visitAmount?: number; introAmount?: number; replacementAmount?: number; move?: boolean
 }
 export type ActionResult = { success: true; data?: Record<string, unknown> }

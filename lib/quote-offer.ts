@@ -43,3 +43,11 @@ export function quoteOffer(draft: QuoteDraft): QuoteOffer {
   })
   return { recurring, quoted: draft.freq, options, sqFt }
 }
+
+export type IntroEligibility = 'eligible' | 'ineligible' | 'review'
+export type IntroChoice = 'intro' | 'standard'
+
+export function introductoryPrice(eligibility: IntroEligibility, choice?: IntroChoice | null): boolean | null {
+  if (eligibility === 'review' && !choice) return null
+  return eligibility !== 'ineligible' && choice !== 'standard'
+}

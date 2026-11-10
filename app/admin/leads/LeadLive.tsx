@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useOptimistic, useRef, useState, 
 import { CALL_OUTCOME, COLUMN_LABEL, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { columnChip, type Chip } from '@/lib/lead-summary'
 import { logCall, type CallDetail } from './board-actions'
+import type { IntroEligibility } from '@/lib/quote-offer'
 import LogCallForm, { type LogCallDraft } from './LogCallForm'
 import Sheet from './Sheet'
 import Icon from '../icons'
@@ -18,8 +19,8 @@ const useLive = () => useContext(LiveContext)!
  * Lead page state that changes before the server answers (PLAN.md 6.2 "Instant feedback"): the
  * column chip moves as soon as a call is logged and snaps back with an error if the save fails.
  */
-export function LeadLive({ leadId, name, column, priceCents, frequency, children }: {
-  leadId: string; name: string; column: BoardColumn; priceCents: number | null; frequency: Frequency | null; children: React.ReactNode
+export function LeadLive({ leadId, name, column, priceCents, frequency, services, introEligibility, children }: {
+  leadId: string; name: string; column: BoardColumn; priceCents: number | null; frequency: Frequency | null; services: string[]; introEligibility: IntroEligibility; children: React.ReactNode
 }) {
   const router = useRouter()
   const [shownColumn, setColumn] = useOptimistic(column)
@@ -61,7 +62,7 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
   return <LiveContext.Provider value={{ column: shownColumn, openLogCall: () => setOpen(true) }}>
     {children}
     <Sheet open={open} onClose={() => setOpen(false)} title={`Log call · ${name}`} className="crm-logcall">
-      <LogCallForm initial={draft} priceCents={priceCents} frequency={frequency} onSave={save} />
+      <LogCallForm initial={draft} priceCents={priceCents} frequency={frequency} services={services} introEligibility={introEligibility} onSave={save} />
     </Sheet>
     {toast && <div className={`crm-toast${toast.error ? ' crm-toast-error' : ''}`} role={toast.error ? 'alert' : 'status'}>
       <span>{toast.text}</span><button type="button" aria-label="Dismiss" onClick={() => setToast(null)}>×</button>

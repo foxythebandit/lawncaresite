@@ -11,8 +11,9 @@ import { revalidatePath } from 'next/cache'
 import { commandError } from '@/lib/crm-jobs'
 import { changeAgreement, changeJob } from '../actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
-import { offerPath, readSentOffer, signOfferProof, verifyOfferProof, type OfferTerms, type SentOffer } from '@/lib/sent-offer'
+import { QUOTE_RETRY_WINDOW_MS, offerPath, readSentOffer, signOfferProof, verifyOfferProof, type OfferTerms, type SentOffer } from '@/lib/sent-offer'
 import { MAP_CID, quoteEmailBreakdown, quoteEmailContent, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
+import { introductoryPrice, type IntroChoice, type IntroEligibility } from '@/lib/quote-offer'
 
 const uuidPattern = /^[0-9a-f-]{36}$/i
 type CommandResult = { success: true; updatedAt: string; warning?: string } | { error: string; conflict?: boolean }
@@ -116,7 +117,8 @@ export async function updateLeadContact(id: string, form: FormData) {
 }
 
 /** Preserve the agreed price as a pending request, then review its first visit. */
-export async function requestStaffQuoteVisit(id: string, expectedUpdatedAt: string, operationId: string, offerId: string | null) {
+export async function requestStaffQuoteVisit(id: string, expectedUpdatedAt: string, operationId: string, offerId: string | null,
+  draftReview?: { introChoice: IntroChoice | null; firstCents: number; standardCents: number }) {
   const user = await requireStaff(`/admin/leads/${id}`)
   if (![id, operationId].every(value => uuidPattern.test(value)) || (offerId && !uuidPattern.test(offerId))) {
     return { error: 'Refresh the lead and review the quote.' }
@@ -141,10 +143,17 @@ export async function requestStaffQuoteVisit(id: string, expectedUpdatedAt: stri
         .eq('outcome', 'contact_address_changed').gt('occurred_at', lead.quote_accepted_at).limit(1)
       if (error || changed?.length) return { error: 'Review the accepted property before booking.' }
     }
-    const breakdown = quoteEmailBreakdown(draft, { when: '', addOns: [] }, false)
+    const eligibility = lead.quote_status === 'accepted' ? 'ineligible' : await leadIntroEligibility(id)
+    const intro = eligibility && introductoryPrice(eligibility, draftReview?.introChoice)
+    const breakdown = quoteEmailBreakdown(draft, { when: '', addOns: [] }, intro === true)
+    if (!eligibility || (breakdown.mowing && intro === null)) return { error: 'Review the introductory price before recording the agreement.' }
     const row = breakdown.rows[0]
+    if (!draftReview || row.perVisitCents !== draftReview.standardCents
+      || (row.firstVisitCents ?? row.perVisitCents) !== draftReview.firstCents) {
+      return { error: 'The first-visit price changed. Refresh and review it again.' }
+    }
     terms = { source: 'staff_agreed_quote', items: row.firstItems, regular_items: row.regularItems,
-      frequency: row.freq, mowing: breakdown.mowing, quote_draft: draft }
+      frequency: row.freq, mowing: breakdown.mowing, quote_draft: draft, intro_choice: draftReview.introChoice }
   }
   const { data, error } = await db.rpc('crm_staff_quote_request', {
     p_lead_id: id, p_expected_updated_at: expectedUpdatedAt, p_operation_id: operationId,
@@ -243,6 +252,11 @@ export async function cancelLeadBooking(id: string, input: {
 
 /** Inline JPEG, kept within the Server Action body limit. */
 const MAX_MAP_IMAGE = 900_000
+async function leadIntroEligibility(id: string): Promise<IntroEligibility | null> {
+  const { data, error } = await adminDb().rpc('crm_intro_lead_eligibility', { p_lead_id: id })
+  return error ? null : data as IntroEligibility | null
+}
+
 type EmailQuoteInput = { to: string; options: QuoteEmailOptions; image: string | null }
 
 async function buildEmailQuote(id: string, version: string, offerId: string, input: EmailQuoteInput) {
@@ -257,7 +271,7 @@ async function buildEmailQuote(id: string, version: string, offerId: string, inp
   }
   const db = adminDb()
   const [{ data: lead }, { data: prior, error: priorError }] = await Promise.all([
-    db.from('leads').select('name,address,quote_draft,quote_status,updated_at,customer_id').eq('id', id).maybeSingle(),
+    db.from('leads').select('name,address,quote_draft,quote_status,updated_at').eq('id', id).maybeSingle(),
     db.from('sent_offers').select('id,accepted_booking_id').eq('lead_id', id).eq('state', 'sent').is('replaced_by', null).order('version', { ascending: false }).limit(1).maybeSingle(),
   ])
   if (priorError || !lead?.quote_draft) return { error: 'Could not load the saved quote.' } as const
@@ -266,20 +280,20 @@ async function buildEmailQuote(id: string, version: string, offerId: string, inp
   if (draft.contactAddressAtReview !== undefined && draft.contactAddressAtReview !== lead.address) {
     return { error: 'The property changed. Save a quote for the current property first.' } as const
   }
-  let introEligible = true
-  if (lead.customer_id) {
-    const { data: eligible, error } = await db.rpc('crm_intro_customer_eligible', { p_customer_id: lead.customer_id })
-    if (error) return { error: 'Could not check the customer’s mowing history.' } as const
-    introEligible = eligible === true
+  const eligibility = await leadIntroEligibility(id)
+  if (!eligibility) return { error: 'Could not check the customer’s mowing history.' } as const
+  const introEligible = introductoryPrice(eligibility, input.options.introChoice)
+  if (introEligible === null && quoteEmailBreakdown(draft, input.options, false).mowing) {
+    return { error: 'Review the introductory price before previewing this quote.' } as const
   }
   const revision: 'replaces' | 'proposal' | undefined = lead.quote_status === 'accepted' || prior?.accepted_booking_id ? 'proposal' : prior ? 'replaces' : undefined
   const bookUrl = lead.address
     ? new URL(offerPath(id, offerId), process.env.CRM_BASE_URL ?? 'https://quietgreen.co').href : null
-  const emailContent = quoteEmailContent({ draft, address: lead.address, options: input.options, bookUrl, hasMap: !!image, introEligible, revision })
+  const emailContent = quoteEmailContent({ draft, address: lead.address, options: input.options, bookUrl, hasMap: !!image, introEligible: introEligible === true, revision })
   if (emailContent.breakdown.rows.some(row => row.perVisitCents <= 0)) return { error: 'Enter a quote price first.' } as const
   const terms: OfferTerms = { ...emailContent.breakdown, draft, address: lead.address,
     firstName: lead.name?.trim().split(/\s+/)[0] || null, message: input.options.message.trim(),
-    mowing: emailContent.breakdown.mowing }
+    mowing: emailContent.breakdown.mowing, introChoice: input.options.introChoice ?? null }
   const message = {
     from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
     subject: emailContent.subject, text: emailContent.text, html: emailContent.html,
@@ -323,8 +337,9 @@ export async function retryLeadQuote(id: string, offerId: string): Promise<Comma
 }
 
 async function deliverQuote(offer: SentOffer, actor: string, firstAttempt = false): Promise<CommandResult> {
+  if (offer.state === 'closed') return { error: 'Staff closed this unconfirmed email attempt after review.' }
   if (offer.state === 'failed') return { error: 'The provider rejected this email. Review the address and prepare a new send.' }
-  if (!offer.sent_at && Date.now() - Date.parse(offer.created_at) >= 23 * 60 * 60 * 1000) {
+  if (!offer.sent_at && Date.now() - Date.parse(offer.created_at) >= QUOTE_RETRY_WINDOW_MS) {
     return { error: 'This attempt is outside the safe retry window. Check the provider’s email history before sending again.' }
   }
   let providerId: string | null = null
@@ -344,7 +359,31 @@ async function deliverQuote(offer: SentOffer, actor: string, firstAttempt = fals
   })
   revalidatePath(`/admin/leads/${offer.lead_id}`)
   if (error || data.state === 'unknown') return { error: 'Email delivery is unconfirmed. Check or retry this same attempt from Sent quotes.' }
+  if (data.state === 'closed') return { error: 'Staff closed this unconfirmed email attempt after review.' }
   if (data.state === 'failed') return { error: 'The provider rejected the email. Check the address and try again.' }
   if (data.state === 'review') return { success: true, updatedAt: data.updated_at, warning: 'Proposal emailed. Staff review is needed because a visit or quote was already accepted.' }
   return { success: true, updatedAt: data.updated_at }
+}
+
+export async function reviewExpiredQuoteEmail(id: string, offerId: string, operationId: string, input: {
+  evidence: string; providerId: string | null; sentAt: string | null
+}): Promise<CommandResult> {
+  const staff = await requireStaff(`/admin/leads/${id}`)
+  if (![id, offerId, operationId].every(value => uuidPattern.test(value))) return { error: 'Refresh and review the email attempt.' }
+  const evidence = input.evidence.trim()
+  const providerId = input.providerId?.trim() ?? null
+  const sentAt = input.sentAt?.trim() ?? null
+  if (!evidence || evidence.length > 1000 || (providerId === null) !== (sentAt === null)
+    || (providerId !== null && (!uuidPattern.test(providerId) || !sentAt
+      || !/([+-]\d{2}:\d{2}|Z)$/i.test(sentAt) || !Number.isFinite(Date.parse(sentAt))))) {
+    return { error: 'Record the provider evidence and the email ID and send time for a verified send.' }
+  }
+  const { data, error } = await adminDb().rpc('crm_review_expired_sent_offer', {
+    p_lead_id: id, p_offer_id: offerId, p_operation_id: operationId,
+    p_evidence: evidence, p_provider_id: providerId, p_sent_at: sentAt, p_actor_email: staff.email ?? 'Staff',
+  })
+  if (error) return { error: commandError(error) }
+  revalidatePath(`/admin/leads/${id}`)
+  return { success: true, updatedAt: data.updated_at,
+    warning: data.state === 'closed' ? 'Email attempt closed. You can preview a fresh quote.' : 'Original email verified.' }
 }

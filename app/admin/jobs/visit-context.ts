@@ -5,6 +5,17 @@ import { adminDb } from '@/lib/supabase/admin'
 import { signMapUrls } from '../signed-maps'
 import { tracedShapes } from '../leads/TracingMap'
 
+export async function nextScheduleDates(ids: string[], today: string) {
+  const dates = new Map<string, string>()
+  if (!ids.length) return dates
+  const { data } = await adminDb().rpc('crm_schedule_next_dates', { p_agreement_ids: ids, p_today: today }).throwOnError()
+  const rows = (data ?? []) as { agreement_id: string; next_on: string | null }[]
+  for (const row of rows) {
+    if (row.next_on) dates.set(row.agreement_id, row.next_on)
+  }
+  return dates
+}
+
 export async function visitScheduleContext(plan: Tables<'recurring_agreements'> | null, from: string) {
   if (!plan) return { reviewReason: null, scheduleSummary: null, simpleShift: false }
   const db = adminDb()

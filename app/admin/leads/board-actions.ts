@@ -7,6 +7,7 @@ import { adminDb } from '@/lib/supabase/admin'
 import { isCallOutcome, isClosedReason, isColumn, isQuotedReason, FREQUENCIES, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { notifyCallLogged } from '@/lib/phone/notify'
 import { callVisitItems } from '@/lib/crm-jobs'
+import { introductoryPrice, type IntroChoice, type IntroEligibility } from '@/lib/quote-offer'
 import { serviceLabels } from '@/lib/lead-labels'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -45,7 +46,7 @@ export async function moveLead(leadId: string, column: string, detail: { closed_
   return { ok: true, column: (data as { board_column: BoardColumn }).board_column }
 }
 
-export type CallDetail = { price_cents?: number; frequency?: Frequency; first_visit_on?: string; check_back_on?: string; reason?: string; note?: string }
+export type CallDetail = { agreed_service?: string; intro_choice?: IntroChoice; price_cents?: number; frequency?: Frequency; first_visit_on?: string; check_back_on?: string; reason?: string; note?: string }
 
 /**
  * Log call sheet v2 (PLAN.md 3.2, S11). The client generates `operationId` once per attempt, so a
@@ -63,26 +64,30 @@ export async function logCall(leadId: string, operationId: string, outcome: stri
   const args = { p_lead_id: leadId, p_operation_id: operationId, p_detail: clean, p_actor_email: actor }
   let result
   if (outcome === 'booked') {
-    const [{ data: lead }, { data: sent, error: sentError }] = await Promise.all([
-      db.from('leads').select('services,customer_id').eq('id', leadId).maybeSingle(),
+    const [{ data: lead }, { data: sent, error: sentError }, { data: introState, error: introError }] = await Promise.all([
+      db.from('leads').select('services').eq('id', leadId).maybeSingle(),
       db.from('sent_offers').select('id,terms').eq('lead_id', leadId).eq('state', 'sent').is('replaced_by', null)
         .order('version', { ascending: false }).limit(1).maybeSingle(),
+      db.rpc('crm_intro_lead_eligibility', { p_lead_id: leadId }),
     ])
-    if (!lead || sentError) return { ok: false, error: 'Could not verify the agreed service' }
+    if (!lead || sentError || introError || !introState) return { ok: false, error: 'Could not verify the agreed service' }
     const freq = clean.frequency as Frequency
     const services = serviceLabels(lead.services)
-    const mowing = services.length === 1 && services[0] === 'Mowing'
-    let introEligible = mowing
-    if (mowing && lead.customer_id) {
-      const { data: eligible, error } = await db.rpc('crm_intro_customer_eligible', { p_customer_id: lead.customer_id })
-      if (error) return { ok: false, error: 'Could not verify the first-mow price' }
-      introEligible = eligible === true
+    const chosen = clean.agreed_service ?? (services.length <= 1 ? services[0] ?? 'Service' : null)
+    if (!chosen || (services.length > 0 && !services.includes(String(chosen)))) {
+      return { ok: false, error: 'Choose the service you agreed to on the call.' }
     }
-    const description = mowing ? 'Lawn care' : services.join(', ').slice(0, 100) || 'Service'
-    const { items, plan } = callVisitItems(Number(clean.price_cents), freq, description, introEligible)
-    const quoted = sent ? (sent.terms as OfferTerms).rows : null
-    const terms = sent && quoted?.length === 1 && quoted[0].freq === freq && quoted[0].perVisitCents === clean.price_cents
-      ? { offer_id: sent.id } : { source: 'phone_call', frequency: freq, mowing, items, regular_items: plan }
+    const mowing = chosen === 'Mowing'
+    const intro = mowing ? introductoryPrice(introState as IntroEligibility, clean.intro_choice as IntroChoice | undefined) : false
+    const description = mowing ? 'Lawn care' : String(chosen).slice(0, 100)
+    const quote = sent ? sent.terms as OfferTerms : null
+    const quoted = quote?.rows.length === 1 ? quote.rows[0] : null
+    const matchesSent = Boolean(quoted && quoted.freq === freq && quoted.perVisitCents === clean.price_cents
+      && (mowing ? quote?.mowing : !quote?.mowing && quoted.regularItems.some(item => item.kind === 'service' && item.description === description)))
+    if (!matchesSent && intro === null) return { ok: false, error: 'Review the introductory price before booking.' }
+    const { items, plan } = callVisitItems(Number(clean.price_cents), freq, description, intro === true)
+    const terms = matchesSent && sent ? { offer_id: sent.id } : { source: 'phone_call', frequency: freq, mowing,
+      items, regular_items: plan, agreed_service: chosen, intro_choice: clean.intro_choice ?? null }
     result = await db.rpc('crm_record_booked_call', { ...args, p_terms: terms })
   } else {
     result = await db.rpc('crm_log_call', { ...args, p_outcome: outcome })
@@ -114,6 +119,10 @@ function cleanDetail(outcome: CallOutcome, detail: CallDetail): Record<string, s
   if (outcome === 'booked') {
     if (!validDay(detail.first_visit_on)) return 'Pick the first visit date'
     out.first_visit_on = detail.first_visit_on
+    if (typeof detail.agreed_service === 'string' && detail.agreed_service.trim().length <= 120) {
+      out.agreed_service = detail.agreed_service.trim()
+    }
+    if (detail.intro_choice === 'intro' || detail.intro_choice === 'standard') out.intro_choice = detail.intro_choice
   }
   if (outcome === 'not_now' || (outcome === 'yes_tbd' && detail.check_back_on)) {
     if (!validDay(detail.check_back_on)) return 'Pick a check-back date'

@@ -1,7 +1,7 @@
 import { FREQUENCIES, FREQUENCY_LABEL } from './lead-board'
 import { centsToAmount, type JobItemInput } from './crm-contracts'
 import { quoteTotalCents, type QuoteDraft } from './quote-draft'
-import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer, type OfferFrequency } from './quote-offer'
+import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer, type IntroChoice, type OfferFrequency } from './quote-offer'
 
 /**
  * The emailed quote: one builder for the staff preview and the send, so the customer gets exactly
@@ -9,7 +9,7 @@ import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer,
  * visit as the website). Each email quotes the saved series with its notes and any add-ons.
  */
 export type QuoteAddOn = { label: string; cents: number }
-export type QuoteEmailOptions = { message: string; when: string; addOns: QuoteAddOn[]; frequency?: OfferFrequency }
+export type QuoteEmailOptions = { message: string; when: string; addOns: QuoteAddOn[]; frequency?: OfferFrequency; introChoice?: IntroChoice | null }
 export type QuoteEmailRow = {
   freq: OfferFrequency; label: string; when: string; detail: string
   mowCents: number; addOnCents: number; perVisitCents: number
@@ -29,6 +29,7 @@ export const emailMoney = (cents: number) => cents % 100 === 0
 export function validateQuoteEmailOptions(options: QuoteEmailOptions): string | null {
   if (!options || typeof options.message !== 'string' || typeof options.when !== 'string' || !Array.isArray(options.addOns)) return 'Refresh and try again.'
   if (!options.message.trim() || options.message.length > 4000) return 'Write a short message to go with the quote.'
+  if (options.introChoice != null && options.introChoice !== 'intro' && options.introChoice !== 'standard') return 'Review the introductory price.'
   if (options.frequency !== undefined && !FREQUENCIES.includes(options.frequency)) return 'Choose how often this service repeats.'
   if (options.when.length > 80) return 'Keep the timing note under 80 characters.'
   if (options.addOns.length > 6 || options.addOns.some(a => typeof a?.label !== 'string' || !a.label.trim() || a.label.length > 60

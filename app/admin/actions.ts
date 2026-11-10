@@ -394,11 +394,12 @@ export async function confirmFirstVisit(input: {
   bookingId: string; expectedUpdatedAt: string; leadVersion: string | null; operationId: string
   date: string; time: string; email: boolean; customerId: string | null; propertyId: string | null
   name: string; address: string; labelId: string | null; frequency: string; reviewedTerms: boolean
+  reviewedPropertyAddress: string | null; reviewedIntro: boolean
 }): Promise<ActionResult> {
   const staff = await requireStaff()
   if (![input.bookingId, input.operationId].every(id => UUID_RE.test(id))
     || [input.customerId, input.propertyId, input.labelId].some(id => id !== null && !UUID_RE.test(id))
-    || !calendarDate(input.date) || input.time.length > 80 || input.name.length > 150 || input.address.length > 500) {
+    || !calendarDate(input.date) || input.time.length > 80 || input.name.length > 150 || input.address.length > 500 || (input.reviewedPropertyAddress?.length ?? 0) > 500) {
     return { success: false, error: 'Review the customer, property, and visit date.' }
   }
   const { data, error } = await getAdmin().rpc('crm_confirm_first_visit', {
@@ -406,7 +407,8 @@ export async function confirmFirstVisit(input: {
     p_lead_version: input.leadVersion, p_operation_id: input.operationId,
     p_request: { date: input.date, arrival: input.time, customer_id: input.customerId, property_id: input.propertyId,
       name: input.name, address: input.address, label_id: input.labelId, frequency: input.frequency,
-      reviewed_terms: input.reviewedTerms, staff_user_id: staff.id },
+      reviewed_terms: input.reviewedTerms, reviewed_property_address: input.reviewedPropertyAddress,
+      reviewed_intro: input.reviewedIntro, staff_user_id: staff.id },
   })
   if (error) return { success: false, error: commandError(error) }
   refreshJobs()
@@ -441,13 +443,13 @@ export type ProjectedVisitEdit =
   | { action: 'skip' | 'cancel' | 'payment_link' | 'reminder' }
 
 export async function editProjectedVisit(input: ProjectedVisitEdit & {
-  agreementId: string; revisionId: string; on: string; operationId: string
+  agreementId: string; revisionId: string; on: string; operationId: string; expectedItems?: JobLine[]
 }): Promise<ActionResult> {
   await requireStaff()
   if (![input.agreementId, input.revisionId, input.operationId].every(id => UUID_RE.test(id)) || !calendarDate(input.on)) {
     return { success: false, error: 'Reopen the calendar and choose a visit.' }
   }
-  let payload: Json = {}
+  let payload: Record<string, Json> = {}
   try {
     switch (input.action) {
       case 'reschedule':
@@ -488,6 +490,7 @@ export async function editProjectedVisit(input: ProjectedVisitEdit & {
       default:
         throw new Error('Choose a visit action.')
     }
+    if (input.expectedItems) payload.expected_items = cleanJobLines(input.expectedItems)
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Review the visit details.' }
   }

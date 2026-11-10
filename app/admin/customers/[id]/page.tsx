@@ -8,6 +8,7 @@ import { definitionFrom, scheduleLabel, serviceEditorHref } from '@/lib/service-
 import { visitService } from '@/lib/calendar-data'
 import { requireStaff } from '@/lib/staff'
 import Icon from '../../icons'
+import { nextScheduleDates } from '../../jobs/visit-context'
 import CustomerActions from './CustomerActions'
 import UpcomingVisits, { type UpcomingVisit } from './UpcomingVisits'
 
@@ -47,8 +48,12 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const openJobs = jobs.filter(isOpen).sort((a, b) => (visitDate(a) ?? '').localeCompare(visitDate(b) ?? ''))
   const pastJobs = jobs.filter(job => !isOpen(job))
     .sort((a, b) => (visitDate(b) ?? b.created_at).localeCompare(visitDate(a) ?? a.created_at))
-  const revisions = agreements.length ? await adminDb().from('agreement_schedule_revisions')
-    .select('agreement_id,definition').in('agreement_id', agreements.map(row => row.id)).is('ends_before', null).throwOnError() : { data: [] }
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
+  const [revisions, nextDates] = await Promise.all([
+    agreements.length ? adminDb().from('agreement_schedule_revisions')
+      .select('agreement_id,definition').in('agreement_id', agreements.map(row => row.id)).is('ends_before', null).throwOnError() : { data: [] },
+    nextScheduleDates(agreements.filter(agreement => agreement.status === 'active').map(agreement => agreement.id), today),
+  ])
   const definitions = new Map((revisions.data ?? []).map(revision => [revision.agreement_id, definitionFrom(revision.definition)]))
   const labels = new Map(agreements.map(agreement => [agreement.id, agreement.service_labels?.name]))
   const serviceIds = jobs.map(job => job.service_label_id).filter((id): id is string => Boolean(id))
@@ -72,8 +77,6 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     service: namesByLabel.get(job.service_label_id ?? '') ?? byVisit.get(job.id) ?? labels.get(job.agreement_id ?? '') ?? 'Service visit',
     needsPlan: needsPlan(job),
   }))
-  const nextPlanVisit = (agreementId: string) => openJobs.find(job => job.agreement_id === agreementId)
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
 
   const nameParts: string[] = String(customer.name ?? '').trim().split(/\s+/).filter(Boolean)
   const initials = nameParts.map(part => part[0]).filter((_, i) => i === 0 || i === nameParts.length - 1).join('').toUpperCase() || '?'
@@ -96,7 +99,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
     <section className="crm-panel service-customer-schedules" aria-label="Service schedules">
       <h2>Service schedules ({agreements.length})</h2>
       {agreements.length ? agreements.map(agreement => {
-        const next = nextPlanVisit(agreement.id)
+        const next = nextDates.get(agreement.id)
+        const overdue = openJobs.find(job => job.agreement_id === agreement.id && job.status === 'confirmed'
+          && job.confirmed_date && job.confirmed_date < today)
         const awaitingFirst = agreement.status === 'active' && !agreement.generation_starts_on && !agreement.schedule_review_reason
         const pendingFirst = awaitingFirst && openJobs.find(job => job.agreement_id === agreement.id
           && job.occurrence_on === agreement.anchor_on && job.status === 'pending')
@@ -109,7 +114,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <span>{addressById.get(agreement.property_id) ?? 'Property'} · {scheduleLabel(definitions.get(agreement.id) ?? null, agreement)}</span>
             <span>{agreement.schedule_review_reason ?? (agreement.status === 'paused' ? 'Paused' : agreement.status === 'ended' ? 'Ended'
               : awaitingFirst ? 'Awaiting first-visit confirmation'
-              : next ? `Next ${dateText(visitDate(next))}${visitDate(next)! < today ? ' · Overdue' : ''}` : 'No visits in the current window')}</span>
+              : next ? `Next ${dateText(next)}` : overdue ? `Overdue · ${dateText(overdue.confirmed_date)}` : 'No upcoming date')}</span>
           </div>
           {pendingFirst && <Link className="crm-button crm-button-sm" href={`/admin/jobs/${pendingFirst.id}`}>Confirm first visit</Link>}
           {agreement.status !== 'ended' && !awaitingFirst && <div className="work-visit-actions">
