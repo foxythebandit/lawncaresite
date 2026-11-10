@@ -131,6 +131,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const mapUrl = await signedMapUrl(lead.map_screenshot_url ?? (bookings ?? []).map(b => b.map_screenshot_url).filter(Boolean).pop())
   const shapes = tracedShapes(lead.lawn_tracing, lead.quote_draft?.sections)
   const price = s.price
+  const showFirstPrice = (price?.source === 'website' && lead.website_first_visit_cents != null)
+    || (introEligibility === 'eligible' && lead.quote_status !== 'accepted')
   const otherPrices = allPrices(lead as SummaryLead, (bookings ?? []) as SummaryBooking[]).others
   const addonKeys = Object.keys(asObject(live?.addon_interest ?? answers.addon_interest))
   const chip = (key: string) => s.chips.find(c => c.key === key)
@@ -223,7 +225,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                   && <p>{money(actual.perVisitCents)} {actual.freq === 'onetime' ? 'standard price' : 'per visit after the first'}</p>}
               </> : hasSentTerms ? <p>Review the original terms below.</p>
                 : <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>}
-              {price && !separateCalculator && <PriceSteps price={price} />}
+              {price && !separateCalculator && <PriceSteps price={price} firstVisit={showFirstPrice} />}
               <Rows rows={[
                 { label: 'Source', value: actualSource
                   ?? (chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null) },
