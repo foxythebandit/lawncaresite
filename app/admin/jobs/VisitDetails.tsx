@@ -274,8 +274,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   }
 
   const edit = (label: string, target: Panel, primary = false, icon?: 'check' | 'calendar' | 'note') =>
-    <button type="button" className={`crm-button${primary && !panel ? ' crm-button-primary' : ''}`} disabled={busy}
-      onClick={event => open(target, event.currentTarget)}>{icon && <Icon name={icon} size={16} />}{label}</button>
+    <button type="button" className={target === 'price' ? 'work-visit-price-edit' : `crm-button${primary && !panel ? ' crm-button-primary' : ''}`}
+      disabled={busy} hidden={target === 'price' && focusedEdit} onClick={event => open(target, event.currentTarget)}>{icon && <Icon name={icon} size={16} />}{label}</button>
 
   const btn = (label: string, value?: string, primary = true) =>
     <button type="submit" value={value} className={`crm-button${primary ? ' crm-button-primary' : ''}`} disabled={busy}>{busy ? 'Saving…' : label}</button>
@@ -299,8 +299,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         <div><dt>{pending ? 'Preferred date' : 'Visit date'}</dt><dd>{visitDate ? dateText(visitDate) : 'Not set'}</dd></div>
         <div><dt>Arrival</dt><dd>{visitTime(pending ? booking.preferred_time : booking.confirmed_time)}</dd></div>
         <div><dt>Visit price</dt><dd><span>{(booking.job_total ?? booking.first_visit_price ?? booking.price_per_visit) == null ? 'Not set' : formatMoney(total)}</span>
-          <button type="button" className="work-visit-price-edit" aria-label={current ? 'Edit price' : 'View price items'}
-            hidden={focusedEdit} disabled={busy} onClick={event => open('price', event.currentTarget)}>{current ? 'Edit price' : 'View items'}</button>
+          {edit(current ? 'Edit price' : 'View items', 'price')}
         </dd></div>
       </dl>
       {booking.completed_at && booking.status === 'completed' && <p className="crm-muted">Completed {dateText(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date(booking.completed_at)))}.</p>}
