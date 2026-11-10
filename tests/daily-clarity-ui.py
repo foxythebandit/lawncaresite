@@ -73,9 +73,10 @@ def week_columns(page):
     assert week.evaluate("(grid) => grid.scrollWidth === grid.clientWidth && grid.scrollLeft === 0")
     assert columns.evaluate_all("""(days) => {
         const grid = days[0].parentElement.getBoundingClientRect()
+        const firstTop = days[0].getBoundingClientRect().top
         return days.every(day => {
             const box = day.getBoundingClientRect()
-            return box.left >= grid.left && box.right <= grid.right + 1 && box.top === grid.top
+            return box.left >= grid.left && box.right <= grid.right + 1 && box.top === firstTop
         })
     }""")
     return columns
