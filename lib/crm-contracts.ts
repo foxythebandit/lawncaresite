@@ -49,3 +49,14 @@ export function centsToAmount(cents: number): MoneyDecimal {
   const abs = Math.abs(cents)
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
 }
+
+export type FirstVisitTerms = {
+  first_items: JobItemInput[] | null
+  first_total: number | null
+  regular_total: number | null
+  frequency: 'onetime' | 'weekly' | 'biweekly' | 'monthly'
+  locked: boolean
+  mowing: boolean
+  needs_review: boolean
+  multiple: boolean
+}

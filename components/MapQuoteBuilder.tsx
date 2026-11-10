@@ -1247,11 +1247,11 @@ export default function MapQuoteBuilder({ staffQuote, staffTracing }: {
               onFreqChange: value => setFreq(value as Frequency), calculatedCents: Math.round(ongoingPrice * 100), overridePrice, onOverrideChange: setOverridePrice }} />
           <label>Notes for this quote<textarea aria-label="Quote notes" value={staffNotes} onChange={e => setStaffNotes(e.target.value)} maxLength={4000} placeholder="Anything the price depends on" /></label>
           <div className="staff-quote-actions">
-            <button disabled={saving || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(false)}>Save</button>
-            <button disabled={saving || (isDrawing && includeMowing) || staffQuote.quote_status === 'accepted'} onClick={() => void saveStaffDraft(true)}>Save as quoted</button>
+            <button disabled={saving} onClick={() => void saveStaffDraft(false)}>Save</button>
+            <button disabled={saving || (isDrawing && includeMowing)} onClick={() => void saveStaffDraft(true)}>Save as quoted</button>
           </div>
           <p className="staff-quote-hint">{isDrawing && includeMowing ? 'Finish the lawn trace on the map (or uncheck lawn care) before saving as quoted.' : '“Save as quoted” means you’ve given (or are about to give) the customer this price.'}</p>
-          {staffQuote.quote_status === 'accepted' && <p>This price was accepted and is locked.</p>}
+          {staffQuote.quote_status === 'accepted' && <p>Accepted terms are saved. Edits prepare a new draft.</p>}
           <p role="status">{saveMessage}</p>
         </div>}
         {staffQuote && <div className="crm-map-heading"><span>Property map</span><button type="button" className="crm-map-toggle" onClick={() => setShowStaffMap(open => !open)}>{showStaffMap ? 'Hide map' : 'Open map'}</button></div>}

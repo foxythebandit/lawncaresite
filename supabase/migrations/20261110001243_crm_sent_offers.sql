@@ -191,19 +191,22 @@ begin
       raise exception 'There is already a visit request. Contact us to review this quote.' using errcode = 'PT409';
     end if;
     v_address := o.terms->>'address';
-    v_row := o.terms->'rows'->0;
-    if jsonb_array_length(o.terms->'rows') <> 1 or v_row->>'freq' is distinct from p_request->>'frequency' then
-      raise exception 'Choose the quoted service' using errcode = '22023';
+    if jsonb_array_length(o.terms->'rows') = 1 then
+      v_row := o.terms->'rows'->0;
+      if v_row->>'freq' is distinct from p_request->>'frequency' then
+        raise exception 'Choose the quoted service' using errcode = '22023';
+      end if;
+      v_items := v_row->'firstItems';
+      v_total := public.crm_validate_items(v_items);
+      v_regular := public.crm_validate_items(v_row->'regularItems');
+      v_frequency := v_row->>'freq';
+      v_one_time := v_frequency = 'onetime';
+    elsif p_request->>'frequency' is not null then
+      raise exception 'This quote needs staff review before choosing the first service' using errcode = '22023';
     end if;
-    v_one_time := v_row->>'freq' = 'onetime';
-    if v_row is null then raise exception 'Choose a quoted option' using errcode = '22023'; end if;
-    v_items := v_row->'firstItems';
-    v_total := public.crm_validate_items(v_items);
-    v_regular := public.crm_validate_items(v_row->'regularItems');
-    v_frequency := v_row->>'freq';
-    v_snapshot := jsonb_build_object('source','sent_offer','offer_id',o.id,'version',o.version,
-      'mode',o.terms->>'mode','rows',o.terms->'rows',
-      'mowing',o.terms->'mowing','address',v_address,'items',v_items,'total',v_total,'currency','USD','accepted_at',now());
+    v_snapshot := jsonb_build_object('source',case when v_row is null then 'sent_offer_review' else 'sent_offer' end,
+      'offer_id',o.id,'version',o.version,'rows',o.terms->'rows','mowing',o.terms->'mowing',
+      'address',v_address,'items',v_items,'total',v_total,'currency','USD','accepted_at',now());
   else
     -- An older URL can continue the inquiry. A later mutable draft is not evidence of sent terms.
     select * into b from public.bookings where lead_id = l.id
@@ -212,7 +215,8 @@ begin
       return jsonb_build_object('lead_id',l.id,'booking_id',b.id,'duplicate',true);
     end if;
     v_address := l.address;
-    v_snapshot := jsonb_build_object('source','legacy_quote_review','address',v_address);
+    v_snapshot := jsonb_strip_nulls(jsonb_build_object('source','legacy_quote_review','address',v_address,
+      'historical_acceptance',l.accepted_quote_snapshot));
   end if;
   if nullif(btrim(v_address),'') is null then
     raise exception 'Please contact us to verify the property' using errcode = '22023';

@@ -519,6 +519,9 @@ isOneToOne: false
 "crm_claim_lead":
 { Args: { "p_call_sid": string,"p_lead_id": string,"p_staff_name": string,"p_staff_phone": string }; Returns: Json
                            },
+"crm_confirm_first_visit":
+{ Args: { "p_booking_id": string,"p_expected_updated_at": string,"p_lead_version": string,"p_operation_id": string,"p_request": Json }; Returns: Json
+                           },
 "crm_create_call_job":
 { Args: { "p_items": Json,"p_job": Json,"p_lead_id": string,"p_operation_id": string }; Returns: Json
                            },
@@ -530,6 +533,9 @@ isOneToOne: false
                            },
 "crm_finish_sent_offer":
 { Args: { "p_actor_email": string,"p_lead_id": string,"p_offer_id": string,"p_provider_id": string,"p_state": string }; Returns: Json
+                           },
+"crm_first_visit_terms":
+{ Args: { "p_booking_id": string }; Returns: Json
                            },
 "crm_generate_next_job":
 { Args: { "p_after": string,"p_booking_id": string,"p_force_on"?: string }; Returns: string
@@ -578,6 +584,9 @@ isOneToOne: false
 "crm_reconcile_schedules":
 { Args: { "p_today"?: string }; Returns: number
                            },
+"crm_record_booked_call":
+{ Args: { "p_actor_email": string,"p_detail": Json,"p_lead_id": string,"p_operation_id": string,"p_terms": Json }; Returns: Json
+                           },
 "crm_replace_job_items":
 { Args: { "p_booking_id": string,"p_expected_updated_at": string,"p_items": Json,"p_operation_id": string }; Returns: Json
                            },
@@ -624,6 +633,9 @@ isOneToOne: false
 "crm_short_code":
 { Args: Record<PropertyKey, never>; Returns: string
                            },
+"crm_staff_quote_request":
+{ Args: { "p_actor_email": string,"p_expected_updated_at": string,"p_lead_id": string,"p_operation_id": string,"p_terms": Json }; Returns: Json
+                           },
 "crm_start_agreement":
 { Args: { "p_booking_id": string,"p_config": Json,"p_expected_updated_at": string,"p_operation_id": string }; Returns: Json
                            },
@@ -632,6 +644,9 @@ isOneToOne: false
                            },
 "crm_validate_schedule":
 { Args: { "p_definition": Json }; Returns: boolean
+                           },
+"crm_visit_items_match":
+{ Args: { "p_booking_id": string,"p_items": Json }; Returns: boolean
                            },
 "crm_write_schedule_revision":
 { Args: { "p_agreement_id": string,"p_definition": Json,"p_from": string,"p_items": Json,"p_time": string }; Returns: string

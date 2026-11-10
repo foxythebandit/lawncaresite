@@ -11,52 +11,50 @@ const draft = {
   jobLatLng: null, freq: 'weekly', lastMow: 'thisweek', calculatedPrice: 68, calculatedFirstVisit: 48, overridePrice: null,
   includeMowing: true, manualLines: [], discountCents: 0, totalCents: 6800, notes: '',
 } as unknown as QuoteDraft
-const seasonal: QuoteEmailOptions = {
+const quote: QuoteEmailOptions = {
   message: 'Hi Sam,\nHere is your quote.',
-  plans: [{ freq: 'biweekly', when: 'Early summer on' }, { freq: 'weekly', when: 'Spring to early summer' }],
+  when: 'Start after the leaves clear',
   addOns: [{ label: 'Bagging clippings', cents: 1000 }],
 }
 
-test('seasonal plan: weekly then bi-weekly, bagging per visit, first visit 30% off mowing only', () => {
-  const b = quoteEmailBreakdown(draft, seasonal)
+test('one reviewed weekly price, bagging per visit, first visit 30% off mowing only', () => {
+  const b = quoteEmailBreakdown(draft, quote)
   assert.equal(b.sqFt, 6300)
   assert.deepEqual(b.rows.map(r => [r.freq, r.when, r.mowCents, r.perVisitCents, r.firstVisitCents]), [
-    ['weekly', 'Spring to early summer', 6800, 7800, 4800 + 1000],
-    ['biweekly', 'Early summer on', 7200, 8200, null],
+    ['weekly', 'Start after the leaves clear', 6800, 7800, 4800 + 1000],
   ])
 })
 
-test('email shows the map inline, lawn size, both plans, add-on and first visit; preview equals send', () => {
-  const email = quoteEmailContent({ draft, address: draft.address, options: seasonal, bookUrl: 'https://quietgreen.co/quote/t', hasMap: true })
-  assert.equal(email.subject, 'Your QuietGreen mowing quote: weekly $78/visit, bi-weekly $82/visit')
+test('email shows the map inline, lawn size, the series, add-on and first visit; preview equals send', () => {
+  const email = quoteEmailContent({ draft, address: draft.address, options: quote, bookUrl: 'https://quietgreen.co/quote/t', hasMap: true })
+  assert.equal(email.subject, 'Your QuietGreen mowing quote: weekly $78/visit')
   assert.ok(email.html.includes(`src="cid:${MAP_CID}"`))
-  for (const part of ['6,300 sq ft', 'Weekly mowing · Spring to early summer', 'Mowing (15% off)', 'Bagging clippings', '+$10', '$78', '$82',
+  for (const part of ['6,300 sq ft', 'Weekly mowing · Start after the leaves clear', 'Mowing (15% off)', 'Bagging clippings', '+$10', '$78',
     'First visit: $58 (30% off mowing, bagging clippings at full price)', 'https://quietgreen.co/quote/t']) assert.ok(email.html.includes(part), part)
-  assert.match(email.text, /Bi-weekly mowing · Early summer on\n  Mowing \(10% off\): \$72\n  Bagging clippings: \+\$10\n  Per visit: \$82/)
-  assert.deepEqual(quoteEmailContent({ draft, address: draft.address, options: seasonal, bookUrl: 'https://quietgreen.co/quote/t', hasMap: true }), email)
-  assert.equal(quoteEmailSummary(email.breakdown), 'Weekly $78/visit (Spring to early summer), Bi-weekly $82/visit (Early summer on), incl. bagging clippings +$10; first visit $58')
+  assert.match(email.text, /Weekly mowing · Start after the leaves clear\n  Mowing \(15% off\): \$68\n  Bagging clippings: \+\$10\n  Per visit: \$78/)
+  assert.deepEqual(quoteEmailContent({ draft, address: draft.address, options: quote, bookUrl: 'https://quietgreen.co/quote/t', hasMap: true }), email)
+  assert.equal(quoteEmailSummary(email.breakdown), 'Weekly $78/visit (Start after the leaves clear), incl. bagging clippings +$10; first visit $58')
 })
 
 test('no map: no image tag; customer text is escaped', () => {
-  const email = quoteEmailContent({ draft, address: '<b>x</b>', options: { ...seasonal, message: '<script>' }, bookUrl: null, hasMap: false })
+  const email = quoteEmailContent({ draft, address: '<b>x</b>', options: { ...quote, message: '<script>' }, bookUrl: null, hasMap: false })
   assert.ok(!email.html.includes('cid:'))
   assert.ok(!email.html.includes('<script>') && email.html.includes('&lt;script&gt;') && email.html.includes('&lt;b&gt;x'))
 })
 
 test('fixed-price quote stays one total with add-ons added', () => {
   const job = { ...draft, includeMowing: false, manualLines: [{ id: 'l', service: 'Cleanup', amountCents: 25000 }], totalCents: 25000 } as QuoteDraft
-  const b = quoteEmailBreakdown(job, seasonal)
+  const b = quoteEmailBreakdown(job, quote)
   assert.equal(b.recurring, false)
   assert.deepEqual(b.rows.map(r => [r.perVisitCents, r.firstVisitCents]), [[26000, null]])
 })
 
 test('options are validated', () => {
-  assert.equal(validateQuoteEmailOptions(seasonal), null)
-  assert.ok(validateQuoteEmailOptions({ ...seasonal, message: ' ' }))
-  assert.ok(validateQuoteEmailOptions({ ...seasonal, addOns: [{ label: 'Bagging', cents: 0 }] }))
-  assert.ok(validateQuoteEmailOptions({ ...seasonal, addOns: [{ label: '', cents: 500 }] }))
-  assert.ok(validateQuoteEmailOptions({ ...seasonal, plans: [{ freq: 'weekly', when: '' }, { freq: 'weekly', when: '' }] }))
-  assert.ok(validateQuoteEmailOptions({ ...seasonal, plans: [{ freq: 'daily' as never, when: '' }] }))
+  assert.equal(validateQuoteEmailOptions(quote), null)
+  assert.ok(validateQuoteEmailOptions({ ...quote, message: ' ' }))
+  assert.ok(validateQuoteEmailOptions({ ...quote, addOns: [{ label: 'Bagging', cents: 0 }] }))
+  assert.ok(validateQuoteEmailOptions({ ...quote, addOns: [{ label: '', cents: 500 }] }))
+  assert.ok(validateQuoteEmailOptions({ ...quote, when: 'x'.repeat(81) }))
 })
 
 test('map picture view fits the whole tracing with a margin', () => {
@@ -70,7 +68,7 @@ test('map picture view fits the whole tracing with a margin', () => {
 
 test('an introductory one-time mow preserves cents and charges add-ons at their quoted price', () => {
   const job = { ...draft, freq: 'onetime', calculatedPrice: 83.55, totalCents: 8355 } as QuoteDraft
-  const options = { ...seasonal, plans: [], addOns: [{ label: 'Bagging', cents: 1025 }] }
+  const options = { ...quote, when: '', addOns: [{ label: 'Bagging', cents: 1025 }] }
   const [row] = quoteEmailBreakdown(job, options).rows
   assert.equal(row.perVisitCents, 9380)
   assert.equal(row.firstVisitCents, 6874)

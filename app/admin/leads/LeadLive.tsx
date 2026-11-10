@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { createContext, useContext, useEffect, useOptimistic, useRef, useState, useTransition } from 'react'
 import { CALL_OUTCOME, COLUMN_LABEL, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { columnChip, type Chip } from '@/lib/lead-summary'
@@ -20,6 +21,7 @@ const useLive = () => useContext(LiveContext)!
 export function LeadLive({ leadId, name, column, priceCents, frequency, children }: {
   leadId: string; name: string; column: BoardColumn; priceCents: number | null; frequency: Frequency | null; children: React.ReactNode
 }) {
+  const router = useRouter()
   const [shownColumn, setColumn] = useOptimistic(column)
   const [, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
@@ -46,7 +48,10 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
       const result = await logCall(leadId, operationId, outcome, detail).catch(() => ({ ok: false as const, error: 'Not saved' }))
       if (result.ok) {
         operation.current = null; setDraft(null)
-        if ('warning' in result && result.warning) setToast({ text: result.warning, error: true })
+        if (result.bookingId && result.requestPending) {
+          setToast({ text: 'Call saved. Review and confirm the first visit.' })
+          router.push(`/admin/jobs/${result.bookingId}`)
+        }
       }
       else { setToast({ text: `Call not saved · ${result.error}`, error: true }); setOpen(true) }
     })

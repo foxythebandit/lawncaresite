@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Tables } from '@/supabase/database.types'
-import { addVisitToPlan, changeJob, createPaymentLink, editProjectedVisit, linkJobIdentity, markComplete, recordManualPayment, reviewPlanMove, saveJobItems, scheduleJobAndEmail, updateContactDetails, updateNotes, type ProjectedVisitEdit } from '../actions'
+import { addVisitToPlan, changeJob, confirmFirstVisit, createPaymentLink, editProjectedVisit, linkJobIdentity, markComplete, recordManualPayment, reviewPlanMove, saveJobItems, scheduleJobAndEmail, updateContactDetails, updateNotes, type ProjectedVisitEdit } from '../actions'
+import type { FirstVisitTerms } from '@/lib/crm-contracts'
+import { frequencyLabel } from '@/lib/quote-offer'
 import { formatPhone } from '@/lib/format-phone'
 import { customerDisplayName } from '@/lib/lead-labels'
 import { dateLabel, visitHref, visitStatus, visitTime } from '@/lib/calendar-view'
@@ -67,9 +69,10 @@ function addonDetails(addons: Record<string, unknown>) {
 }
 
 export default function VisitDetails({ bookingId, occurrence, booking, today, back, agreement, reviewReason, scheduleSummary, simpleShift, serviceLabel, customers, properties, candidates, items, payments,
-  quotedVisit, mapUrl, shapes, emailConfigured }: {
+  quotedVisit, mapUrl, shapes, emailConfigured, firstReview }: {
   booking: Booking; today: string; back: string; agreement: Agreement | null; reviewReason: string | null; scheduleSummary: string | null; simpleShift: boolean; serviceLabel?: string
   customers: Customer[]; properties: Property[]; candidates: Candidate[]; items: JobLine[]; payments: Payment[]
+  firstReview?: { terms: FirstVisitTerms; leadVersion: string | null; customerId: string | null; propertyId: string | null; labels: { id: string; name: string }[] }
   quotedVisit: boolean; mapUrl: string | null; shapes: Shape[]; emailConfigured: boolean
 } & Target) {
   const router = useRouter()
@@ -123,7 +126,12 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     versions.current = { visit: booking.updated_at, agreement: agreement?.updated_at }
     setError('')
     setMessage('')
-    if (next === 'date') { setWholeMove(false); setMovePreview(null) }
+    if (next === 'date') {
+      setWholeMove(false)
+      setMovePreview(null)
+      setSelectedCustomer(firstReview?.customerId ?? 'new')
+      setSelectedProperty(firstReview?.propertyId ?? 'new')
+    }
     if (next === 'price') setLines(items.length ? items : [{ kind: 'service', description: 'Service', amount: total.toFixed(2) }])
     if (next === 'link') { setSelectedCustomer('new'); setSelectedProperty('new') }
     setPanel(next)
@@ -181,7 +189,13 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       const date = field(form, 'date')
       const time = field(form, 'time').trim()
       const email = form.has('email')
-      if (wholeMove && agreement) {
+      if (pending && bookingId && firstReview) {
+        run(key, operationId => confirmFirstVisit({ ...command(bookingId, operationId), leadVersion: firstReview.leadVersion,
+          date, time, email, customerId: selectedCustomer === 'new' ? null : selectedCustomer,
+          propertyId: selectedProperty === 'new' ? null : selectedProperty, name: field(form, 'name'), address: field(form, 'address'),
+          labelId: field(form, 'label') || null, frequency: firstReview.terms.locked ? firstReview.terms.frequency : field(form, 'frequency'),
+          reviewedTerms: form.has('reviewed-terms') }), 'Visit confirmed.')
+      } else if (wholeMove && agreement) {
         const request = { agreementId: agreement.id, date, time, email,
           ...(occurrence ? { revisionId: occurrence.revisionId, on: occurrence.on } : { bookingId, version: versions.current.visit }) }
         if (movePreview?.key === key) {
@@ -202,8 +216,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         }
       } else {
         runVisit(key, { action: 'reschedule', date, time, email }, (id, op) =>
-          (email ? scheduleJobAndEmail : changeJob)({ ...command(id, op), action: pending ? 'confirm' : 'reschedule', date, time }),
-        pending ? 'Visit confirmed.' : 'Visit rescheduled.')
+          (email ? scheduleJobAndEmail : changeJob)({ ...command(id, op), action: 'reschedule', date, time }),
+        'Visit rescheduled.')
       }
     } else if (panel === 'complete') {
       const date = field(form, 'date')
@@ -277,7 +291,43 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       {error && <p className="work-visit-error" role="alert">{error}</p>}
       <form key={panel} onSubmit={save} onChange={panel === 'date' ? () => setMovePreview(null) : undefined}>
         {panel === 'date' && <>
-          {pending && <p className="crm-muted">Review the customer’s preferred date before confirming the visit.</p>}
+          {firstReview && pending && <>
+            <p className="crm-muted">Review the identity, agreed work, and preferred date. Confirming saves them together.</p>
+            {firstReview.terms.multiple && <p role="alert">This quote has more than one promised service. Review all original terms before confirming a series.</p>}
+            {firstReview.terms.first_total == null && !firstReview.terms.multiple && <div className="work-visit-actions">{edit('Set agreed items and price', 'price')}</div>}
+            {firstReview.terms.first_items && <ul className="work-visit-records">
+              {firstReview.terms.first_items.map((item, index) => <li key={index}>{item.description}<strong>{formatMoney(item.amount)}</strong></li>)}
+            </ul>}
+            {firstReview.terms.first_total != null && <p><strong>First visit {formatMoney(firstReview.terms.first_total)}</strong>
+              {firstReview.terms.frequency !== 'onetime' && <> · {frequencyLabel(firstReview.terms.frequency)} {formatMoney(firstReview.terms.regular_total)} per visit</>}
+            </p>}
+            <div className="work-visit-fields">
+              {booking.customer_id ? <p>Linked customer · {name}</p> : <label className="crm-field">Customer<select value={selectedCustomer}
+                onChange={event => { setSelectedCustomer(event.target.value); setSelectedProperty('new') }}>
+                <option value="new">Create new customer</option>
+                {samePhone.map(c => <option key={c.id} value={c.id}>Possible match · {customerDisplayName(c)} · {formatPhone(c.phone)}</option>)}
+                {customers.filter(c => !samePhone.includes(c)).map(c => <option key={c.id} value={c.id}>{customerDisplayName(c)} · {formatPhone(c.phone)}</option>)}
+              </select></label>}
+              {selectedCustomer === 'new' && <label className="crm-field">New customer name<input name="name" maxLength={150} defaultValue={name} required /></label>}
+              {booking.property_id ? <p>Linked property · {booking.address}</p> : selectedCustomer !== 'new' && <label className="crm-field">Property<select value={selectedProperty}
+                onChange={event => setSelectedProperty(event.target.value)}>
+                <option value="new">Create new property</option>
+                {properties.filter(p => p.customer_id === selectedCustomer).map(p => <option key={p.id} value={p.id}>{p.address}</option>)}
+              </select></label>}
+              {selectedProperty === 'new' && <label className="crm-field">Reviewed property address<input name="address" maxLength={500}
+                defaultValue={booking.address} readOnly={firstReview.terms.locked} required /></label>}
+              {!firstReview.terms.mowing && !booking.service_label_id && <label className="crm-field">Service label<select name="label">
+                <option value="">Keep visit description</option>
+                {firstReview.labels.map(label => <option key={label.id} value={label.id}>{label.name}</option>)}
+              </select></label>}
+              {!firstReview.terms.locked && <label className="crm-field">Repeat<select name="frequency" defaultValue={firstReview.terms.frequency}>
+                <option value="onetime">Single visit</option><option value="weekly">Weekly</option>
+                <option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
+              </select></label>}
+            </div>
+            {firstReview.terms.needs_review && <label className="crm-check"><input type="checkbox" name="reviewed-terms" required />
+              I reviewed the original quote and agreed this service with the customer.</label>}
+          </>}
           <div className="work-visit-fields">
             <label className="crm-field">Visit date<input name="date" type="date" required disabled={busy} defaultValue={visitDate ?? ''} /></label>
             <label className="crm-field">Arrival time or window<input name="time" maxLength={80} disabled={busy} defaultValue={(pending ? booking.preferred_time : booking.confirmed_time) ?? ''} placeholder="Morning, Afternoon, or HH:MM" /></label>
@@ -287,7 +337,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           {hasEmail && <label className="crm-check"><input type="checkbox" name="email" disabled={busy} />Email this date to the customer</label>}
           {movePreview && <ServiceImpactPreview preview={movePreview.preview} moving />}
           <div className="work-visit-actions">
-            <button type="submit" className="crm-button crm-button-primary" disabled={busy || Boolean(movePreview?.preview.conflicts.length)}>
+            <button type="submit" className="crm-button crm-button-primary" disabled={busy || Boolean(movePreview?.preview.conflicts.length) || (pending && (!firstReview || firstReview.terms.multiple || firstReview.terms.first_total == null))}>
               {busy ? 'Working…' : pending ? 'Confirm visit' : wholeMove ? movePreview ? 'Save reviewed dates' : 'Review dates' : 'Save visit date'}
             </button>
           </div>

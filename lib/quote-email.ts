@@ -5,15 +5,14 @@ import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer,
 /**
  * The emailed quote: one builder for the staff preview and the send, so the customer gets exactly
  * what staff saw. Mowing prices come from the saved quote (same frequency discounts and 30% first
- * visit as the website); staff only choose which plans to show, when each runs, and per-visit add-ons.
+ * visit as the website). Each email quotes the saved series with its notes and any add-ons.
  */
-export type QuotePlanPart = { freq: OfferFrequency; when: string }
 export type QuoteAddOn = { label: string; cents: number }
-export type QuoteEmailOptions = { message: string; plans: QuotePlanPart[]; addOns: QuoteAddOn[] }
+export type QuoteEmailOptions = { message: string; when: string; addOns: QuoteAddOn[] }
 export type QuoteEmailRow = {
   freq: OfferFrequency; label: string; when: string; detail: string
   mowCents: number; addOnCents: number; perVisitCents: number
-  /** Only the plan that starts gets the first-visit price. */
+  /** First-visit amount, including all quoted items. */
   firstVisitCents: number | null
   regularItems: JobItemInput[]
   firstItems: JobItemInput[]
@@ -22,23 +21,20 @@ export type QuoteEmailBreakdown = { sqFt: number; recurring: boolean; rows: Quot
 
 /** Inline attachment id the HTML points at; the preview swaps it for the image itself. */
 export const MAP_CID = 'lawn-map'
-const PLAN_ORDER: OfferFrequency[] = ['weekly', 'biweekly', 'monthly', 'onetime']
 
 export const emailMoney = (cents: number) => cents % 100 === 0
   ? `$${(cents / 100).toLocaleString('en-US')}` : `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export function validateQuoteEmailOptions(options: QuoteEmailOptions): string | null {
-  if (!options || typeof options.message !== 'string' || !Array.isArray(options.plans) || !Array.isArray(options.addOns)) return 'Refresh and try again.'
+  if (!options || typeof options.message !== 'string' || typeof options.when !== 'string' || !Array.isArray(options.addOns)) return 'Refresh and try again.'
   if (!options.message.trim() || options.message.length > 4000) return 'Write a short message to go with the quote.'
-  const freqs = options.plans.map(p => p?.freq)
-  if (options.plans.length > 4 || new Set(freqs).size !== freqs.length || freqs.some(f => !PLAN_ORDER.includes(f))
-    || options.plans.some(p => typeof p.when !== 'string' || p.when.length > 80)) return 'Choose valid plans.'
+  if (options.when.length > 80) return 'Keep the timing note under 80 characters.'
   if (options.addOns.length > 6 || options.addOns.some(a => typeof a?.label !== 'string' || !a.label.trim() || a.label.length > 60
     || !Number.isSafeInteger(a.cents) || a.cents <= 0 || a.cents > 100000)) return 'Give each add-on a name and a price.'
   return null
 }
 
-export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailOptions, 'plans' | 'addOns'>, introEligible = true): QuoteEmailBreakdown {
+export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailOptions, 'when' | 'addOns'>, introEligible = true): QuoteEmailBreakdown {
   const offer = quoteOffer(draft)
   const addOns = options.addOns.map(a => ({ label: a.label.trim(), cents: a.cents }))
   const addOnCents = addOns.reduce((sum, a) => sum + a.cents, 0)
@@ -52,19 +48,16 @@ export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailO
       ...(draft.discountCents ? [quoteItem('Quote discount', -draft.discountCents)] : []),
     ]
     const regularItems = [...work, ...addOnItems]
-    return { sqFt: offer.sqFt, recurring: false, addOns, rows: [{ freq: 'onetime', label: 'This job', when: '', detail: 'Single visit',
+    return { sqFt: offer.sqFt, recurring: false, addOns, rows: [{ freq: 'onetime', label: 'This job', when: options.when.trim(), detail: 'Single visit',
       mowCents: cents, addOnCents, perVisitCents: cents + addOnCents, firstVisitCents: null, regularItems, firstItems: regularItems }] }
   }
-  const chosen = options.plans.length ? options.plans : [{ freq: offer.quoted, when: '' }]
-  const rows = [...chosen].sort((a, b) => PLAN_ORDER.indexOf(a.freq) - PLAN_ORDER.indexOf(b.freq)).map((plan, i) => {
-    const option = offer.options.find(o => o.freq === plan.freq)!
-    const mowCents = plan.freq === offer.quoted ? quoteTotalCents(draft) : Math.round(option.price * 100)
-    const first = firstVisitCents(mowCents, plan.freq, introEligible && i === 0)
-    const regularItems = [quoteItem('Lawn care', mowCents), ...addOnItems]
-    const firstItems = first < mowCents ? [...regularItems, quoteItem('Introductory mowing discount', first - mowCents)] : regularItems
-    return { freq: plan.freq, label: option.label, when: plan.when.trim(), detail: option.detail, mowCents, addOnCents,
-      perVisitCents: mowCents + addOnCents, firstVisitCents: first < mowCents ? first + addOnCents : null, regularItems, firstItems }
-  })
+  const option = offer.options.find(row => row.freq === draft.freq)!
+  const mowCents = quoteTotalCents(draft)
+  const first = firstVisitCents(mowCents, draft.freq, introEligible)
+  const regularItems = [quoteItem('Lawn care', mowCents), ...addOnItems]
+  const firstItems = first < mowCents ? [...regularItems, quoteItem('Introductory mowing discount', first - mowCents)] : regularItems
+  const rows: QuoteEmailRow[] = [{ freq: draft.freq, label: option.label, when: options.when.trim(), detail: option.detail, mowCents, addOnCents,
+    perVisitCents: mowCents + addOnCents, firstVisitCents: first < mowCents ? first + addOnCents : null, regularItems, firstItems }]
   return { sqFt: offer.sqFt, recurring: true, rows, addOns }
 }
 

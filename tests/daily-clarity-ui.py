@@ -517,7 +517,28 @@ def quote_browser():
             page.reload()
             expect(sent.get_by_text("Accepted", exact=False)).to_be_visible()
             page.goto(f"{BASE}/admin/jobs/{bookings[0]['id']}")
-            expect(page.get_by_role("button", name="Confirm first visit", exact=True)).to_be_visible()
+            for width, height in ((1440, 1000), (390, 844), (320, 740)):
+                page.set_viewport_size({"width": width, "height": height})
+                page.get_by_role("button", name="Confirm first visit", exact=True).click()
+                expect(page.get_by_text(re.compile(r"^First visit \$70\.00$"))).to_be_visible()
+                expect(page.get_by_label("Reviewed property address")).to_have_value(address)
+                expect(page.get_by_label("Visit date", exact=True)).to_have_value(day(4))
+                assert_no_overflow(page)
+                shot(page, f"quote-confirm-first-{width}")
+                if width != 320:
+                    page.get_by_role("button", name="Close", exact=True).click()
+            page.get_by_role("button", name="Confirm visit", exact=True).click()
+            customer_history = page.get_by_role("link", name="Customer history", exact=True)
+            expect(customer_history).to_be_visible()
+            rows = request(f"bookings?lead_id=eq.{lead_id}&select=id,status,customer_id,property_id,confirmed_date,job_total")
+            assert len(rows) == 1 and rows[0]["id"] == bookings[0]["id"]
+            assert rows[0]["status"] == "confirmed" and rows[0]["confirmed_date"] == day(4)
+            assert rows[0]["customer_id"] and rows[0]["property_id"] and rows[0]["job_total"] == 70
+            shot(page, "quote-confirmed-320")
+            customer_history.click()
+            page.wait_for_url(f"{BASE}/admin/customers/{rows[0]['customer_id']}")
+            expect(page.get_by_role("heading", name="Test Jordan", exact=True)).to_be_visible()
+            page.set_viewport_size({"width": 1440, "height": 1000})
 
             signature = hmac.new(SECRET.encode(), f"lead:{legacy_id}".encode(), hashlib.sha256).hexdigest()
             context = local_browser(browser, 390, 844)
@@ -550,7 +571,10 @@ def quote_browser():
         print("Quote preview, retry, revision, and preferred-date request passed in Chromium at 1440/390/320.")
     finally:
         subprocess.run([cli, "db", "query", "--local", f"""
-        do $fixture$ begin
+        do $fixture$ declare fixture_customers uuid[]; begin
+          select array_agg(distinct customer_id) into fixture_customers
+          from public.bookings where lead_id in ({ids}) and customer_id is not null;
+          delete from public.crm_operations where target_id in (select id from public.bookings where lead_id in ({ids}));
           delete from public.staff_texts where lead_id in ({ids});
           delete from public.lead_calls where lead_id in ({ids});
           delete from public.staff_alerts where event_id in (select id from public.intake_events where lead_id in ({ids}));
@@ -560,6 +584,8 @@ def quote_browser():
           delete from public.job_items where booking_id in (select id from public.bookings where lead_id in ({ids}));
           delete from public.bookings where lead_id in ({ids});
           delete from public.leads where id in ({ids});
+          delete from public.properties where customer_id = any(fixture_customers);
+          delete from public.customers where id = any(fixture_customers);
         end $fixture$;
         """], check=True, capture_output=True, text=True)
 

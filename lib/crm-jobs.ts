@@ -54,17 +54,17 @@ export function jobStatusLabel(status: string) {
 export type JobLine = { kind: 'service' | 'discount'; description: string; amount: string }
 
 /**
- * Items for a first visit booked by phone (Caelan, 29 Oct): recurring plans charge the first visit
- * 30% off, like a website booking, as the plan price plus a discount line. `plan` is what later
+ * Items for a first visit booked by phone. Eligible first mows include the existing
+ * discount as a separate line. `plan` is what later
  * visits charge. `firstVisitPrice` is whole dollars for the bookings column, or null.
  */
-export function callVisitItems(cents: number, freq: OfferFrequency, description: string) {
+export function callVisitItems(cents: number, freq: OfferFrequency, description: string, introEligible = freq !== 'onetime') {
   const plan: JobLine[] = [{ kind: 'service', description, amount: centsAmount(cents) }]
-  const first = firstVisitCents(cents, freq)
+  const first = firstVisitCents(cents, freq, introEligible)
   const items: JobLine[] = first < cents
     ? [...plan, { kind: 'discount', description: `First visit ${FIRST_VISIT_DISCOUNT_PCT}% off`, amount: `-${centsAmount(cents - first)}` }]
     : plan
-  return { items, plan, firstVisitPrice: freq !== 'onetime' && first % 100 === 0 ? first / 100 : null }
+  return { items, plan, firstVisitPrice: first < cents && first % 100 === 0 ? first / 100 : null }
 }
 export type ActionResult = { success: true; data?: Record<string, unknown> } | { success: false; error: string }
 

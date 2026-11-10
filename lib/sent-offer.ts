@@ -13,7 +13,6 @@ export type OfferTerms = QuoteEmailBreakdown & {
   address: string | null
   firstName: string | null
   message: string
-  mode: 'choices' | 'seasonal'
   mowing: boolean
 }
 
@@ -34,6 +33,8 @@ export type SentOffer = {
 export type SentOfferSummary = Pick<SentOffer, 'id' | 'version' | 'recipient' | 'state' | 'created_at' | 'sent_at' | 'accepted_booking_id'> & {
   href: string | null
   replaced: boolean
+  rows: QuoteEmailBreakdown['rows']
+  publicUrl: string | null
 }
 
 export function signOfferProof(payload: string) {

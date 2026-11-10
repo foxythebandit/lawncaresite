@@ -6,13 +6,13 @@ import { adminDb } from '@/lib/supabase/admin'
 import { dispatchAlert, refreshAlert } from '@/lib/staff-alerts'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
 import { isPropertyConfirmed, isPropertyPoint } from '@/lib/property-location'
-import { centsToAmount, type LeadActivityInput, type LeadWorkflowPatch, type LeadWorkflowResult, type ContactOutcome, type LeadStage, type QuoteStatus, type JobItemInput, type CreateJobResult } from '@/lib/crm-contracts'
+import { type LeadActivityInput, type LeadWorkflowPatch, type LeadWorkflowResult, type ContactOutcome, type LeadStage, type QuoteStatus } from '@/lib/crm-contracts'
 import { revalidatePath } from 'next/cache'
-import { addInterval } from '@/lib/crm-jobs'
+import { commandError } from '@/lib/crm-jobs'
 import { changeAgreement, changeJob } from '../actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import { offerPath, readSentOffer, signOfferProof, verifyOfferProof, type OfferTerms, type SentOffer } from '@/lib/sent-offer'
-import { MAP_CID, quoteEmailContent, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
+import { MAP_CID, quoteEmailBreakdown, quoteEmailContent, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
 
 const uuidPattern = /^[0-9a-f-]{36}$/i
 type CommandResult = { success: true; updatedAt: string; warning?: string } | { error: string; conflict?: boolean }
@@ -100,42 +100,6 @@ export async function processLeadAlert(leadId: string, alertId: string, eventId:
   revalidatePath(`/admin/leads/${leadId}`)
 }
 
-/** Explicit staff operation. The accepted snapshot is the sole source of job prices. */
-export async function requestLeadBooking(id: string, expectedUpdatedAt: string, operationId: string, preferredDate: string) {
-  await requireStaff(`/admin/leads/${id}`)
-  if (!uuidPattern.test(id) || !uuidPattern.test(operationId) || !Number.isFinite(Date.parse(expectedUpdatedAt))) return { error: 'Refresh this lead and try again.' }
-  if (preferredDate && !/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)) return { error: 'Choose a valid visit date.' }
-  const db = adminDb()
-  const { data: lead, error: readError } = await db.from('leads').select('name,address,quote_status,quote_accepted_at,accepted_quote_snapshot').eq('id', id).single()
-  if (readError || !lead) return { error: 'Could not load the accepted quote.' }
-  if (lead.quote_status !== 'accepted' || !lead.accepted_quote_snapshot) return { error: 'Mark the reviewed quote accepted first.' }
-  if (!lead.name || !(lead.accepted_quote_snapshot.address || lead.address)) return { error: 'Add a contact name and property address first.' }
-  const draft = lead.accepted_quote_snapshot as QuoteDraft
-  if ('sent_offer' in draft) return { error: 'Open the existing visit request to confirm this offer.' }
-  const { data: addressChanges, error: addressHistoryError } = await db.from('lead_activities').select('id').eq('lead_id', id).eq('outcome', 'contact_address_changed').gt('occurred_at', lead.quote_accepted_at).limit(1)
-  if (addressHistoryError) return { error: 'Could not verify the accepted property. Refresh and retry.' }
-  if ((draft.contactAddressAtReview !== undefined && draft.contactAddressAtReview !== lead.address) || addressChanges?.length) return { error: 'The contact address changed after this quote. Review and accept a quote for the current property first.' }
-  const items: JobItemInput[] = []
-  const mowingCents = draft.includeMowing === false ? 0 : Math.round((draft.overridePrice ?? draft.calculatedPrice) * 100)
-  if (mowingCents > 0) items.push({ kind: 'service', description: 'Lawn care', amount: centsToAmount(mowingCents) })
-  for (const line of draft.manualLines ?? []) if (line.amountCents > 0) items.push({ kind: 'service', description: line.service, amount: centsToAmount(line.amountCents) })
-  if ((draft.discountCents ?? 0) > 0) items.push({ kind: 'discount', description: 'Quote discount', amount: centsToAmount(-(draft.discountCents ?? 0)) })
-  if (!items.length || quoteTotalCents(draft) < 0) return { error: 'Accepted quote needs valid service prices.' }
-  const { data, error } = await db.rpc('create_job_from_quote', {
-    p_lead_id: id, p_expected_updated_at: expectedUpdatedAt, p_operation_id: operationId,
-    p_job: { name: lead.name, address: draft.address || lead.address, preferred_date: preferredDate || null, price_per_visit: centsToAmount(quoteTotalCents(draft)) },
-    p_items: items,
-  })
-  if (error?.code === 'PT409' || error?.code === '40001') return { error: 'This lead changed since you opened it. Refresh before creating a booking.', conflict: true }
-  if (error) return { error: error.code === '23514' || error.code === '22023' ? error.message : 'Could not create booking request.' }
-  const { data: updatedLead } = await db.from('leads').select('updated_at').eq('id', id).single()
-  revalidatePath(`/admin/leads/${id}`)
-  revalidatePath('/admin/jobs')
-  revalidatePath('/admin/leads')
-  return { success: true, bookingId: (data as CreateJobResult).booking_id, duplicate: (data as CreateJobResult).duplicate,
-    updatedAt: updatedLead?.updated_at ?? expectedUpdatedAt }
-}
-
 export async function updateLeadContact(id: string, form: FormData) {
   const expectedUpdatedAt = String(form.get('updated_at') ?? '')
   const name = String(form.get('name') ?? '').trim()
@@ -151,79 +115,46 @@ export async function updateLeadContact(id: string, form: FormData) {
   return updateWorkflow(id, expectedUpdatedAt, { name, email, phone, address }, { kind: 'note', outcome: addressChanged ? 'contact_address_changed' : 'contact_updated', body: addressChanged ? 'Contact address changed; review any previous property quote.' : 'Contact details updated.' })
 }
 
-const PLAN_INTERVALS: Record<string, { unit: 'week' | 'month'; count: number }> = {
-  weekly: { unit: 'week', count: 1 }, biweekly: { unit: 'week', count: 2 }, monthly: { unit: 'month', count: 1 },
-}
-
-/**
- * One staff step for "customer said yes": records acceptance of the quoted price, creates the
- * job, links it to a new or confirmed existing customer, and optionally starts a mowing plan from
- * only the lawn-care price. Each underlying command is idempotent, so a retry resumes safely.
- */
-export async function bookLeadVisit(id: string, expectedUpdatedAt: string, input: {
-  bookingOperationId: string; linkOperationId: string; planOperationId: string
-  date: string; customerId: string | null; startPlan: boolean
-}): Promise<{ success: true; bookingId: string; customerId: string | null; planStarted: boolean; updatedAt: string } | { error: string; conflict?: boolean }> {
-  await requireStaff(`/admin/leads/${id}`)
-  if (![id, input.bookingOperationId, input.linkOperationId, input.planOperationId].every(v => uuidPattern.test(v))
-    || (input.customerId && !uuidPattern.test(input.customerId))) return { error: 'Refresh this lead and try again.' }
-  if (input.date && !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { error: 'Choose a valid visit date.' }
+/** Preserve the agreed price as a pending request, then review its first visit. */
+export async function requestStaffQuoteVisit(id: string, expectedUpdatedAt: string, operationId: string, offerId: string | null) {
+  const user = await requireStaff(`/admin/leads/${id}`)
+  if (![id, operationId].every(value => uuidPattern.test(value)) || (offerId && !uuidPattern.test(offerId))) {
+    return { error: 'Refresh the lead and review the quote.' }
+  }
   const db = adminDb()
-  const { data: lead } = await db.from('leads').select('name,phone,email,address,quote_status,quote_draft,updated_at').eq('id', id).single()
-  if (!lead) return { error: 'Could not load this lead.' }
-  const quoted = lead.quote_draft as QuoteDraft | null
-  if (quoted?.contactAddressAtReview !== undefined && quoted?.contactAddressAtReview !== lead.address) {
-    return { error: 'The contact address changed after this quote. Start a quote for the updated address first.' }
-  }
-  let version = expectedUpdatedAt
-  if (lead.quote_status !== 'accepted') {
-    const accepted = await setLeadQuoteDecision(id, version, 'accepted')
-    if ('error' in accepted) return accepted
-    version = accepted.updatedAt
-  }
-  const booked = await requestLeadBooking(id, version, input.bookingOperationId, input.date)
-  if ('error' in booked) return { error: booked.error ?? 'Could not create the job.' }
-  version = booked.updatedAt
-  const bookingId = booked.bookingId
-  const { data: job } = await db.from('bookings').select('updated_at,customer_id,address').eq('id', bookingId).single()
-  if (!job) return { error: 'Job created, but it could not be reloaded. Refresh the page.' }
-  let customerId: string | null = job.customer_id
-  if (!customerId) {
-    let propertyId: string | null = null
-    if (input.customerId) {
-      const { data: properties } = await db.from('properties').select('id,address').eq('customer_id', input.customerId)
-      propertyId = properties?.find(p => p.address.trim().toLowerCase() === job.address.trim().toLowerCase())?.id ?? null
+  const { data: lead } = await db.from('leads')
+    .select('address,quote_draft,quote_confirmed_at,quote_status,quote_accepted_at,accepted_quote_snapshot').eq('id', id).single()
+  if (!lead) return { error: 'Could not load this quote.' }
+  let terms: Record<string, unknown>
+  if (offerId) {
+    terms = { offer_id: offerId }
+  } else {
+    const draft = (lead.quote_status === 'accepted' ? lead.accepted_quote_snapshot : lead.quote_draft) as QuoteDraft | null
+    if (!draft?.sections || (!lead.quote_confirmed_at && lead.quote_status !== 'accepted')) {
+      return { error: 'Review and save the agreed price first.' }
     }
-    const { data: linked, error } = await db.rpc('crm_link_job', {
-      p_booking_id: bookingId, p_expected_updated_at: job.updated_at, p_operation_id: input.linkOperationId,
-      p_customer_id: input.customerId, p_property_id: propertyId,
-      p_customer: input.customerId ? null : { name: lead.name, phone: lead.phone, email: lead.email ?? '' },
-      p_property: propertyId ? null : { address: job.address },
-    })
-    if (error) return { error: `Job created, but linking the customer failed: ${error.message}` }
-    customerId = (linked as { customer_id: string }).customer_id
+    if (draft.contactAddressAtReview !== undefined && draft.contactAddressAtReview !== lead.address) {
+      return { error: 'Review a quote for the current property first.' }
+    }
+    if (lead.quote_accepted_at) {
+      const { data: changed, error } = await db.from('lead_activities').select('id').eq('lead_id', id)
+        .eq('outcome', 'contact_address_changed').gt('occurred_at', lead.quote_accepted_at).limit(1)
+      if (error || changed?.length) return { error: 'Review the accepted property before booking.' }
+    }
+    const breakdown = quoteEmailBreakdown(draft, { when: '', addOns: [] }, false)
+    const row = breakdown.rows[0]
+    terms = { source: 'staff_agreed_quote', items: row.firstItems, regular_items: row.regularItems,
+      frequency: row.freq, mowing: breakdown.recurring }
   }
-  let planStarted = false
-  const draft = lead.quote_draft as QuoteDraft | null
-  const interval = draft ? PLAN_INTERVALS[draft.freq] : undefined
-  const lawnCents = draft && draft.includeMowing !== false ? Math.round((draft.overridePrice ?? draft.calculatedPrice) * 100) : 0
-  if (input.startPlan && input.date && interval && lawnCents > 0) {
-    const { data: current } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
-    const { error } = await db.rpc('crm_start_agreement', {
-      p_booking_id: bookingId, p_expected_updated_at: current?.updated_at, p_operation_id: input.planOperationId,
-      p_config: { anchor_on: input.date, next_on: addInterval(input.date, interval.unit, interval.count), end_on: null,
-        interval_unit: interval.unit, interval_count: interval.count,
-        items_template: [{ kind: 'service', description: 'Lawn care', amount: centsToAmount(lawnCents) }] },
-    })
-    if (error) return { error: `Visit booked, but the mowing plan was not started: ${error.message}. Start it from the customer page.` }
-    planStarted = true
-  }
-  const { data: finalLead, error: finalLeadError } = await db.from('leads').select('updated_at').eq('id', id).single()
-  if (finalLeadError || !finalLead) return { error: 'Visit booked, but the lead could not be reloaded. Refresh before editing it again.' }
+  const { data, error } = await db.rpc('crm_staff_quote_request', {
+    p_lead_id: id, p_expected_updated_at: expectedUpdatedAt, p_operation_id: operationId,
+    p_terms: terms, p_actor_email: user.email,
+  })
+  if (error) return { error: commandError(error) }
   revalidatePath(`/admin/leads/${id}`)
+  revalidatePath('/admin/leads')
   revalidatePath('/admin/jobs')
-  revalidatePath('/admin/customers')
-  return { success: true, bookingId, customerId, planStarted, updatedAt: finalLead.updated_at }
+  return { success: true as const, bookingId: data.booking_id as string }
 }
 
 type CancellationPreview = {
@@ -320,7 +251,6 @@ async function buildEmailQuote(id: string, version: string, offerId: string, inp
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Enter a valid email address.' } as const
   const invalid = validateQuoteEmailOptions(input.options)
   if (invalid) return { error: invalid } as const
-  if (input.options.plans.length > 1) return { error: 'Choose one plan for this preview.' } as const
   const image = input.image
   if (image !== null && (typeof image !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image) || image.length > MAX_MAP_IMAGE)) {
     return { error: 'The map picture is invalid. Preview again.' } as const
@@ -351,7 +281,7 @@ async function buildEmailQuote(id: string, version: string, offerId: string, inp
   if (emailContent.breakdown.rows.some(row => row.perVisitCents <= 0)) return { error: 'Enter a quote price first.' } as const
   const terms: OfferTerms = { ...emailContent.breakdown, draft, address: lead.address,
     firstName: lead.name?.trim().split(/\s+/)[0] || null, message: input.options.message.trim(),
-    mode: 'choices', mowing: emailContent.breakdown.recurring }
+    mowing: emailContent.breakdown.recurring }
   const message = {
     from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
     subject: emailContent.subject, text: emailContent.text, html: emailContent.html,

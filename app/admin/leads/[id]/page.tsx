@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
-import { offerPath, type SentOfferSummary } from '@/lib/sent-offer'
+import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
+import { offerPath, type OfferTerms, type SentOfferSummary } from '@/lib/sent-offer'
 import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
 import { ago, alertLegHistory, allPrices, dayLabel, historyItem, money, phoneDisplay, requestBookings, summarizeLead,
   type HistoryIcon, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
@@ -13,7 +14,7 @@ import { staffByPhone, staffPeople } from '@/lib/staff-directory'
 import { processLeadAlert } from '../quote-actions'
 import { CopyText, LeadChips, LeadLive, LogCallButton, RecordingButton, TextLink } from '../LeadLive'
 import { AddNoteButton, EditContactButton, EditPriceButton, QuoteMap, QuotePanel, QuoteProvider, QuoteStatusChip, type QuoteBooking, type QuoteLead } from '../QuoteTools'
-import { ReopenButton, ScheduleVisit } from '../LeadActions'
+import { ReopenButton } from '../LeadActions'
 import { tracedShapes } from '../TracingMap'
 import LawnMap from '../../LawnMap'
 import PriceSteps from '../../PriceSteps'
@@ -80,15 +81,21 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     phonePattern ? db.from('customers').select(customerFields).ilike('phone', phonePattern).limit(25) : { data: [] as Customer[] },
     lead.customer_id ? db.from('customers').select(customerFields).eq('id', lead.customer_id).maybeSingle() : { data: null as Customer | null },
     db.from('lead_calls').select('id,leg,staff_name,staff_phone,caller_id,result,status,duration_seconds,recording_sid,answered_at,ended_at,created_at').eq('lead_id', id).order('created_at'),
-    db.from('sent_offers').select('id,version,recipient,state,created_at,sent_at,replaced_by,accepted_booking_id').eq('lead_id', id).order('version', { ascending: false }).limit(10),
+    db.from('sent_offers').select('id,version,recipient,state,created_at,sent_at,replaced_by,accepted_booking_id,terms').eq('lead_id', id).order('version', { ascending: false }).limit(10),
   ])
   // Same-phone customers are suggestions only; staff confirms before linking.
   const customerMatches = ((phoneCustomers ?? []) as Customer[]).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits)
   const existing = linkedCustomer ?? customerMatches[0] ?? null
   const existedBefore = !!existing && Date.parse(existing.created_at) < Date.parse(lead.created_at)
-  const sentOffers = (offerRows ?? []).map(({ replaced_by, ...offer }) => ({
-    ...offer, replaced: !!replaced_by, href: offer.sent_at ? offerPath(id, offer.id) : null,
-  })) as SentOfferSummary[]
+  const sentOffers = (offerRows ?? []).map(({ replaced_by, terms, ...offer }) => {
+    const href = offer.sent_at ? offerPath(id, offer.id) : null
+    return { ...offer, replaced: !!replaced_by, href, rows: href ? (terms as OfferTerms).rows : [],
+      publicUrl: href ? new URL(href, process.env.CRM_BASE_URL ?? 'https://quietgreen.co').href : null }
+  }) as SentOfferSummary[]
+  const hasSentTerms = sentOffers.some(offer => offer.href)
+  const calculatorAmount = lead.quote_draft ? quoteTotalCents(lead.quote_draft as QuoteDraft) : null
+  const activeSent = sentOffers.find(offer => offer.state === 'sent' && !offer.replaced)
+  const phoneOffer = activeSent?.rows.length === 1 ? activeSent.rows[0] : null
   // One request timestamp for every relative label on the page.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
@@ -150,13 +157,13 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const pendingVisit = s.booking === 'requested' && live?.status === 'pending' ? live as SummaryBooking & { id: string; updated_at: string } : null
   // One main button per column (UX audit Q2); Call stays (sticky bar on phone, header on desktop).
   const callBack = s.column === 'quoted'
-  const main = pendingVisit ? <a className="crm-button crm-button-primary" href="#schedule"><Icon name="calendar" size={17} />Schedule visit</a>
+  const main = pendingVisit ? <Link className="crm-button crm-button-primary" href={`/admin/jobs/${pendingVisit.id}`}><Icon name="calendar" size={17} />Confirm first visit</Link>
     : s.column === 'closed' ? <ReopenButton leadId={lead.id} className="crm-button crm-button-primary" />
     : s.column === 'customer' && existing ? <Link className="crm-button crm-button-primary" href={`/admin/customers/${existing.id}`}><Icon name="users" size={17} />Open customer</Link>
     : null
 
-  return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={price?.cents ?? null} frequency={price?.frequency ?? normalizeFrequency(lead.frequency)}>
-    <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} customerMatches={customerMatches} sentOffers={sentOffers}>
+  return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={phoneOffer?.perVisitCents ?? price?.cents ?? null} frequency={phoneOffer?.freq ?? price?.frequency ?? normalizeFrequency(lead.frequency)}>
+    <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} sentOffers={sentOffers}>
       <div className="crm-workspace crm-lead2">
         <div className="crm-lead2-top">
           <Link className="crm-back" href="/admin/leads"><Icon name="arrowLeft" size={15} />Board</Link>
@@ -185,16 +192,16 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         <div className="crm-lead2-grid">
           <div className="crm-lead2-main">
             <Block title="Price" className="crm-o1 crm-price-card" aside={<><QuoteStatusChip />{price && <span>{dayLabel(price.at)}</span>}</>}>
-              <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>
-              {price && <PriceSteps price={price} />}
+              {hasSentTerms ? <p className="crm-bignum">{calculatorAmount == null ? '—' : money(calculatorAmount)}<small>calculator amount</small></p>
+                : <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>}
+              {price && !hasSentTerms && <PriceSteps price={price} />}
               <Rows rows={[
-                { label: 'Source', value: chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
+                { label: hasSentTerms ? 'Calculator source' : 'Source', value: hasSentTerms ? 'Saved calculator' : chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
                 ...otherPrices.map(row => ({ label: row.label, value: row.value })),
                 { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
-                ...(lead.first_visit_on ? [{ label: 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),
+                ...(lead.first_visit_on ? [{ label: pendingVisit ? 'Preferred start' : 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),
                 ...((live?.overgrowth_fee ?? 0) > 0 ? [{ label: 'Cleanup fee', value: <>{money(live!.overgrowth_fee! * 100)} <small className="crm-muted">in first visit</small></> }] : []),
               ]} />
-              {pendingVisit && <ScheduleVisit booking={pendingVisit} canEmail={!!lead.email && !!process.env.RESEND_API_KEY} />}
               <QuotePanel />
               <div className="crm-price-foot"><EditPriceButton hasPrice={!!price} /></div>
             </Block>

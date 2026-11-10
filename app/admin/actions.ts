@@ -379,6 +379,35 @@ export async function changeJob(input: {
   return { success: true, data: data as Record<string, unknown> }
 }
 
+export async function confirmFirstVisit(input: {
+  bookingId: string; expectedUpdatedAt: string; leadVersion: string | null; operationId: string
+  date: string; time: string; email: boolean; customerId: string | null; propertyId: string | null
+  name: string; address: string; labelId: string | null; frequency: string; reviewedTerms: boolean
+}): Promise<ActionResult> {
+  const staff = await requireStaff()
+  if (![input.bookingId, input.operationId].every(id => UUID_RE.test(id))
+    || [input.customerId, input.propertyId, input.labelId].some(id => id !== null && !UUID_RE.test(id))
+    || !calendarDate(input.date) || input.time.length > 80 || input.name.length > 150 || input.address.length > 500) {
+    return { success: false, error: 'Review the customer, property, and visit date.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_confirm_first_visit', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_lead_version: input.leadVersion, p_operation_id: input.operationId,
+    p_request: { date: input.date, arrival: input.time, customer_id: input.customerId, property_id: input.propertyId,
+      name: input.name, address: input.address, label_id: input.labelId, frequency: input.frequency,
+      reviewed_terms: input.reviewedTerms, staff_user_id: staff.id },
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  revalidatePath('/admin/leads')
+  revalidatePath('/admin/customers')
+  const result: ActionResult = { success: true, data: data as Record<string, unknown> }
+  if (input.email && !result.data?.duplicate) {
+    return emailVisitDate(input.bookingId, 'confirm', input.date, input.time, result)
+  }
+  return result
+}
+
 export async function scheduleJobAndEmail(input: {
   bookingId: string; expectedUpdatedAt: string; operationId: string
   action: 'confirm' | 'reschedule'; date: string; time?: string
@@ -509,13 +538,14 @@ export async function finishVisit(input: {
     return { success: false, error: 'Choose the date of the visit.' }
   }
   const db = getAdmin()
-  let { data: job } = await db.from('bookings').select('status,updated_at,completion_operation_id').eq('id', input.bookingId).single()
+  let { data: job } = await db.from('bookings').select('status,updated_at,completion_operation_id,lead_id').eq('id', input.bookingId).single()
   if (!job) return { success: false, error: 'Visit not found.' }
   if (job.status === 'pending') {
+    if (job.lead_id) return { success: false, error: 'Open the request and confirm the first visit before marking it done.' }
     const scheduled = await changeJob({ bookingId: input.bookingId, expectedUpdatedAt: job.updated_at,
       operationId: input.confirmOperationId, action: 'confirm', date: input.completedOn })
     if (!scheduled.success) return scheduled
-    job = (await db.from('bookings').select('status,updated_at,completion_operation_id').eq('id', input.bookingId).single()).data
+    job = (await db.from('bookings').select('status,updated_at,completion_operation_id,lead_id').eq('id', input.bookingId).single()).data
     if (!job) return { success: false, error: 'Visit not found.' }
   }
   let next: unknown = null

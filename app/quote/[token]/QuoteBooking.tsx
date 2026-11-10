@@ -79,7 +79,7 @@ export default function QuoteBooking({ token, firstName, address, offer, section
     event.preventDefault()
     setError('')
     startTransition(async () => {
-      const result = await bookQuote({ token, freq: offer?.rows[0].freq, start, date, timeOfDay, notes, email })
+      const result = await bookQuote({ token, freq: offer?.rows.length === 1 ? offer.rows[0].freq : undefined, start, date, timeOfDay, notes, email })
         .catch(() => ({ error: 'Something went wrong. Please try again or call us.' }))
       if ('error' in result) setError(result.error)
       else setDone(true)
@@ -108,7 +108,8 @@ export default function QuoteBooking({ token, firstName, address, offer, section
     </section>
 
     {offer && <section className="qb-card">
-      <h2>Your quoted service</h2>
+      <h2>{offer.rows.length > 1 ? 'Your original quoted services' : 'Your quoted service'}</h2>
+      {offer.rows.length > 1 && <p className="qb-sub">We’ll review these terms with you before confirming the first visit.</p>}
       {offer.rows.map(row => <div key={row.freq} className="qb-terms">
         <div className="qb-row">
           <b>{offer.mowing ? row.freq === 'onetime' ? 'One-time mowing' : `${row.label} mowing` : row.label}</b>

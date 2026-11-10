@@ -3,6 +3,7 @@ import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { austinDay } from '@/lib/calendar-data'
 import { calendarReturnTo, visitReturnHref } from '@/lib/calendar-view'
+import type { FirstVisitTerms } from '@/lib/crm-contracts'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import { visitMapContext, visitScheduleContext } from '../visit-context'
 import VisitDetails from '../VisitDetails'
@@ -21,7 +22,7 @@ export default async function VisitPage({ params, searchParams }: {
 
   const today = austinDay()
   const linked = Boolean(booking.customer_id && booking.property_id)
-  const [items, payments, agreement, candidates, customers, properties, quoteBookings, map, serviceLabel] = await Promise.all([
+  const [items, payments, agreement, candidates, customers, properties, quoteBookings, map, serviceLabel, firstTerms, lead, labels] = await Promise.all([
     db.from('job_items').select('kind,description,amount').eq('booking_id', id).order('created_at').order('id').throwOnError(),
     db.from('job_payments').select('id,amount,paid_on,method,provenance').eq('booking_id', id).order('paid_on', { ascending: false }).throwOnError(),
     booking.agreement_id ? db.from('recurring_agreements').select('*').eq('id', booking.agreement_id).maybeSingle().throwOnError() : { data: null },
@@ -39,6 +40,10 @@ export default async function VisitPage({ params, searchParams }: {
     booking.service_label_id && booking.status !== 'completed'
       ? db.from('service_labels').select('name').eq('id', booking.service_label_id).maybeSingle().throwOnError()
       : { data: null },
+    booking.status === 'pending' ? db.rpc('crm_first_visit_terms', { p_booking_id: id }).throwOnError() : { data: null },
+    booking.status === 'pending' && booking.lead_id
+      ? db.from('leads').select('updated_at,customer_id,property_id').eq('id', booking.lead_id).maybeSingle().throwOnError() : { data: null },
+    booking.status === 'pending' ? db.from('service_labels').select('id,name').is('retired_at', null).order('name').throwOnError() : { data: [] },
   ])
   const schedule = await visitScheduleContext(agreement.data, booking.occurrence_on ?? today)
   const { id: bookingId, ...visit } = booking
@@ -47,5 +52,8 @@ export default async function VisitPage({ params, searchParams }: {
     customers={customers.data ?? []} properties={properties.data ?? []} candidates={candidates.data ?? []}
     items={(items.data ?? []).map(item => ({ ...item, kind: item.kind === 'discount' ? 'discount' : 'service', amount: String(item.amount) }))}
     payments={payments.data ?? []} quotedVisit={latestQuoteBooking(quoteBookings.data ?? [])?.id === booking.id}
+    firstReview={firstTerms.data ? { terms: firstTerms.data as FirstVisitTerms, leadVersion: lead.data?.updated_at ?? null,
+      customerId: booking.customer_id ?? lead.data?.customer_id ?? null, propertyId: booking.property_id ?? lead.data?.property_id ?? null,
+      labels: labels.data ?? [] } : undefined}
     {...map} emailConfigured={Boolean(process.env.RESEND_API_KEY)} />
 }

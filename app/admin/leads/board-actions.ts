@@ -1,12 +1,12 @@
 'use server'
-import { createHash } from 'node:crypto'
+import type { OfferTerms } from '@/lib/sent-offer'
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { isCallOutcome, isClosedReason, isColumn, isQuotedReason, FREQUENCIES, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { notifyCallLogged } from '@/lib/phone/notify'
-import { addInterval, callVisitItems } from '@/lib/crm-jobs'
+import { callVisitItems } from '@/lib/crm-jobs'
 import { serviceLabels } from '@/lib/lead-labels'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -51,85 +51,53 @@ export type CallDetail = { price_cents?: number; frequency?: Frequency; first_vi
  * Log call sheet v2 (PLAN.md 3.2, S11). The client generates `operationId` once per attempt, so a
  * retry after a lost response returns the first result instead of logging twice.
  */
-export async function logCall(leadId: string, operationId: string, outcome: string, detail: CallDetail): Promise<BoardResult & { activityId?: string; warning?: string }> {
+export async function logCall(leadId: string, operationId: string, outcome: string, detail: CallDetail): Promise<BoardResult & {
+  activityId?: string; bookingId?: string; requestPending?: boolean
+}> {
   const user = await requireStaff(`/admin/leads/${leadId}`)
   if (!UUID.test(leadId) || !UUID.test(operationId) || !isCallOutcome(outcome)) return { ok: false, error: 'Refresh and try again' }
   const clean = cleanDetail(outcome, detail)
   if (typeof clean === 'string') return { ok: false, error: clean }
-  const { data, error } = await adminDb().rpc('crm_log_call', {
-    p_lead_id: leadId, p_operation_id: operationId, p_outcome: outcome, p_detail: clean, p_actor_email: user.email,
-  })
-  if (error) {
-    return { ok: false, error: error.code === '23514' ? 'Missing details' : error.code === '23505' ? 'Already saved differently · refresh' : error.code === 'P0002' ? 'Lead not found' : 'Not saved' }
-  }
-  const result = data as { board_column: BoardColumn; activity_id: string; duplicate: boolean }
-  // Every step is idempotent, so a retry of the same Log call resumes scheduling where it stopped.
-  const warning = outcome === 'booked' ? await scheduleCallVisit(leadId, operationId, clean) : null
-  // The other person's text must never hold up or fail the save (notify contract: never throws).
-  if (!result.duplicate && user.email) after(() => notifyCallLogged(leadId, result.activity_id, user.email!).catch(() => {}))
-  refresh(leadId)
-  return { ok: true, column: result.board_column, activityId: result.activity_id, ...(warning ? { warning } : {}) }
-}
-
-/** Stable sub-operation IDs derived from the Log call operation. */
-function subOperation(operationId: string, step: string) {
-  const hex = createHash('sha256').update(`${operationId}:${step}`).digest('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`
-}
-
-const PLAN_INTERVALS: Partial<Record<Frequency, { unit: 'week' | 'month'; count: number }>> = {
-  weekly: { unit: 'week', count: 1 }, biweekly: { unit: 'week', count: 2 }, monthly: { unit: 'month', count: 1 },
-}
-
-/**
- * Booked by phone: confirmed first visit on Jobs at the phone price, linked to a new customer and,
- * for recurring mowing, a plan. A same-phone customer is never linked automatically (staff confirm
- * from the job). Returns a short warning when a step needs staff, or null.
- */
-async function scheduleCallVisit(leadId: string, operationId: string, detail: Record<string, string | number>): Promise<string | null> {
   const db = adminDb()
-  const cents = Number(detail.price_cents), freq = detail.frequency as Frequency, date = String(detail.first_visit_on)
-  const { data: lead } = await db.from('leads').select('name,phone,email,services').eq('id', leadId).single()
-  if (!lead) return 'Call saved · visit not scheduled'
-  const description = freq === 'onetime' ? serviceLabels(lead.services).join(', ').slice(0, 100) || 'Service' : 'Lawn care'
-  // The first visit is charged 30% off (plan price + discount line); later plan visits use `plan`.
-  const { items, plan, firstVisitPrice } = callVisitItems(cents, freq, description)
-  const job: Record<string, string | number> = { first_visit_on: date, frequency: freq, price_per_visit: cents / 100 }
-  if (firstVisitPrice != null) job.first_visit_price = firstVisitPrice
-  const { data: created, error } = await db.rpc('crm_create_call_job', {
-    p_lead_id: leadId, p_operation_id: subOperation(operationId, 'job'), p_job: job, p_items: items,
-  })
-  if (error) return 'Call saved · visit not scheduled'
-  revalidatePath('/admin/jobs')
-  const bookingId = (created as { booking_id: string }).booking_id
-  const { data: visit } = await db.from('bookings').select('updated_at,customer_id,property_id,address,agreement_id').eq('id', bookingId).single()
-  if (!visit) return 'Visit scheduled · refresh to link the customer'
-  if (!visit.customer_id) {
-    if (!visit.address?.trim()) return 'Visit scheduled · add an address, then link the customer'
-    const digits = String(lead.phone ?? '').replace(/\D/g, '').slice(-10)
-    const { data: customers } = await db.from('customers').select('phone')
-    if (digits.length === 10 && customers?.some(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === digits)) {
-      return 'Visit scheduled · same phone as a customer, link from the job'
+  const actor = user.email ?? 'Staff'
+  const args = { p_lead_id: leadId, p_operation_id: operationId, p_detail: clean, p_actor_email: actor }
+  let result
+  if (outcome === 'booked') {
+    const [{ data: lead }, { data: sent, error: sentError }] = await Promise.all([
+      db.from('leads').select('services,customer_id').eq('id', leadId).maybeSingle(),
+      db.from('sent_offers').select('id,terms').eq('lead_id', leadId).eq('state', 'sent').is('replaced_by', null)
+        .order('version', { ascending: false }).limit(1).maybeSingle(),
+    ])
+    if (!lead || sentError) return { ok: false, error: 'Could not verify the agreed service' }
+    const freq = clean.frequency as Frequency
+    const services = serviceLabels(lead.services)
+    const mowing = services.length === 1 && services[0] === 'Mowing'
+    let introEligible = mowing
+    if (mowing && lead.customer_id) {
+      const { data: past, error } = await db.from('bookings').select('id,service_labels!bookings_service_label_id_fkey!inner(semantic_key)')
+        .eq('customer_id', lead.customer_id).eq('status', 'completed').eq('service_labels.semantic_key', 'mowing').limit(1).maybeSingle()
+      if (error) return { ok: false, error: 'Could not verify the first-mow price' }
+      introEligible = !past
     }
-    const { error: linkError } = await db.rpc('crm_link_job', {
-      p_booking_id: bookingId, p_expected_updated_at: visit.updated_at, p_operation_id: subOperation(operationId, 'link'),
-      p_customer_id: null, p_property_id: null,
-      p_customer: { name: lead.name?.trim() || lead.phone, phone: lead.phone, email: lead.email ?? '' }, p_property: { address: visit.address },
-    })
-    if (linkError) return 'Visit scheduled · customer not linked'
-    revalidatePath('/admin/customers')
+    const description = mowing ? 'Lawn care' : services.join(', ').slice(0, 100) || 'Service'
+    const { items, plan } = callVisitItems(Number(clean.price_cents), freq, description, introEligible)
+    const quoted = sent ? (sent.terms as OfferTerms).rows : null
+    const terms = sent && quoted?.length === 1 && quoted[0].freq === freq && quoted[0].perVisitCents === clean.price_cents
+      ? { offer_id: sent.id } : { source: 'phone_call', frequency: freq, mowing, items, regular_items: plan }
+    result = await db.rpc('crm_record_booked_call', { ...args, p_terms: terms })
+  } else {
+    result = await db.rpc('crm_log_call', { ...args, p_outcome: outcome })
   }
-  const interval = PLAN_INTERVALS[freq]
-  if (interval && !visit.agreement_id) {
-    const { data: current } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
-    const { error: planError } = await db.rpc('crm_start_agreement', {
-      p_booking_id: bookingId, p_expected_updated_at: current?.updated_at, p_operation_id: subOperation(operationId, 'plan'),
-      p_config: { anchor_on: date, next_on: addInterval(date, interval.unit, interval.count), end_on: null,
-        interval_unit: interval.unit, interval_count: interval.count, items_template: plan },
-    })
-    if (planError) return 'Visit scheduled · start the plan from the customer page'
+  if (result.error) {
+    const error = result.error
+    return { ok: false, error: ['23514', '22023', 'PT409'].includes(error.code) ? error.message
+      : error.code === '23505' ? 'Already saved differently · refresh' : error.code === 'P0002' ? 'Lead not found' : 'Not saved' }
   }
-  return null
+  const saved = result.data as { board_column: BoardColumn; activity_id: string; duplicate: boolean; booking_id?: string; request_pending?: boolean }
+  if (!saved.duplicate && user.email) after(() => notifyCallLogged(leadId, saved.activity_id, user.email!).catch(() => {}))
+  refresh(leadId)
+  if (saved.booking_id) revalidatePath('/admin/jobs')
+  return { ok: true, column: saved.board_column, activityId: saved.activity_id, bookingId: saved.booking_id, requestPending: saved.request_pending }
 }
 
 /** The detail keys crm_log_call accepts for this outcome, or a short error. */

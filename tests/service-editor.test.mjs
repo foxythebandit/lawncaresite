@@ -31,7 +31,6 @@ const items = (description, amount) => [{ kind: 'service', description, amount }
 async function customer() {
   const { id: customer_id } = await row("insert into customers(name,phone) values('Service Editor Test','5125550156') returning id")
   const { id: property_id } = await row("insert into properties(customer_id,address) values($1,'111 Editor Lane') returning id", customer_id)
-  await db.query("insert into bookings(name,phone,address,customer_id,property_id,status,one_time) values('Service Editor Test','5125550156','111 Editor Lane',$1,$2,'completed',true)", [customer_id, property_id])
   return { customer_id, property_id }
 }
 async function create(c, request) {
