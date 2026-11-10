@@ -10,7 +10,7 @@ import { revalidatePath } from 'next/cache'
 import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
 import { providerRetryExpired, saveVisitPaymentLink, type PreparedVisit } from '@/lib/visit-payment-link'
-import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
+import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type IntroCompletionReview, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
 import type { Database, Json } from '@/supabase/database.types'
 
@@ -178,9 +178,19 @@ async function emailReminder(id: string, prepared?: PreparedVisit): Promise<{ su
   return { success: true }
 }
 
+function completionError(error: { code?: string; message?: string; details?: string }): ActionResult {
+  if (error.code === 'PT422' && error.details) {
+    try {
+      const introReview = JSON.parse(error.details) as IntroCompletionReview
+      return { success: false, error: commandError(error), data: { introReview } }
+    } catch { /* Fall through to the database message. */ }
+  }
+  return { success: false, error: commandError(error) }
+}
+
 export async function markComplete(
   id: string,
-  data: { completed_at: string; expected_updated_at: string; operation_id: string }
+  data: { completed_at: string; expected_updated_at: string; operation_id: string; introReview?: string }
 ): Promise<ActionResult> {
   await requireStaff()
   if (!UUID_RE.test(id) || !UUID_RE.test(data.operation_id) || !/^\d{4}-\d{2}-\d{2}$/.test(data.completed_at)) {
@@ -190,8 +200,9 @@ export async function markComplete(
   const { data: result, error } = await db.rpc('complete_job', {
     p_booking_id: id, p_expected_updated_at: data.expected_updated_at,
     p_operation_id: data.operation_id, p_completed_on: data.completed_at,
+    ...(data.introReview ? { p_intro_review: data.introReview } : {}),
   })
-  if (error) return { success: false, error: commandError(error) }
+  if (error) return completionError(error)
 
   revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
@@ -422,7 +433,7 @@ export async function scheduleJobAndEmail(input: {
 
 export type ProjectedVisitEdit =
   | { action: 'reschedule'; date: string; time?: string; email?: boolean }
-  | { action: 'complete'; date: string }
+  | { action: 'complete'; date: string; introReview?: string }
   | { action: 'notes'; note: string }
   | { action: 'items'; items: JobLine[] }
   | { action: 'payment'; amount: string; date: string; method: string }
@@ -445,7 +456,7 @@ export async function editProjectedVisit(input: ProjectedVisitEdit & {
         break
       case 'complete':
         if (!calendarDate(input.date)) throw new Error('Choose a completion date.')
-        payload = { date: input.date }
+        payload = { date: input.date, ...(input.introReview ? { intro_review: input.introReview } : {}) }
         break
       case 'notes':
         if (input.note.length > 2000) throw new Error('Enter a note of up to 2,000 characters.')
@@ -484,7 +495,7 @@ export async function editProjectedVisit(input: ProjectedVisitEdit & {
     p_agreement_id: input.agreementId, p_revision_id: input.revisionId, p_on: input.on,
     p_operation_id: input.operationId, p_action: input.action, p_payload: payload,
   })
-  if (error) return { success: false, error: commandError(error) }
+  if (error) return completionError(error)
   const result = { success: true as const, data: data as Record<string, unknown> }
   const id = result.data.booking_id as string
   if (input.action === 'reschedule' && input.email && !result.data.duplicate) {

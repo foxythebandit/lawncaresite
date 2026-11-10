@@ -18,7 +18,7 @@ const quotedOptions = QUOTED_REASONS.map(value => ({ value, label: QUOTED_REASON
 const closedOptions = CLOSED_REASONS.map(value => ({ value, label: CLOSED_REASON_LABEL[value] }))
 const ASKS: Record<CallOutcome, string | null> = {
   no_answer: null, voicemail: null, bad_number: null,
-  booked: 'Price · frequency · first visit', yes_tbd: 'Price · frequency · set date by', not_now: 'Price · reason · check back', no: 'Reason · price',
+  booked: 'Price · frequency · first-visit review', yes_tbd: 'Price · frequency · set date by', not_now: 'Price · reason · check back', no: 'Reason · price',
 }
 
 function cents(text: string): number | null {
@@ -66,7 +66,7 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
         className="crm-outcome" onClick={() => set({ outcome: key, reason: null, ...(key === 'no' && outcome !== 'no' ? { price: '' } : {}),
           ...(key !== 'no' && outcome === 'no' && !form.price && priceCents ? { price: String(priceCents / 100) } : {}) })}>
         <span className="crm-outcome-main"><span className="crm-outcome-radio" aria-hidden="true" />{CALL_OUTCOME[key].label}</span>
-        <span className={`crm-pill crm-pill-${columnChip(CALL_OUTCOME[key].to).tone}`}>→ {COLUMN_LABEL[CALL_OUTCOME[key].to]}</span>
+        <span className={`crm-pill crm-pill-${columnChip(key === 'booked' ? 'booking_request' : CALL_OUTCOME[key].to).tone}`}>→ {COLUMN_LABEL[key === 'booked' ? 'booking_request' : CALL_OUTCOME[key].to]}</span>
         {ASKS[key] && <small>{ASKS[key]}</small>}
       </button>)}
     </div>}
@@ -103,7 +103,7 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
     </label>}
     <div className="crm-dialog-actions crm-logcall-actions">
       <button type="submit" className="crm-button crm-button-primary crm-button-lg" disabled={!valid}>
-        {outcome ? `Save · ${COLUMN_LABEL[CALL_OUTCOME[outcome].to]}` : 'Pick an outcome'}</button>
+        {outcome === 'booked' ? 'Review first visit' : outcome ? `Save · ${COLUMN_LABEL[CALL_OUTCOME[outcome].to]}` : 'Pick an outcome'}</button>
     </div>
   </form>
 }

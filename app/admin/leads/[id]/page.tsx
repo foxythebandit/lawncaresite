@@ -96,6 +96,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const calculatorAmount = lead.quote_draft ? quoteTotalCents(lead.quote_draft as QuoteDraft) : null
   const activeSent = sentOffers.find(offer => offer.state === 'sent' && !offer.replaced)
   const phoneOffer = activeSent?.rows.length === 1 ? activeSent.rows[0] : null
+  const priceOffer = sentOffers.find(offer => offer.href && offer.accepted_booking_id)
+    ?? sentOffers.find(offer => offer.href && offer.state === 'sent' && !offer.replaced)
+  const sentPrice = priceOffer?.rows.length === 1 ? priceOffer.rows[0] : null
   // One request timestamp for every relative label on the page.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
@@ -103,7 +106,24 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const s = summarizeLead(lead as SummaryLead, (bookings ?? []) as SummaryBooking[], { existingCustomer: existedBefore, addressChanged, now })
   const answers = asObject(lead.answers)
   const own = requestBookings((bookings ?? []) as SummaryBooking[])
-  const live = (own.find(b => b.status !== 'canceled') ?? own[0]) as (SummaryBooking & { lawn_size_bucket?: string | null; map_screenshot_url?: string | null }) | undefined
+  const live = (own.find(b => b.status !== 'canceled') ?? own[0]) as (SummaryBooking & {
+    id: string; one_time: boolean | null; lawn_size_bucket?: string | null; map_screenshot_url?: string | null; accepted_quote_snapshot?: unknown
+  }) | undefined
+  const accepted = asObject(live?.accepted_quote_snapshot)
+  const acceptedItems = (items: unknown) => Array.isArray(items) && items.length
+    ? items.reduce((sum, item) => sum + Math.round(Number(asObject(item).amount) * 100), 0) : null
+  const acceptedRegular = acceptedItems(accepted.regular_items)
+  const websiteRequest = !accepted.source && events?.some(event => event.booking_id === live?.id && event.source === 'website-booking')
+  const actual = sentPrice ?? (acceptedRegular != null ? {
+    firstVisitCents: acceptedItems(accepted.items), perVisitCents: acceptedRegular, freq: accepted.frequency,
+  } : websiteRequest && live?.price_per_visit != null ? {
+    firstVisitCents: live.first_visit_price == null ? null : live.first_visit_price * 100,
+    perVisitCents: live.price_per_visit * 100, freq: live.one_time ? 'onetime' : normalizeFrequency(live.frequency),
+  } : null)
+  const actualSource = sentPrice ? priceOffer?.accepted_booking_id ? 'Accepted quote' : 'Sent quote'
+    : acceptedRegular != null ? accepted.source === 'phone_call' ? 'Agreed by phone' : 'Agreed visit'
+    : websiteRequest ? 'Website request' : null
+  const separateCalculator = hasSentTerms || Boolean(actual)
   const mapUrl = await signedMapUrl(lead.map_screenshot_url ?? (bookings ?? []).map(b => b.map_screenshot_url).filter(Boolean).pop())
   const shapes = tracedShapes(lead.lawn_tracing, lead.quote_draft?.sections)
   const price = s.price
@@ -154,7 +174,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   // Same map as Jobs: the website's saved map image, else the tracing on satellite tiles.
   const map = (big: boolean) => mapUrl || shapes.length
     ? <LawnMap screenshotUrl={mapUrl} shapes={shapes} sqFt={s.tracedSqFt} width={big ? 720 : 640} height={big ? 440 : 300} /> : null
-  const pendingVisit = s.booking === 'requested' && live?.status === 'pending' ? live as SummaryBooking & { id: string; updated_at: string } : null
+  const pendingVisit = s.booking === 'requested' && live?.status === 'pending' ? live : null
   // One main button per column (UX audit Q2); Call stays (sticky bar on phone, header on desktop).
   const callBack = s.column === 'quoted'
   const main = pendingVisit ? <Link className="crm-button crm-button-primary" href={`/admin/jobs/${pendingVisit.id}`}><Icon name="calendar" size={17} />Confirm first visit</Link>
@@ -192,11 +212,18 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         <div className="crm-lead2-grid">
           <div className="crm-lead2-main">
             <Block title="Price" className="crm-o1 crm-price-card" aside={<><QuoteStatusChip />{price && <span>{dayLabel(price.at)}</span>}</>}>
-              {hasSentTerms ? <p className="crm-bignum">{calculatorAmount == null ? '—' : money(calculatorAmount)}<small>calculator amount</small></p>
+              {actual ? <>
+                <p className="crm-bignum">{money(actual.firstVisitCents ?? actual.perVisitCents)}
+                  <small>{actual.firstVisitCents != null && actual.firstVisitCents !== actual.perVisitCents ? 'first visit' : actual.freq === 'onetime' ? 'total' : 'per visit'}</small></p>
+                {actual.firstVisitCents != null && actual.firstVisitCents !== actual.perVisitCents
+                  && <p>{money(actual.perVisitCents)} {actual.freq === 'onetime' ? 'standard price' : 'per visit after the first'}</p>}
+              </> : hasSentTerms ? <p>Review the original terms below.</p>
                 : <p className="crm-bignum">{price ? money(price.cents) : '—'}{price && <small>{price.recurring ? `/ visit · ${price.frequency ? FREQUENCY_LABEL[price.frequency] : ''}` : 'total'}</small>}</p>}
-              {price && !hasSentTerms && <PriceSteps price={price} />}
+              {price && !separateCalculator && <PriceSteps price={price} />}
               <Rows rows={[
-                { label: hasSentTerms ? 'Calculator source' : 'Source', value: hasSentTerms ? 'Saved calculator' : chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null },
+                { label: 'Source', value: actualSource
+                  ?? (chip('price') ? <Pill tone={chip('price')!.tone}>{chip('price')!.label}</Pill> : null) },
+                ...(separateCalculator && calculatorAmount != null ? [{ label: 'Calculator amount', value: money(calculatorAmount) }] : []),
                 ...otherPrices.map(row => ({ label: row.label, value: row.value })),
                 { label: 'Booking', value: <>{s.wanted.label && live ? `${s.wanted.label} ` : ''}<Pill tone={chip('booking')!.tone}>{chip('booking')!.label}</Pill></> },
                 ...(lead.first_visit_on ? [{ label: pendingVisit ? 'Preferred start' : 'Start date', value: dayLabel(lead.first_visit_on, true) }] : []),

@@ -132,7 +132,8 @@ test('public website intake still creates a preferred-date request after adding 
 })
 
 const day = offset => {
-  const d = new Date()
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
+  const d = new Date(`${today}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + offset)
   return d.toISOString().slice(0, 10)
 }
@@ -179,7 +180,7 @@ test('an existing payment conflict rolls back the new customer and property whil
   await db.query("update bookings set payment_link='https://example.test/already-shared' where id=$1", [pending.booking_id])
   const counts = async () => (await db.query('select (select count(*) from customers) customers,(select count(*) from properties) properties')).rows[0]
   const before = await counts()
-  const save = await confirmInput(l.id, pending.booking_id)
+  const save = await confirmInput(l.id, pending.booking_id, { reviewed_terms: true })
   await assert.rejects(save, /Review the existing payment or payment link/)
   assert.deepEqual(await counts(), before)
   const { rows: [visit] } = await db.query('select status,customer_id,property_id,payment_link,job_total from bookings where id=$1', [pending.booking_id])
@@ -192,7 +193,12 @@ test('website overgrowth and rounding stay in the accepted first visit, while re
     price_per_visit: 85, first_visit_price: 70, overgrowth_fee: 15, preferred_date: day(2) }
   const { rows: [{ value: request }] } = await db.query('select record_intake_v3($1,$2,$3,$4,$5,$6,$7) value',
     ['website-booking', randomUUID(), 'web-agreed', { name: price.name, phone: price.phone, address: price.address }, price, null, recipients])
-  const result = await (await confirmInput(request.lead_id, request.booking_id))()
+  const before = await savedVisit(request.booking_id)
+  assert.equal(before.accepted_quote_snapshot.total, 70)
+  await db.query('select crm_replace_job_items($1,$2,$3,$4)', [before.id, before.updated_at, randomUUID(),
+    JSON.stringify([{ kind: 'service', description: 'Draft adjustment', amount: '110.00' }])])
+  await assert.rejects(await confirmInput(request.lead_id, request.booking_id), /Review the original quoted work/)
+  const result = await (await confirmInput(request.lead_id, request.booking_id, { reviewed_terms: true }))()
   const { rows: [visit] } = await db.query('select job_total,price_per_visit,first_visit_price,accepted_quote_snapshot from bookings where id=$1', [result.booking_id])
   assert.equal(visit.job_total, '70.00')
   assert.equal(visit.price_per_visit, 85)
@@ -231,4 +237,249 @@ test('legacy multi-row sent work remains fully visible in review and cannot pick
   assert.deepEqual(visit.accepted_quote_snapshot.rows, rows)
   await assert.rejects(await confirmInput(l.id, pending.booking_id, { reviewed_terms: true }), /multiple promised services/)
   assert.equal((await db.query('select status from bookings where id=$1', [pending.booking_id])).rows[0].status, 'pending')
+})
+
+const sqlValue = async (statement, args = []) => (await db.query(statement, args)).rows[0]
+const savedVisit = id => sqlValue('select id,updated_at::text,confirmed_date::text,status,job_total,payment_link,accepted_quote_snapshot,price_override from bookings where id=$1', [id])
+const promo = customer => sqlValue('select source_booking_id,allocated_booking_id,consumed_on::text from crm_intro_grants where customer_id=$1', [customer])
+const complete = (visit, on, review = null, op = randomUUID()) => sqlValue('select complete_job($1,$2,$3,$4,$5) value', [visit.id, visit.updated_at, op, on, review])
+const jobChange = (visit, action, payload = {}) => sqlValue('select crm_job_command($1,$2,$3,$4,$5) value', [visit.id, visit.updated_at, randomUUID(), action, payload])
+const scheduleEdit = async (agreement, edit) => {
+  const { updated_at: version } = await sqlValue('select updated_at::text from recurring_agreements where id=$1', [agreement])
+  const { value: preview } = await sqlValue('select crm_service_edit($1,$2,$3,$4) value', [agreement, version, edit, actor])
+  const { value: result } = await sqlValue('select crm_service_edit($1,$2,$3,$4,$5,$6) value', [agreement, version, edit, actor, randomUUID(), preview.preview])
+  return { preview, result }
+}
+const appointment = (agreement, offset) => sqlValue('select id from bookings where agreement_id=$1 and occurrence_on=$2', [agreement, day(offset)]).then(v => savedVisit(v.id))
+async function confirmedPromotion(freq = 'weekly', confirm = {}) {
+  const l = await lead()
+  const o = await prepare(l, { snapshot: { ...terms, rows: [{ ...terms.rows[0], freq }] } })
+  await finish(l, o.id)
+  const pending = await accept(l, o, 'agreed-intro', { frequency: freq, date: day(2) })
+  return (await confirmInput(l.id, pending.booking_id, confirm))()
+}
+async function newService(customerId, request) {
+  const { value: preview } = await sqlValue('select crm_service_create($1,$2,$3) value', [customerId, request, actor])
+  const op = randomUUID()
+  const save = () => sqlValue('select crm_service_create($1,$2,$3,$4,$5) value', [customerId, request, actor, op, preview.preview]).then(r => r.value)
+  return { preview, save }
+}
+const mowingId = async () => (await sqlValue("select id from service_labels where semantic_key='mowing' and retired_at is null")).id
+const recurring = (frequency, anchor_on) => ({ version: 1, base: { frequency, anchor_on } })
+
+test('reschedule preserves the exact intro, skip moves it once, and later completion waits for an unresolved earlier mow', async () => {
+  const agreement = await confirmedPromotion()
+  const original = await savedVisit(agreement.booking_id)
+  const later = await appointment(agreement.agreement_id, 18)
+  await assert.rejects(complete(later, day(18)), error =>
+    error.code === 'PT422' && JSON.parse(error.detail).earlierVisitId === original.id)
+  await jobChange(original, 'reschedule', { date: day(5), time: 'Afternoon' })
+  const moved = await savedVisit(original.id)
+  assert.equal(moved.job_total, '68.74')
+  assert.equal((await promo(agreement.customer_id)).allocated_booking_id, original.id)
+  await jobChange(moved, 'skip')
+  const next = await appointment(agreement.agreement_id, 11)
+  assert.equal(next.job_total, '68.74')
+  assert.equal((await savedVisit(later.id)).job_total, '93.80')
+  assert.equal((await savedVisit(original.id)).status, 'skipped')
+  assert.deepEqual((await savedVisit(original.id)).accepted_quote_snapshot, original.accepted_quote_snapshot)
+  assert.deepEqual(await promo(agreement.customer_id), { source_booking_id: original.id, allocated_booking_id: next.id, consumed_on: null })
+  const op = randomUUID()
+  await complete(next, day(11), null, op)
+  assert.equal((await complete(next, day(11), null, op)).value.duplicate, true)
+  await complete(await savedVisit(later.id), day(18))
+  assert.equal((await promo(agreement.customer_id)).consumed_on, day(11))
+  assert.equal((await savedVisit(later.id)).job_total, '93.80')
+})
+
+test('pause and later resume retain the unused price and transfer it to the first restored eligible visit', async () => {
+  const agreement = await confirmedPromotion()
+  const source = await savedVisit(agreement.booking_id)
+  const before = await appointment(agreement.agreement_id, 11)
+  await scheduleEdit(agreement.agreement_id, { mode: 'pause', from: day(0) })
+  assert.equal((await savedVisit(source.id)).status, 'canceled')
+  assert.equal((await promo(agreement.customer_id)).allocated_booking_id, source.id)
+  const { preview } = await scheduleEdit(agreement.agreement_id, { mode: 'resume', from: day(6) })
+  assert.deepEqual(preview.intro_transfer, { to_on: day(11), standard_price: 93.80, intro_price: 68.74 })
+  assert.equal(preview.dates.find(date => date.on === day(11)).price, 68.74)
+  const restored = await appointment(agreement.agreement_id, 11)
+  assert.equal(restored.id, before.id)
+  assert.equal(restored.job_total, '68.74')
+  assert.equal((await promo(agreement.customer_id)).allocated_booking_id, restored.id)
+  assert.equal((await savedVisit(source.id)).job_total, '68.74')
+  assert.equal((await appointment(agreement.agreement_id, 18)).job_total, '93.80')
+})
+
+test('a backdated actual mow prompts a reviewed completion and keeps both paid and completed amounts', async () => {
+  const agreement = await confirmedPromotion()
+  const first = await savedVisit(agreement.booking_id)
+  const later = await appointment(agreement.agreement_id, 11)
+  await complete(first, day(5))
+  await db.query('select record_job_payment($1,$2,$3,$4,$5,$6)', [first.id, randomUUID(), 68.74, day(5), 'cash', 'manual'])
+  let review
+  await assert.rejects(complete(later, day(3)), error => {
+    review = JSON.parse(error.detail)
+    return error.code === 'PT422' && review.allocatedAmount === 68.74 && review.visitAmount === 93.80 && !!review.token
+  })
+  assert.equal((await savedVisit(later.id)).status, 'confirmed')
+  await assert.rejects(complete(later, day(2), review.token), error => error.code === 'PT422')
+  await complete(later, day(3), review.token)
+  assert.equal((await savedVisit(first.id)).job_total, '68.74')
+  assert.equal((await savedVisit(later.id)).job_total, '93.80')
+  assert.equal((await promo(agreement.customer_id)).consumed_on, day(5))
+  assert.equal((await sqlValue('select amount from job_payments where booking_id=$1', [first.id])).amount, '68.74')
+})
+
+test('a shared payment link prevents promo transfer even after the linked visit is skipped', async () => {
+  const agreement = await confirmedPromotion()
+  await db.query("update bookings set payment_link='https://example.test/live' where id=$1", [agreement.booking_id])
+  await jobChange(await savedVisit(agreement.booking_id), 'skip')
+  const later = await appointment(agreement.agreement_id, 11)
+  assert.equal(later.job_total, '93.80')
+  await assert.rejects(complete(later, day(11)), error => error.code === 'PT422'
+    && /payment or payment link/.test(error.message) && JSON.parse(error.detail).allocatedAmount === 68.74)
+  const first = await savedVisit(agreement.booking_id)
+  assert.equal(first.payment_link, 'https://example.test/live')
+  assert.equal(first.job_total, '68.74')
+  assert.equal((await promo(agreement.customer_id)).consumed_on, null)
+})
+
+test('an accepted one-off keeps the exact unused intro when it becomes a schedule, without discounting custom or returning work', async () => {
+  const first = await confirmedPromotion('onetime')
+  const source = await savedVisit(first.booking_id)
+  const booked = await newService(first.customer_id, { source_id: source.id, source_version: source.updated_at,
+    property_id: first.property_id, label_id: await mowingId(), price: '78.00', arrival: 'Morning',
+    first_on: day(4), definition: recurring('weekly', day(4)) })
+  assert.equal(booked.preview.first_price, 68.74)
+  assert.equal(booked.preview.dates[0].price, 78)
+  const result = await booked.save()
+  assert.equal(result.booking_id, source.id)
+  await jobChange(await savedVisit(source.id), 'skip')
+  const next = await appointment(result.agreement_id, 11)
+  assert.equal(next.job_total, '68.74')
+  await complete(next, day(11))
+  const second = await newService(first.customer_id, { property_id: first.property_id, label_id: await mowingId(),
+    price: '82.00', arrival: 'Morning', first_on: day(20), definition: recurring('biweekly', day(20)) })
+  assert.equal(second.preview.first_price, 82)
+  const newPlan = await second.save()
+  assert.equal((await savedVisit(newPlan.booking_id)).job_total, '82.00')
+  assert.equal((await sqlValue('select crm_intro_customer_eligible($1) eligible', [first.customer_id])).eligible, false)
+  assert.equal((await promo(first.customer_id)).consumed_on, day(11))
+  const cleanup = await sqlValue("select id from service_labels where name='Leaf cleanup'")
+  const extra = await newService(first.customer_id, { property_id: first.property_id, label_id: cleanup.id, price: '250.00',
+    arrival: 'Morning', first_on: day(20), definition: null })
+  assert.equal((await savedVisit((await extra.save()).booking_id)).job_total, '250.00')
+})
+
+test('a later independent series may explicitly carry an unused quote without copying its ongoing price', async () => {
+  const first = await confirmedPromotion('biweekly')
+  await scheduleEdit(first.agreement_id, { mode: 'end', from: day(0) })
+  const candidate = await sqlValue('select * from crm_intro_continuation($1)', [first.customer_id])
+  assert.equal(candidate.source_id, first.booking_id)
+  const booked = await newService(first.customer_id, { intro_source_id: candidate.source_id,
+    property_id: first.property_id, label_id: await mowingId(), price: '78.00', arrival: 'Morning',
+    first_on: day(8), definition: recurring('weekly', day(8)) })
+  assert.equal(booked.preview.first_price, 68.74)
+  assert.equal(booked.preview.intro_continuation.regular_price, 78)
+  const second = await booked.save()
+  assert.deepEqual(await booked.save(), { ...second, duplicate: true })
+  assert.notEqual(second.agreement_id, first.agreement_id)
+  assert.equal((await savedVisit(second.booking_id)).job_total, '68.74')
+  assert.equal((await appointment(second.agreement_id, 15)).job_total, '78.00')
+  assert.equal((await sqlValue('select price_per_visit from recurring_agreements where id=$1', [first.agreement_id])).price_per_visit, '93.80')
+  assert.equal((await savedVisit(first.booking_id)).job_total, '68.74')
+  assert.equal((await promo(first.customer_id)).allocated_booking_id, second.booking_id)
+})
+
+test('restoring a formerly discounted date keeps one intro and reviews a changed first actual mow', async () => {
+  const agreement = await confirmedPromotion()
+  await scheduleEdit(agreement.agreement_id, { mode: 'range', from: day(1), through: day(4), rule: { frequency: 'paused' } })
+  assert.equal((await appointment(agreement.agreement_id, 11)).job_total, '68.74')
+  await scheduleEdit(agreement.agreement_id, { mode: 'pause', from: day(0) })
+  await scheduleEdit(agreement.agreement_id, { mode: 'resume', from: day(13) })
+  assert.equal((await appointment(agreement.agreement_id, 18)).job_total, '68.74')
+  const { preview } = await scheduleEdit(agreement.agreement_id, {
+    mode: 'future', from: day(10), definition: recurring('weekly', day(4)),
+  })
+  assert.equal(preview.dates.find(date => date.on === day(11)).price, 93.80)
+  assert.equal(preview.dates.find(date => date.on === day(18)).price, 68.74)
+  const restored = await appointment(agreement.agreement_id, 11)
+  const allocated = await appointment(agreement.agreement_id, 18)
+  assert.equal(restored.job_total, '93.80')
+  assert.equal(allocated.job_total, '68.74')
+  let review
+  await assert.rejects(complete(restored, day(11)), error => {
+    review = JSON.parse(error.detail)
+    return error.code === 'PT422' && review.move && review.visitAmount === 93.80 && review.replacementAmount === 93.80
+  })
+  await complete(restored, day(11), review.token)
+  assert.equal((await savedVisit(restored.id)).job_total, '68.74')
+  assert.equal((await savedVisit(allocated.id)).job_total, '93.80')
+  assert.equal((await promo(agreement.customer_id)).consumed_on, day(11))
+})
+
+test('a canceled acceptance cannot be replaced through the staff Book visit command', async () => {
+  const l = await lead()
+  const o = await prepare(l)
+  await finish(l, o.id)
+  const pending = await accept(l, o)
+  await jobChange(await savedVisit(pending.booking_id), 'cancel')
+  const { updated_at } = await sqlValue('select updated_at::text from leads where id=$1', [l.id])
+  await assert.rejects(sqlValue('select crm_staff_quote_request($1,$2,$3,$4,$5)', [l.id, updated_at, randomUUID(),
+    { offer_id: o.id }, 'staff@example.test']), /already has an acceptance/)
+  assert.equal((await sqlValue('select accepted_booking_id from sent_offers where id=$1', [o.id])).accepted_booking_id, pending.booking_id)
+  assert.equal((await sqlValue('select count(*)::int as count from bookings where lead_id=$1', [l.id])).count, 1)
+})
+
+test('the intro migration preserves older completed money, accepted terms, and attribution without inferring a consumed grant', async () => {
+  const old = { lead: randomUUID(), booking: randomUUID(), customer: randomUUID(), property: randomUUID(), offer: randomUUID() }
+  const historic = '{"source":"sent_offer","mowing":true,"rows":[{"freq":"weekly","when":"From March"},{"freq":"monthly","when":"Winter"}]}'
+  const before = async connection => {
+    const { rows: [snapshot] } = await connection.query(`select to_jsonb(b) - 'intro_parked_price' as visit,
+      (select jsonb_agg(to_jsonb(i) order by i.id) from job_items i where i.booking_id = b.id) as items,
+      (select jsonb_agg(to_jsonb(p) order by p.id) from job_payments p where p.booking_id = b.id) as payments,
+      (select to_jsonb(o) from sent_offers o where o.id = $2) as offer from bookings b where b.id = $1`, [old.booking, old.offer])
+    return snapshot
+  }
+  let frozen
+  const upgraded = await freshDb({ beforeMigration: async (connection, name) => {
+    if (!name.endsWith('_crm_intro_entitlement.sql')) return
+    await connection.query("insert into customers(id,name,phone) values($1,'Historical Fixture','5125550198')", [old.customer])
+    await connection.query('insert into properties(id,customer_id,address) values($1,$2,$3)', [old.property, old.customer, draft.address])
+    await connection.query("insert into leads(id,name,phone,address) values($1,'Historical Fixture','5125550198',$2)", [old.lead, draft.address])
+    await connection.query(`insert into bookings(id,lead_id,customer_id,property_id,name,phone,address,status,job_total,
+      confirmed_date,completed_at,notes,accepted_quote_snapshot,attribution,payment_link)
+      values($1,$2,$3,$4,'Historical Fixture','5125550198',$5,'completed',93.80,'2025-01-01','2025-01-01T12:00Z',
+        'Keep historical note',$6,'{"utm_source":"older-fixture"}','https://example.test/old-payment')`,
+      [old.booking, old.lead, old.customer, old.property, draft.address, historic])
+    await connection.query("insert into job_items(booking_id,kind,description,amount) values($1,'service','Saved work',93.80)", [old.booking])
+    await connection.query("select record_job_payment($1,$2,93.80,'2025-01-01','cash','manual')", [old.booking, randomUUID()])
+    await connection.query(`insert into sent_offers(id,lead_id,version,terms,message,recipient,state,provider_id,sent_at,accepted_booking_id)
+      values($1,$2,1,$3,'{}','historical@example.test','sent','historical-fixture','2025-01-01T12:00Z',$4)`,
+      [old.offer, old.lead, historic, old.booking])
+    frozen = await before(connection)
+  } })
+  try {
+    assert.deepEqual(await before(upgraded), frozen)
+    assert.equal((await upgraded.query('select count(*)::int as count from crm_intro_grants')).rows[0].count, 0)
+    assert.equal((await upgraded.query('select crm_intro_customer_eligible($1) eligible', [old.customer])).rows[0].eligible, false)
+  } finally { await upgraded.close() }
+})
+
+test('a quoted $250 monthly cleanup keeps the exact items and label through confirmation and generation', async () => {
+  const l = await lead()
+  const items = [{ kind: 'service', description: 'Leaf cleanup', amount: '250.00' }]
+  const o = await prepare(l, { snapshot: { ...terms, mowing: false,
+    rows: [{ freq: 'monthly', when: 'Start when leaves fall', firstItems: items, regularItems: items, perVisitCents: 25000, firstVisitCents: null }] } })
+  await finish(l, o.id)
+  const pending = await accept(l, o, 'monthly-cleanup', { frequency: 'monthly', date: day(2) })
+  const label = await sqlValue("select id from service_labels where name='Leaf cleanup'")
+  const save = await confirmInput(l.id, pending.booking_id, { label_id: label.id })
+  const result = await save()
+  const schedule = await sqlValue('select service_label_id,interval_unit,interval_count,items_template from recurring_agreements where id=$1', [result.agreement_id])
+  assert.deepEqual(schedule, { service_label_id: label.id, interval_unit: 'month', interval_count: 1, items_template: items })
+  const prices = (await db.query('select job_total from bookings where agreement_id=$1', [result.agreement_id])).rows
+  assert.ok(prices.length > 1 && prices.every(visit => visit.job_total === '250.00'))
+  assert.equal(await promo(result.customer_id), undefined)
+  assert.deepEqual((await savedVisit(result.booking_id)).accepted_quote_snapshot.items, items)
 })

@@ -16,13 +16,16 @@ export type ScheduleDefinition = {
 }
 
 export type ServiceLabel = Pick<Tables<'service_labels'>, 'id' | 'name' | 'retired_at' | 'updated_at'>
-export type ServiceEditorSource = { id: string; propertyId: string; labelId: string | null; date: string; version: string; price: number; arrival: string | null; service: string }
+export type ServiceEditorSource = { id: string; propertyId: string; labelId: string | null; date: string; version: string; price: number; regularPrice?: number; arrival: string | null; service: string }
+export type IntroContinuation = { source_id: string; property_id: string; allocated_id: string; allocated_on: string | null; amount: number }
 export type ServicePreview = {
   preview: string
   first_on?: string
   first_price?: number
   first_arrival?: string | null
   same_day_extra?: boolean
+  intro_transfer?: { to_on?: string; standard_price?: number; intro_price?: number; needs_review?: boolean }
+  intro_continuation?: { from_on: string | null; regular_price: number } | null
   dates: { on: string; price: number; arrival: string | null }[]
   changes: { booking_id: string | null; on: string; old_on?: string; action: 'keep' | 'cancel' | 'restore' | 'update' | 'extra' | 'conflict' | 'move' | 'tombstone'; price: number | null; old_price: number | null; arrival: string | null }[]
   conflicts: { booking_id?: string; on: string; action: 'conflict' | 'collision' }[]

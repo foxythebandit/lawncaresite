@@ -112,7 +112,8 @@ export default function QuoteBooking({ token, firstName, address, offer, section
       {offer.rows.length > 1 && <p className="qb-sub">We’ll review these terms with you before confirming the first visit.</p>}
       {offer.rows.map(row => <div key={row.freq} className="qb-terms">
         <div className="qb-row">
-          <b>{offer.mowing ? row.freq === 'onetime' ? 'One-time mowing' : `${row.label} mowing` : row.label}</b>
+          <b>{offer.mowing ? row.freq === 'onetime' ? 'One-time mowing' : `${row.label} mowing`
+            : row.freq === 'onetime' ? row.label : `${row.label} · ${row.detail}`}</b>
           {row.firstVisitCents === null && <b>{emailMoney(row.perVisitCents)}{row.freq !== 'onetime' ? ' / visit' : ''}</b>}
         </div>
         {row.when && <p className="qb-sub">{row.when}</p>}

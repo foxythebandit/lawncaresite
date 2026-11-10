@@ -1,3 +1,33 @@
+-- Preserve the exact website amount and included overgrowth on the request.
+create function public.crm_website_booking_terms(p_booking jsonb)
+returns jsonb language plpgsql stable security invoker set search_path = '' as $$
+declare v_price numeric := (p_booking->>'price_per_visit')::numeric;
+  v_fee numeric := coalesce((p_booking->>'overgrowth_fee')::numeric,0);
+  v_total numeric := coalesce((p_booking->>'first_visit_price')::numeric,v_price + v_fee);
+  v_regular jsonb; v_first jsonb; v_freq text;
+begin
+  if v_price is null or v_price <= 0 then return null; end if;
+  v_freq := case when p_booking->>'one_time' = 'true' then 'onetime'
+    else case lower(replace(btrim(p_booking->>'frequency'),'-',''))
+      when 'weekly' then 'weekly' when 'biweekly' then 'biweekly'
+      when 'monthly' then 'monthly' else 'onetime' end end;
+  v_regular := jsonb_build_array(jsonb_build_object('kind','service','description','Lawn care','amount',v_price::text));
+  v_first := v_regular;
+  if v_fee > 0 then
+    v_first := v_first || jsonb_build_array(jsonb_build_object('kind','service','description','First-visit overgrowth','amount',v_fee::text));
+  end if;
+  if v_total < v_price + v_fee then
+    v_first := v_first || jsonb_build_array(jsonb_build_object('kind','discount','description','Introductory mowing discount',
+      'amount',(v_total - v_price - v_fee)::text));
+  elsif v_total > v_price + v_fee then
+    v_first := jsonb_build_array(jsonb_build_object('kind','service','description','Quoted first visit','amount',v_total::text));
+  end if;
+  return jsonb_build_object('source','website_booking','frequency',v_freq,'mowing',true,
+    'items',v_first,'regular_items',v_regular,'total',v_total,'currency','USD','accepted_at',now());
+end $$;
+revoke all on function public.crm_website_booking_terms(jsonb) from public,anon,authenticated;
+grant execute on function public.crm_website_booking_terms(jsonb) to service_role;
+
 -- Composite intake inserts need explicit values for new visit intent columns.
 create or replace function public.record_intake(p_source text, p_submission text, p_hash text, p_lead jsonb, p_booking jsonb default null, p_existing_lead uuid default null)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
@@ -21,6 +51,9 @@ begin
       || p_lead || jsonb_build_object('id',v_lead,'source',p_source,'external_submission_id',p_submission))).*;
   end if;
   if p_booking is not null then
+    if p_source = 'website-booking' and not (p_booking ? 'accepted_quote_snapshot') then
+      p_booking := p_booking || jsonb_build_object('accepted_quote_snapshot',public.crm_website_booking_terms(p_booking));
+    end if;
     update public.leads set name = coalesce(p_booking->>'name', name), email = coalesce(p_booking->>'email', email),
       timing = coalesce(p_booking->>'preferred_date', timing), frequency = coalesce(p_booking->>'frequency', frequency),
       address = coalesce(p_booking->>'address', address),

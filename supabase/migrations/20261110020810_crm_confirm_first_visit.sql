@@ -122,8 +122,8 @@ end $$;
 create function public.crm_first_visit_terms(p_booking_id uuid)
 returns jsonb language plpgsql stable security invoker set search_path = '' as $$
 declare b public.bookings; a public.recurring_agreements; s jsonb; v_source text;
-  v_first jsonb; v_regular jsonb; v_frequency text; v_first_total numeric; v_regular_total numeric;
-  v_fee numeric; v_mowing boolean := false; v_locked boolean := false;
+  v_first jsonb; v_regular jsonb; v_frequency text; v_first_total numeric; v_regular_total numeric; v_has_items boolean;
+  v_mowing boolean := false; v_locked boolean := false;
   v_review boolean := false; v_multiple boolean := false;
 begin
   select * into b from public.bookings where id = p_booking_id;
@@ -132,6 +132,7 @@ begin
   v_source := s->>'source';
   select jsonb_agg(jsonb_build_object('kind',kind,'description',description,'amount',amount::text) order by created_at,id)
     into v_first from public.job_items where booking_id = b.id;
+  v_has_items := v_first is not null;
   v_frequency := coalesce(s->>'frequency',b.frequency);
   v_multiple := (case when jsonb_typeof(s->'rows') = 'array' then jsonb_array_length(s->'rows') > 1 else false end) or v_source = 'sent_offer_review';
   v_review := v_source = 'legacy_quote_review';
@@ -142,30 +143,23 @@ begin
       v_frequency := s->'rows'->0->>'freq';
       v_mowing := coalesce((s->>'mowing')::boolean,false);
       v_locked := true;
-    elsif v_source in ('phone_call','staff_agreed_quote') and s ? 'regular_items' then
+    elsif v_source in ('phone_call','staff_agreed_quote','website_booking') and s ? 'regular_items' then
       v_first := s->'items';
       v_regular := s->'regular_items';
       v_mowing := coalesce((s->>'mowing')::boolean,false);
       v_locked := true;
-    elsif v_first is null and exists(select 1 from public.intake_events
-      where booking_id = b.id and source = 'website-booking') and b.price_per_visit > 0 then
-      v_source := 'website_booking';
-      if b.one_time then v_frequency := 'onetime'; end if;
-      v_mowing := true;
-      v_locked := true;
-      v_fee := coalesce(b.overgrowth_fee,0);
-      v_regular_total := b.price_per_visit;
-      v_first_total := coalesce(b.first_visit_price,b.price_per_visit + v_fee);
-      v_regular := jsonb_build_array(jsonb_build_object('kind','service','description','Lawn care','amount',v_regular_total::text));
-      v_first := v_regular;
-      if v_fee > 0 then
-        v_first := v_first || jsonb_build_array(jsonb_build_object('kind','service','description','First-visit overgrowth','amount',v_fee::text));
-      end if;
-      if v_first_total < v_regular_total + v_fee then
-        v_first := v_first || jsonb_build_array(jsonb_build_object('kind','discount','description','Introductory mowing discount',
-          'amount',(v_first_total - v_regular_total - v_fee)::text));
-      elsif v_first_total > v_regular_total + v_fee then
-        v_first := jsonb_build_array(jsonb_build_object('kind','service','description','Quoted first visit','amount',v_first_total::text));
+    elsif exists(select 1 from public.intake_events where booking_id = b.id and source = 'website-booking') then
+      if v_first is null and b.price_per_visit > 0 then
+        s := public.crm_website_booking_terms(to_jsonb(b));
+        v_source := s->>'source';
+        v_frequency := s->>'frequency';
+        v_first := s->'items';
+        v_regular := s->'regular_items';
+        v_mowing := true;
+        v_locked := true;
+      else
+        v_source := 'website_booking_review';
+        v_review := true;
       end if;
     elsif v_first is null and coalesce(b.job_total,b.first_visit_price,b.price_per_visit) is not null
         and not coalesce(v_review,false) then
@@ -189,6 +183,7 @@ begin
   return jsonb_build_object('source',v_source,'first_items',v_first,'regular_items',coalesce(v_regular,v_first),
     'first_total',v_first_total,'regular_total',v_regular_total,'frequency',v_frequency,
     'locked',v_locked,'mowing',v_mowing,'needs_review',coalesce(v_review,false),
+    'items_changed',v_locked and v_has_items and not public.crm_visit_items_match(b.id,v_first),
     'multiple',coalesce(v_multiple,false));
 end $$;
 
@@ -207,8 +202,8 @@ declare b public.bookings; l public.leads; a public.recurring_agreements; label 
   v_result jsonb; v_terms jsonb; v_items jsonb; v_regular jsonb;
   v_date date := (p_request->>'date')::date; v_time text; v_frequency text; v_unit text; v_count integer;
   v_customer uuid := (p_request->>'customer_id')::uuid; v_property uuid := (p_request->>'property_id')::uuid;
-  v_label uuid := (p_request->>'label_id')::uuid; v_address text; v_label_key text;
-  v_total numeric; v_next date;
+  v_label uuid; v_address text;
+  v_total numeric; v_standard numeric; v_next date;
 begin
   v_result := public.crm_operation_reply(p_operation_id,'confirm_first_visit',p_booking_id,p_request);
   if v_result is not null then return v_result || '{"duplicate":true}'::jsonb; end if;
@@ -233,7 +228,8 @@ begin
   if (v_terms->>'multiple')::boolean then
     raise exception 'This quote has multiple promised services. Keep it in review and resolve those terms before confirming a series.' using errcode = '23514';
   end if;
-  if (v_terms->>'needs_review')::boolean and p_request->>'reviewed_terms' is distinct from 'true' then
+  if ((v_terms->>'needs_review')::boolean or (v_terms->>'items_changed')::boolean)
+    and p_request->>'reviewed_terms' is distinct from 'true' then
     raise exception 'Review the original quoted work and confirm the agreed price first.' using errcode = '23514';
   end if;
   v_items := nullif(v_terms->'first_items','null'::jsonb);
@@ -242,6 +238,7 @@ begin
     raise exception 'Save the agreed visit items and price before confirming.' using errcode = '23514';
   end if;
   v_total := public.crm_validate_items(v_items);
+  v_standard := public.crm_validate_items(v_regular);
   v_frequency := coalesce(p_request->>'frequency',v_terms->>'frequency');
   if v_frequency not in ('onetime','weekly','biweekly','monthly') then
     raise exception 'Choose the agreed visit cadence' using errcode = '22023';
@@ -249,26 +246,27 @@ begin
   if (v_terms->>'locked')::boolean and v_frequency is distinct from v_terms->>'frequency' then
     raise exception 'The accepted terms specify this cadence. Review a new quote before changing it.' using errcode = '23514';
   end if;
-  v_label := coalesce(b.service_label_id,a.service_label_id,v_label);
-  if (v_terms->>'mowing')::boolean then
-    select id into v_label from public.service_labels where semantic_key = 'mowing';
+  v_label := coalesce(b.service_label_id,a.service_label_id);
+  if v_label is null and (v_terms->>'mowing')::boolean then
+    select id into v_label from public.service_labels where semantic_key = 'mowing' and retired_at is null;
   end if;
+  v_label := coalesce(v_label,(p_request->>'label_id')::uuid);
   if v_label is not null then
     select * into label from public.service_labels where id = v_label for share;
     if not found or (label.retired_at is not null and b.service_label_id is distinct from label.id
       and a.service_label_id is distinct from label.id) then
       raise exception 'Choose an active service label' using errcode = '23514';
     end if;
-    v_label_key := label.semantic_key;
-  elsif v_frequency <> 'onetime' then
-    raise exception 'Choose a label for this repeating service' using errcode = '22023';
+  elsif v_frequency <> 'onetime' or (v_terms->>'mowing')::boolean then
+    raise exception 'Choose a label for this service' using errcode = '22023';
   end if;
 
   v_customer := coalesce(b.customer_id,v_customer);
   v_property := coalesce(b.property_id,v_property);
   if (b.customer_id is not null and p_request->>'customer_id' is distinct from b.customer_id::text)
     or (b.property_id is not null and p_request->>'property_id' is distinct from b.property_id::text)
-    or (l.customer_id is not null and l.customer_id is distinct from v_customer) then
+    or (l.customer_id is not null and l.customer_id is distinct from v_customer)
+    or (l.property_id is not null and l.property_id is distinct from v_property) then
     raise exception 'This request already has a customer or property link. Review that identity first.' using errcode = '23514';
   end if;
   if v_customer is not null then
@@ -311,10 +309,16 @@ begin
     end if;
     perform public.crm_replace_job_items(b.id,(select updated_at from public.bookings where id = b.id),gen_random_uuid(),v_items);
   end if;
-  update public.bookings set address = v_address,service_label_id = v_label,price_per_visit = b.price_per_visit,one_time = v_frequency = 'onetime',
+  update public.bookings set address = v_address,service_label_id = v_label,one_time = v_frequency = 'onetime',
+    price_per_visit = case when (v_terms->>'locked')::boolean
+      then case when v_standard = trunc(v_standard) and v_standard <= 2147483647 then v_standard::integer end
+      else b.price_per_visit end,
+    first_visit_price = case when (v_terms->>'locked')::boolean
+      then case when v_total = trunc(v_total) and v_total <= 2147483647 then v_total::integer end
+      else b.first_visit_price end,
     frequency = v_frequency, accepted_quote_snapshot = coalesce(accepted_quote_snapshot,
       jsonb_build_object('source',coalesce(v_terms->>'source','staff_review'),'items',v_items,'regular_items',v_regular,
-        'total',v_total,'currency','USD','frequency',v_frequency,'mowing',v_label_key = 'mowing','accepted_at',now()))
+        'total',v_total,'currency','USD','frequency',v_frequency,'mowing',(v_terms->>'mowing')::boolean,'accepted_at',now()))
     where id = b.id returning * into b;
   perform public.crm_job_command(b.id,b.updated_at,gen_random_uuid(),'confirm',jsonb_build_object('date',v_date,'time',v_time));
   if v_frequency <> 'onetime' and a.id is null then
@@ -325,6 +329,9 @@ begin
       jsonb_build_object('anchor_on',v_date,'next_on',v_next,'interval_unit',v_unit,'interval_count',v_count,
         'items_template',v_regular,'staff_user_id',p_request->>'staff_user_id'));
     a.id := (v_result->>'agreement_id')::uuid;
+  end if;
+  if (v_terms->>'mowing')::boolean then
+    perform public.crm_register_intro(b.id,v_items,v_regular);
   end if;
   if l.id is not null then
     update public.leads set customer_id = coalesce(customer_id,v_customer),
@@ -366,6 +373,9 @@ begin
   select * into o from public.sent_offers where lead_id = l.id and state = 'sent' and replaced_by is null
     order by version desc limit 1;
   if found then
+    if o.accepted_booking_id is not null then
+      raise exception 'This sent quote already has an acceptance. Agree a new service or send a separate proposal.' using errcode = '23514';
+    end if;
     if p_terms->>'offer_id' is distinct from o.id::text or jsonb_array_length(o.terms->'rows') <> 1 then
       raise exception 'Review the current sent offer before recording acceptance.' using errcode = 'PT409';
     end if;
@@ -386,7 +396,7 @@ begin
     v_frequency := p_terms->>'frequency';
     v_address := l.address;
     v_snapshot := jsonb_build_object('source',v_source,'regular_items',v_regular,'frequency',v_frequency,'mowing',p_terms->'mowing',
-      'quote_draft',case when v_source = 'staff_agreed_quote' then coalesce(l.accepted_quote_snapshot,l.quote_draft) end);
+      'quote_draft',case when v_source = 'staff_agreed_quote' then p_terms->'quote_draft' end);
   end if;
   if v_frequency not in ('onetime','weekly','biweekly','monthly') or nullif(btrim(v_address),'') is null then
     raise exception 'Choose an agreed service and property address' using errcode = '22023';
@@ -398,6 +408,7 @@ begin
   v_result := public.record_intake_v3('staff-booking','staff-' || p_operation_id::text,md5(v_request::text),'{}',
     jsonb_build_object('name',coalesce(nullif(btrim(l.name),''),v_address),'phone',l.phone,'email',l.email,
       'address',v_address,'sq_ft',l.sq_ft,'one_time',v_frequency = 'onetime','frequency',v_frequency,
+      'manual_quote',v_source = 'phone_call',
       'preferred_date',p_terms->>'date','price_per_visit',case when v_standard = trunc(v_standard) then v_standard::integer end,
       'first_visit_price',case when v_total = trunc(v_total) then v_total::integer end,
       'job_total',v_total,'accepted_quote_snapshot',v_snapshot,'map_screenshot_url',l.map_screenshot_url),l.id,array[]::text[]);
@@ -527,5 +538,3 @@ begin
         else p_activity->'data' end);
   return jsonb_build_object('lead_id',p_lead_id,'updated_at',v_lead.updated_at);
 end $$;
-
-

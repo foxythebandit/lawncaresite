@@ -58,5 +58,6 @@ export type FirstVisitTerms = {
   locked: boolean
   mowing: boolean
   needs_review: boolean
+  items_changed: boolean
   multiple: boolean
 }

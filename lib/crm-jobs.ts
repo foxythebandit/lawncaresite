@@ -66,7 +66,12 @@ export function callVisitItems(cents: number, freq: OfferFrequency, description:
     : plan
   return { items, plan, firstVisitPrice: first < cents && first % 100 === 0 ? first / 100 : null }
 }
-export type ActionResult = { success: true; data?: Record<string, unknown> } | { success: false; error: string }
+export type IntroCompletionReview = {
+  token?: string; earlierVisitId?: string; allocatedAmount?: number; allocatedOn?: string
+  visitAmount?: number; introAmount?: number; replacementAmount?: number; move?: boolean
+}
+export type ActionResult = { success: true; data?: Record<string, unknown> }
+  | { success: false; error: string; data?: { introReview?: IntroCompletionReview } }
 
 export function commandError(error: { code?: string; message?: string } | null): string {
   if (!error) return 'Could not save. Please retry.'

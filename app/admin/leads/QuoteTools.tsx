@@ -9,7 +9,7 @@ import { addressForLookup } from '@/lib/address-text'
 import MapQuoteBuilder from '@/components/MapQuoteBuilder'
 import { tracedShapes } from './TracingMap'
 import { quoteTotalCents, type QuoteDraft } from '@/lib/quote-draft'
-import { frequencyLabel, quoteOffer } from '@/lib/quote-offer'
+import { frequencyLabel, quoteOffer, type OfferFrequency } from '@/lib/quote-offer'
 import { emailMoney, MAP_CID, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
 import { renderLawnMapImage } from './lawn-map-image'
 import { formatMoney } from '@/lib/crm-jobs'
@@ -145,7 +145,8 @@ export function QuotePanel() {
 
   // Follow-up after the phone call: recap the agreed price and ask for the booking.
   function quoteSummary(quote: QuoteDraft) {
-    if (currentSent?.publicUrl) return `QuietGreen quote ${currentSent.version}: ${currentSent.publicUrl} . Reply with a preferred date and we’ll confirm the visit.`
+    if (currentSent?.publicUrl) return `QuietGreen quote ${currentSent.version}: ${currentSent.publicUrl}
+Reply with a preferred date and we’ll confirm the visit.`
 
     const firstName = lead.name?.trim().split(/\s+/)[0]
     const offer = quoteOffer(quote)
@@ -175,6 +176,7 @@ export function QuotePanel() {
   const pendingSend = sentOffers.find(offer => ['sending', 'unknown'].includes(offer.state))
   const emailButton = currentSent ? currentSent.accepted_booking_id ? 'Email new proposal' : 'Email revised quote' : 'Email quote'
   const bookedCustomerId = bookings.find(b => b.customer_id)?.customer_id ?? null
+  const needsSeparateProposal = quoteState === 'canceled' && Boolean(currentSent?.accepted_booking_id)
   const firstVisitOpen = !!booking && ['pending', 'confirmed'].includes(booking.status)
   const cancelOps = useRef<{ jobOperationId: string; planOperationId: string } | null>(null)
 
@@ -232,14 +234,22 @@ export function QuotePanel() {
       }}>Check or retry email</button>}
     </section>}
     {draft && quoteState === 'draft' && !emailOpen && <div className="crm-action-row">
-      <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />Text price</a>
+      <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />{currentSent ? 'Text price' : 'Text draft price'}</a>
       <button type="button" className="crm-button" disabled={!!pendingSend} onClick={openEmail}><Icon name="mail" size={15} />{emailButton}</button>
     </div>}
     {draft && emailOpen && <QuoteEmail draft={draft} message={emailBody} onClose={() => setEmailOpen(false)} />}
 
-    {(quoteState === 'quoted' || quoteState === 'accepted' || quoteState === 'canceled') && !bookingOpen && !emailOpen && !propertyChanged && booking?.status !== 'pending' && <div className="crm-action-row">
+    {needsSeparateProposal && !emailOpen && <div className="crm-booking-request">
+      <p>The canceled visit stays linked to the accepted quote. Agree the new visit as a separate proposal or service.</p>
+      <div className="crm-action-row">
+        {draft && <button type="button" className="crm-button" disabled={!!pendingSend} onClick={openEmail}>Email new proposal</button>}
+        {bookedCustomerId && <Link className="crm-button" href={`/admin/customers/${bookedCustomerId}/service`}>Add service</Link>}
+      </div>
+    </div>}
+
+    {!needsSeparateProposal && (quoteState === 'quoted' || quoteState === 'accepted' || quoteState === 'canceled') && !bookingOpen && !emailOpen && !propertyChanged && booking?.status !== 'pending' && <div className="crm-action-row">
       <button type="button" className="crm-button crm-button-primary" disabled={pending} onClick={() => setBookingOpen(true)}>{quoteState === 'canceled' ? 'Book again' : 'Book visit'}</button>
-      {draft && quoteState !== 'canceled' && <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />Text price</a>}
+      {draft && quoteState !== 'canceled' && <a className="crm-button" href={smsHref(quoteSummary(draft))}><Icon name="message" size={15} />{currentSent ? 'Text price' : 'Text draft price'}</a>}
       {draft && quoteState !== 'canceled' && !emailOpen && <button type="button" className="crm-button" disabled={!!pendingSend} onClick={openEmail}><Icon name="mail" size={15} />{emailButton}</button>}
       {quoteState === 'quoted' && <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => run(() => setLeadQuoteDecision(lead.id, version, 'declined'), () => setQuoteStatus('declined'))}>Customer said no</button>}
       {quoteState === 'accepted' && <button type="button" className="crm-button crm-button-ghost" disabled={pending} onClick={() => run(() => setLeadQuoteDecision(lead.id, version, 'canceled'), () => setQuoteStatus('canceled'))}>Cancel acceptance</button>}
@@ -297,7 +307,8 @@ export function QuotePanel() {
 function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteDraft; message: string; onClose: () => void }) {
   const { lead, version, setVersion, setFeedback } = useQuote()
   const { pending, startTransition, router } = useRun()
-  const recurring = quoteOffer(draft).recurring
+  const mowing = quoteOffer(draft).recurring
+  const [frequency, setFrequency] = useState<OfferFrequency>('onetime')
   const [to, setTo] = useState(lead.email ?? '')
   const [message, setMessage] = useState(initialMessage)
   const [when, setWhen] = useState('')
@@ -311,7 +322,7 @@ function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteD
   const sqFt = draft.sections.reduce((sum, section) => sum + (Number(section.sqFt) || 0), 0)
 
   function options(): QuoteEmailOptions {
-    return { message, when,
+    return { message, when, ...(mowing ? {} : { frequency }),
       addOns: addOns.map(a => ({ label: a.label, cents: Math.round(Number(a.price) * 100) })) }
   }
   function showPreview() {
@@ -364,10 +375,16 @@ function QuoteEmail({ draft, message: initialMessage, onClose }: { draft: QuoteD
     <h3>Email quote</h3>
     <label className="crm-field">To<input type="email" value={to} maxLength={254} onChange={event => setTo(event.target.value)} placeholder="customer@example.com" /></label>
     <label className="crm-field">Message<textarea value={message} maxLength={4000} rows={6} onChange={event => setMessage(event.target.value)} /></label>
-    <p className="crm-hint">{recurring ? frequencyLabel(draft.freq) + ' mowing' : 'Single visit'} · {formatMoney(quoteTotalCents(draft) / 100)} before add-ons. Use Edit price to change the agreed service or amount.</p>
+    <p className="crm-hint">{mowing ? `${frequencyLabel(draft.freq)} mowing · ` : ''}{formatMoney(quoteTotalCents(draft) / 100)}
+      {(mowing ? draft.freq : frequency) !== 'onetime' ? ' per visit' : ''} before add-ons. Use Edit price to change the agreed service or amount.</p>
+    {!mowing && <label className="crm-field">Repeat<select aria-label="Repeat" value={frequency}
+      onChange={event => setFrequency(event.target.value as OfferFrequency)}>
+      <option value="onetime">Single visit</option><option value="weekly">Weekly</option>
+      <option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
+    </select></label>}
     <label className="crm-field">Timing note (optional)<input maxLength={80} value={when}
       onChange={event => setWhen(event.target.value)} placeholder="For example, start after the leaves clear" /></label>
-    <div className="crm-field" role="group" aria-label="Add-ons">{recurring ? 'Add-ons (per visit)' : 'Add-ons'}
+    <div className="crm-field" role="group" aria-label="Add-ons">{(mowing ? draft.freq : frequency) !== 'onetime' ? 'Add-ons (per visit)' : 'Add-ons'}
       {addOns.map(addOn => <div className="crm-email-addon" key={addOn.id}>
         <input aria-label="Add-on" value={addOn.label} maxLength={60} placeholder="Bagging clippings" onChange={event => setAddOns(list => list.map(a => a.id === addOn.id ? { ...a, label: event.target.value } : a))} />
         <input aria-label="Add-on price" inputMode="decimal" value={addOn.price} placeholder="$" onChange={event => setAddOns(list => list.map(a => a.id === addOn.id ? { ...a, price: event.target.value.replace(/[^\d.]/g, '') } : a))} />

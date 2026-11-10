@@ -22,6 +22,10 @@ export default function ServiceImpactPreview({ preview, rules = [], moving = fal
   return <section className="service-editor-review" aria-labelledby="service-preview-heading">
     <h2 id="service-preview-heading" tabIndex={-1}>Review before saving</h2>
     {preview.first_on && <p><strong>{moving ? 'Selected visit' : 'First visit'}</strong> {serviceDate(preview.first_on)} · {visitTime(preview.first_arrival) || 'Any time'} · {formatMoney(preview.first_price)}</p>}
+    {preview.intro_continuation && <p>The first visit uses the saved introductory price. Later visits use the new agreed price of {formatMoney(preview.intro_continuation.regular_price)}.</p>}
+    {preview.intro_transfer?.to_on && <p>The saved introductory price moves to {serviceDate(preview.intro_transfer.to_on)}
+      {' · '}{formatMoney(preview.intro_transfer.standard_price)} → {formatMoney(preview.intro_transfer.intro_price)}.</p>}
+    {preview.intro_transfer?.needs_review && <p className="service-editor-notice">Review the saved items and payment links before moving the unused introductory price. It stays with its current visit.</p>}
     {preview.same_day_extra && <p>A regular visit already falls on this date. Saving adds a separate visit.</p>}
     {monthlyGaps && <p className="service-editor-notice">Months without that day or fifth weekday are skipped. Choose Last day of month or Last weekday for a visit every month.</p>}
     {preview.dates.length > 0 && <>

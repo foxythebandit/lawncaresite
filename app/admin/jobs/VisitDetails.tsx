@@ -11,7 +11,7 @@ import { formatPhone } from '@/lib/format-phone'
 import { customerDisplayName } from '@/lib/lead-labels'
 import { dateLabel, visitHref, visitStatus, visitTime } from '@/lib/calendar-view'
 import { serviceEditorHref, type ServicePreview } from '@/lib/service-schedules'
-import { formatMoney, jobPrice, type JobLine } from '@/lib/crm-jobs'
+import { formatMoney, jobPrice, type IntroCompletionReview, type JobLine } from '@/lib/crm-jobs'
 import { formatAttributionLabel } from '@/lib/attribution'
 import { bookingPrice } from '@/lib/lead-summary'
 import { uuid } from '@/lib/uuid'
@@ -72,7 +72,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   quotedVisit, mapUrl, shapes, emailConfigured, firstReview }: {
   booking: Booking; today: string; back: string; agreement: Agreement | null; reviewReason: string | null; scheduleSummary: string | null; simpleShift: boolean; serviceLabel?: string
   customers: Customer[]; properties: Property[]; candidates: Candidate[]; items: JobLine[]; payments: Payment[]
-  firstReview?: { terms: FirstVisitTerms; leadVersion: string | null; customerId: string | null; propertyId: string | null; labels: { id: string; name: string }[] }
+  firstReview?: { terms: FirstVisitTerms; leadVersion: string | null; customerId: string | null; propertyId: string | null; labels: { id: string; name: string; semantic_key: string | null }[] }
   quotedVisit: boolean; mapUrl: string | null; shapes: Shape[]; emailConfigured: boolean
 } & Target) {
   const router = useRouter()
@@ -89,6 +89,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const [selectedCustomer, setSelectedCustomer] = useState('new')
   const [selectedProperty, setSelectedProperty] = useState('new')
   const [lines, setLines] = useState(items)
+  const [introReview, setIntroReview] = useState<IntroCompletionReview | null>(null)
   const [wholeMove, setWholeMove] = useState(false)
   const [movePreview, setMovePreview] = useState<{ key: string; preview: ServicePreview } | null>(null)
   const paymentLink = booking.payment_link
@@ -117,7 +118,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     ? serviceEditorHref(booking.customer_id, { schedule: agreement.id, extra: true, origin }) : null
   const startSchedule = booking.customer_id && linked && bookingId && !agreement && (confirmed || booking.status === 'completed')
     ? serviceEditorHref(booking.customer_id, { visit: bookingId, origin }) : null
-  const samePhone = customers.filter(c => c.phone && c.phone.replace(/\D/g, '') === booking.phone.replace(/\D/g, ''))
+  const phoneDigits = booking.phone.replace(/\D/g, '').slice(-10)
+  const samePhone = phoneDigits.length === 10
+    ? customers.filter(c => c.phone?.replace(/\D/g, '').slice(-10) === phoneDigits) : []
 
   useEffect(() => { if (panel) editorHeading.current?.focus() }, [panel])
 
@@ -126,10 +129,11 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     versions.current = { visit: booking.updated_at, agreement: agreement?.updated_at }
     setError('')
     setMessage('')
+    if (next === 'complete') setIntroReview(null)
     if (next === 'date') {
       setWholeMove(false)
       setMovePreview(null)
-      setSelectedCustomer(firstReview?.customerId ?? 'new')
+      setSelectedCustomer(firstReview?.customerId ?? (samePhone.length ? '' : 'new'))
       setSelectedProperty(firstReview?.propertyId ?? 'new')
     }
     if (next === 'price') setLines(items.length ? items : [{ kind: 'service', description: 'Service', amount: total.toFixed(2) }])
@@ -155,7 +159,11 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     startTransition(async () => {
       try {
         const result = await action(id)
-        if (!result.success) { setError(result.error ?? 'Could not save this visit.'); return }
+        if (!result.success) {
+          setError(result.error ?? 'Could not save this visit.')
+          setIntroReview(panel === 'complete' ? result.data?.introReview as IntroCompletionReview | undefined ?? null : null)
+          return
+        }
         operation.current = null
         close()
         const warning = typeof result.data?.warning === 'string' ? result.data.warning : null
@@ -221,7 +229,10 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       }
     } else if (panel === 'complete') {
       const date = field(form, 'date')
-      runVisit(key, { action: 'complete', date }, (id, op) => markComplete(id, { expected_updated_at: versions.current.visit, operation_id: op, completed_at: date }), 'Visit marked done.')
+      const review = introReview?.token
+      runVisit(key + (review ?? ''), { action: 'complete', date, introReview: review },
+        (id, op) => markComplete(id, { expected_updated_at: versions.current.visit, operation_id: op, completed_at: date, introReview: review }),
+        'Visit marked done.')
     } else if (panel === 'note') {
       const note = field(form, 'note')
       runVisit(key, { action: 'notes', note }, (id, op) => updateNotes({ ...command(id, op), note }), 'Visit note saved.')
@@ -293,31 +304,35 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         {panel === 'date' && <>
           {firstReview && pending && <>
             <p className="crm-muted">Review the identity, agreed work, and preferred date. Confirming saves them together.</p>
-            {firstReview.terms.multiple && <p role="alert">This quote has more than one promised service. Review all original terms before confirming a series.</p>}
+            {firstReview.terms.multiple && <p role="alert">This request stays in review while more than one promised service needs clarification.
+              {booking.lead_id && <> <Link href={`/admin/leads/${booking.lead_id}`}>Review the original terms</Link> and arrange each agreed service separately.</>}</p>}
             {firstReview.terms.first_total == null && !firstReview.terms.multiple && <div className="work-visit-actions">{edit('Set agreed items and price', 'price')}</div>}
+            {firstReview.terms.items_changed && <p role="alert">The visit items were edited. Confirm the original requested terms below or arrange the changed work separately.</p>}
             {firstReview.terms.first_items && <ul className="work-visit-records">
               {firstReview.terms.first_items.map((item, index) => <li key={index}>{item.description}<strong>{formatMoney(item.amount)}</strong></li>)}
             </ul>}
             {firstReview.terms.first_total != null && <p><strong>First visit {formatMoney(firstReview.terms.first_total)}</strong>
               {firstReview.terms.frequency !== 'onetime' && <> · {frequencyLabel(firstReview.terms.frequency)} {formatMoney(firstReview.terms.regular_total)} per visit</>}
             </p>}
-            <div className="work-visit-fields">
-              {booking.customer_id ? <p>Linked customer · {name}</p> : <label className="crm-field">Customer<select value={selectedCustomer}
+            <div className="work-visit-fields work-visit-identity">
+              {booking.customer_id ? <p>Linked customer · {name}</p> : <label className="crm-field">Customer<select name="customer" value={selectedCustomer} required
                 onChange={event => { setSelectedCustomer(event.target.value); setSelectedProperty('new') }}>
+                {samePhone.length > 0 && <option value="" disabled>Choose a customer</option>}
                 <option value="new">Create new customer</option>
                 {samePhone.map(c => <option key={c.id} value={c.id}>Possible match · {customerDisplayName(c)} · {formatPhone(c.phone)}</option>)}
                 {customers.filter(c => !samePhone.includes(c)).map(c => <option key={c.id} value={c.id}>{customerDisplayName(c)} · {formatPhone(c.phone)}</option>)}
               </select></label>}
               {selectedCustomer === 'new' && <label className="crm-field">New customer name<input name="name" maxLength={150} defaultValue={name} required /></label>}
-              {booking.property_id ? <p>Linked property · {booking.address}</p> : selectedCustomer !== 'new' && <label className="crm-field">Property<select value={selectedProperty}
+              {booking.property_id ? <p>Linked property · {booking.address}</p> : selectedCustomer && selectedCustomer !== 'new' && <label className="crm-field">Property<select name="property" value={selectedProperty}
                 onChange={event => setSelectedProperty(event.target.value)}>
                 <option value="new">Create new property</option>
                 {properties.filter(p => p.customer_id === selectedCustomer).map(p => <option key={p.id} value={p.id}>{p.address}</option>)}
               </select></label>}
               {selectedProperty === 'new' && <label className="crm-field">Reviewed property address<input name="address" maxLength={500}
                 defaultValue={booking.address} readOnly={firstReview.terms.locked} required /></label>}
-              {!firstReview.terms.mowing && !booking.service_label_id && <label className="crm-field">Service label<select name="label">
-                <option value="">Keep visit description</option>
+              {!booking.service_label_id && (!firstReview.terms.mowing || !firstReview.labels.some(label => label.semantic_key === 'mowing'))
+                && <label className="crm-field">Service label<select aria-label="Service label" name="label" required={firstReview.terms.frequency !== 'onetime' || firstReview.terms.mowing}>
+                <option value="">{firstReview.terms.frequency !== 'onetime' || firstReview.terms.mowing ? 'Choose a service label' : 'Keep visit description'}</option>
                 {firstReview.labels.map(label => <option key={label.id} value={label.id}>{label.name}</option>)}
               </select></label>}
               {!firstReview.terms.locked && <label className="crm-field">Repeat<select name="frequency" defaultValue={firstReview.terms.frequency}>
@@ -325,7 +340,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
                 <option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
               </select></label>}
             </div>
-            {firstReview.terms.needs_review && <label className="crm-check"><input type="checkbox" name="reviewed-terms" required />
+            {(firstReview.terms.needs_review || firstReview.terms.items_changed) && <label className="crm-check"><input type="checkbox" name="reviewed-terms" required />
               I reviewed the original quote and agreed this service with the customer.</label>}
           </>}
           <div className="work-visit-fields">
@@ -351,8 +366,16 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
             </div>
           </> : <>
             <p className="crm-muted">Record when the work was completed. Payment is a separate action.</p>
-            <label className="crm-field">Date completed<input name="date" type="date" required defaultValue={today} /></label>
-            <div className="work-visit-actions">{btn('Save completion')}</div>
+            <label className="crm-field">Date completed<input name="date" type="date" required defaultValue={today}
+              onChange={() => { setIntroReview(null); setError('') }} /></label>
+            {introReview?.earlierVisitId && <p><Link href={visitHref({ booking_id: introReview.earlierVisitId, agreement_id: null,
+              revision_id: null, cadence_on: null }, back)}>Review the earlier visit</Link></p>}
+            {introReview?.allocatedAmount != null && <ul className="work-visit-records">
+              <li>Visit holding the introductory price{introReview.allocatedOn ? ` · ${dateText(introReview.allocatedOn)}` : ''}
+                <strong>{formatMoney(introReview.allocatedAmount)}{introReview.move && ` → ${formatMoney(introReview.replacementAmount)}`}</strong></li>
+              <li>This visit <strong>{formatMoney(introReview.visitAmount)}{introReview.move && ` → ${formatMoney(introReview.introAmount)}`}</strong></li>
+            </ul>}
+            <div className="work-visit-actions">{btn(introReview?.token ? 'Save reviewed completion' : 'Save completion')}</div>
           </>}
         </>}
         {panel === 'note' && <>

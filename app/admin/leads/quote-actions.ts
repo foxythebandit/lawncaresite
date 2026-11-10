@@ -144,7 +144,7 @@ export async function requestStaffQuoteVisit(id: string, expectedUpdatedAt: stri
     const breakdown = quoteEmailBreakdown(draft, { when: '', addOns: [] }, false)
     const row = breakdown.rows[0]
     terms = { source: 'staff_agreed_quote', items: row.firstItems, regular_items: row.regularItems,
-      frequency: row.freq, mowing: breakdown.recurring }
+      frequency: row.freq, mowing: breakdown.mowing, quote_draft: draft }
   }
   const { data, error } = await db.rpc('crm_staff_quote_request', {
     p_lead_id: id, p_expected_updated_at: expectedUpdatedAt, p_operation_id: operationId,
@@ -268,11 +268,9 @@ async function buildEmailQuote(id: string, version: string, offerId: string, inp
   }
   let introEligible = true
   if (lead.customer_id) {
-    const { data: pastMow, error } = await db.from('bookings')
-      .select('id, service_labels!bookings_service_label_id_fkey!inner(semantic_key)')
-      .eq('customer_id', lead.customer_id).eq('status', 'completed').eq('service_labels.semantic_key', 'mowing').limit(1).maybeSingle()
+    const { data: eligible, error } = await db.rpc('crm_intro_customer_eligible', { p_customer_id: lead.customer_id })
     if (error) return { error: 'Could not check the customer’s mowing history.' } as const
-    introEligible = !pastMow
+    introEligible = eligible === true
   }
   const revision: 'replaces' | 'proposal' | undefined = lead.quote_status === 'accepted' || prior?.accepted_booking_id ? 'proposal' : prior ? 'replaces' : undefined
   const bookUrl = lead.address
@@ -281,7 +279,7 @@ async function buildEmailQuote(id: string, version: string, offerId: string, inp
   if (emailContent.breakdown.rows.some(row => row.perVisitCents <= 0)) return { error: 'Enter a quote price first.' } as const
   const terms: OfferTerms = { ...emailContent.breakdown, draft, address: lead.address,
     firstName: lead.name?.trim().split(/\s+/)[0] || null, message: input.options.message.trim(),
-    mowing: emailContent.breakdown.recurring }
+    mowing: emailContent.breakdown.mowing }
   const message = {
     from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
     subject: emailContent.subject, text: emailContent.text, html: emailContent.html,

@@ -45,7 +45,7 @@ test('no map: no image tag; customer text is escaped', () => {
 test('fixed-price quote stays one total with add-ons added', () => {
   const job = { ...draft, includeMowing: false, manualLines: [{ id: 'l', service: 'Cleanup', amountCents: 25000 }], totalCents: 25000 } as QuoteDraft
   const b = quoteEmailBreakdown(job, quote)
-  assert.equal(b.recurring, false)
+  assert.equal(b.mowing, false)
   assert.deepEqual(b.rows.map(r => [r.perVisitCents, r.firstVisitCents]), [[26000, null]])
 })
 
@@ -77,4 +77,15 @@ test('an introductory one-time mow preserves cents and charges add-ons at their 
   const email = quoteEmailContent({ draft: job, address: job.address, options, bookUrl: null, hasMap: false })
   assert.match(email.text, /One-time mowing/)
   assert.doesNotMatch(email.text, /Per visit/)
+})
+
+test('a monthly cleanup quote keeps its custom price and never gets a first-mow promotion', () => {
+  const cleanup = { ...draft, includeMowing: false, manualLines: [{ id: 'l', service: 'Leaf cleanup', amountCents: 25000 }], totalCents: 25000 }
+  const options: QuoteEmailOptions = { ...quote, addOns: [], frequency: 'monthly' }
+  const email = quoteEmailContent({ draft: cleanup, address: cleanup.address, options, bookUrl: null, hasMap: false })
+  assert.match(email.text, /Leaf cleanup · Monthly.*\n  Leaf cleanup: \$250\n  Per visit: \$250/)
+  assert.equal(email.breakdown.rows[0].freq, 'monthly')
+  assert.equal(email.breakdown.rows[0].perVisitCents, 25000)
+  assert.equal(email.breakdown.rows[0].firstVisitCents, null)
+  assert.equal(quoteEmailBreakdown(cleanup, { ...options, frequency: 'weekly' }).rows[0].perVisitCents, 25000)
 })

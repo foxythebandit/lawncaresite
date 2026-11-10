@@ -7,7 +7,7 @@ import { addDays } from '@/lib/calendar-view'
 import { formatMoney, type JobLine } from '@/lib/crm-jobs'
 import {
   cadenceLabel, dayOfWeek, ORDINALS, serviceDate, WEEKDAYS, type Cadence, type ScheduleDefinition,
-  type SchedulePeriod, type ServiceEditorSource, type ServiceLabel, type ServicePreview,
+  type IntroContinuation, type SchedulePeriod, type ServiceEditorSource, type ServiceLabel, type ServicePreview,
 } from '@/lib/service-schedules'
 import { uuid } from '@/lib/uuid'
 import type { Json, Tables } from '@/supabase/database.types'
@@ -132,19 +132,22 @@ function PeriodFields({ period, index, annual, onChange, onRemove }: {
 }
 
 export default function ScheduleEditor({ customerId, properties, labels, sources, initialSource, plan, definition,
-  initialArrival, today, from, extra, back, backLabel, itemsFromVisit }: {
+  initialArrival, today, from, extra, back, backLabel, itemsFromVisit, intro, mowingLabelId }: {
   customerId: string; properties: Property[]; labels: ServiceLabel[]; sources: ServiceEditorSource[]
   initialSource?: string; plan: Plan | null; definition: ScheduleDefinition | null; initialArrival: string | null
+  intro: IntroContinuation | null
+  mowingLabelId?: string
   today: string; from: string; extra: boolean; back: string; backLabel: string; itemsFromVisit: JobLine[]
 }) {
   const router = useRouter()
   const selectedSource = sources.find(visit => visit.id === initialSource)
   const [sourceId, setSourceId] = useState(selectedSource?.id ?? '')
+  const [carryIntro, setCarryIntro] = useState(false)
   const [propertyId, setPropertyId] = useState(selectedSource?.propertyId ?? plan?.property_id ?? properties[0]?.id ?? '')
   const [address, setAddress] = useState('')
   const sourceLabel = (visit?: ServiceEditorSource) => labels.find(label => label.id === visit?.labelId && !label.retired_at)?.id
   const [labelId, setLabelId] = useState(sourceLabel(selectedSource) ?? plan?.service_label_id ?? '')
-  const [price, setPrice] = useState((plan?.price_per_visit ?? selectedSource?.price)?.toFixed(2) ?? '')
+  const [price, setPrice] = useState((plan?.price_per_visit ?? selectedSource?.regularPrice ?? selectedSource?.price)?.toFixed(2) ?? '')
   const [arrival, setArrival] = useState(initialArrival ?? selectedSource?.arrival ?? 'Any time')
   const [first, setFirst] = useState(selectedSource?.date ?? today)
   const [effective, setEffective] = useState(from)
@@ -174,6 +177,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
   const edit = Boolean(plan && !extra)
   const futureFields = edit ? mode === 'future' : repeat
   const source = sources.find(visit => visit.id === sourceId)
+  const continuation = repeat && !source && intro?.property_id === propertyId && mowingLabelId === labelId ? intro : null
   const useExact = !WINDOWS.includes(arrival) && /^\d{2}:\d{2}$/.test(arrival)
   const [arrivalChoice, setArrivalChoice] = useState(WINDOWS.includes(arrival) ? arrival : useExact ? 'exact' : 'saved')
   const [legacyArrival] = useState(WINDOWS.includes(arrival) || useExact ? '' : arrival)
@@ -181,11 +185,12 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
   function invalidate() { setReviewed(null); setError('') }
   function chooseSource(id: string) {
     setSourceId(id)
+    setCarryIntro(false)
     const visit = sources.find(item => item.id === id)
     if (visit) {
       setFirst(visit.date)
       setLabelId(sourceLabel(visit) ?? '')
-      setPrice(visit.price.toFixed(2))
+      setPrice((visit.regularPrice ?? visit.price).toFixed(2))
     }
     invalidate()
   }
@@ -218,6 +223,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     } : {
       label_id: labelId, property_id: propertyId || null, address: propertyId ? null : address,
       source_id: source?.id ?? null, source_version: source?.version ?? null,
+      ...(carryIntro && continuation ? { intro_source_id: continuation.source_id } : {}),
       related_agreement_id: extra ? plan?.id : null, first_on: first, end_on: repeat ? end || null : null,
       definition: repeat ? rules : null, arrival, price, notes,
     }
@@ -280,8 +286,14 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
         </select></label>}
       </>}
       {(edit ? mode === 'future' : true) && <>
-        <ServiceLabelPicker labels={labels} value={labelId} onChange={id => { setLabelId(id); invalidate() }}
+        <ServiceLabelPicker labels={labels} value={labelId} onChange={id => { setLabelId(id); setCarryIntro(false); invalidate() }}
           locked={extra || Boolean(sourceLabel(source))} required={!edit} />
+        {continuation && <div className="service-editor-subsection">
+          <label className="crm-check"><input type="checkbox" checked={carryIntro} onChange={event => {
+            setCarryIntro(event.target.checked); invalidate()
+          }} />Use the saved introductory price of {formatMoney(continuation.amount)} for the first visit</label>
+          <Link href={`/admin/jobs/${continuation.allocated_id}`}>Review the previous visit{continuation.allocated_on ? ` · ${serviceDate(continuation.allocated_on)}` : ''}</Link>
+        </div>}
         <div className="service-editor-fields">
           {!(edit && itemized) && <label className="crm-field">{futureFields ? 'Agreed price per visit ($)' : 'Agreed visit price ($)'}
             <input value={price} inputMode="decimal" required pattern="[0-9]+(\.[0-9]{1,2})?" maxLength={13} onChange={event => setPrice(event.target.value)} />

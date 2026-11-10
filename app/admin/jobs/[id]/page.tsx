@@ -43,7 +43,7 @@ export default async function VisitPage({ params, searchParams }: {
     booking.status === 'pending' ? db.rpc('crm_first_visit_terms', { p_booking_id: id }).throwOnError() : { data: null },
     booking.status === 'pending' && booking.lead_id
       ? db.from('leads').select('updated_at,customer_id,property_id').eq('id', booking.lead_id).maybeSingle().throwOnError() : { data: null },
-    booking.status === 'pending' ? db.from('service_labels').select('id,name').is('retired_at', null).order('name').throwOnError() : { data: [] },
+    booking.status === 'pending' ? db.from('service_labels').select('id,name,semantic_key').is('retired_at', null).order('name').throwOnError() : { data: [] },
   ])
   const schedule = await visitScheduleContext(agreement.data, booking.occurrence_on ?? today)
   const { id: bookingId, ...visit } = booking

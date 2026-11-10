@@ -40,7 +40,7 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
     const key = JSON.stringify([outcome, detail])
     if (operation.current?.key !== key) operation.current = { key, id: uuid() }
     const operationId = operation.current.id
-    const to = CALL_OUTCOME[outcome].to
+    const to = outcome === 'booked' ? 'booking_request' : CALL_OUTCOME[outcome].to
     setOpen(false); setDraft(form)
     setToast({ text: `${CALL_OUTCOME[outcome].label} · ${COLUMN_LABEL[to]}` })
     startTransition(async () => {
@@ -48,6 +48,7 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
       const result = await logCall(leadId, operationId, outcome, detail).catch(() => ({ ok: false as const, error: 'Not saved' }))
       if (result.ok) {
         operation.current = null; setDraft(null)
+        setColumn(result.column)
         if (result.bookingId && result.requestPending) {
           setToast({ text: 'Call saved. Review and confirm the first visit.' })
           router.push(`/admin/jobs/${result.bookingId}`)

@@ -1,3 +1,4 @@
+import { FREQUENCIES, FREQUENCY_LABEL } from './lead-board'
 import { centsToAmount, type JobItemInput } from './crm-contracts'
 import { quoteTotalCents, type QuoteDraft } from './quote-draft'
 import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer, type OfferFrequency } from './quote-offer'
@@ -8,7 +9,7 @@ import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer,
  * visit as the website). Each email quotes the saved series with its notes and any add-ons.
  */
 export type QuoteAddOn = { label: string; cents: number }
-export type QuoteEmailOptions = { message: string; when: string; addOns: QuoteAddOn[] }
+export type QuoteEmailOptions = { message: string; when: string; addOns: QuoteAddOn[]; frequency?: OfferFrequency }
 export type QuoteEmailRow = {
   freq: OfferFrequency; label: string; when: string; detail: string
   mowCents: number; addOnCents: number; perVisitCents: number
@@ -17,7 +18,7 @@ export type QuoteEmailRow = {
   regularItems: JobItemInput[]
   firstItems: JobItemInput[]
 }
-export type QuoteEmailBreakdown = { sqFt: number; recurring: boolean; rows: QuoteEmailRow[]; addOns: QuoteAddOn[] }
+export type QuoteEmailBreakdown = { sqFt: number; mowing: boolean; rows: QuoteEmailRow[]; addOns: QuoteAddOn[] }
 
 /** Inline attachment id the HTML points at; the preview swaps it for the image itself. */
 export const MAP_CID = 'lawn-map'
@@ -28,13 +29,14 @@ export const emailMoney = (cents: number) => cents % 100 === 0
 export function validateQuoteEmailOptions(options: QuoteEmailOptions): string | null {
   if (!options || typeof options.message !== 'string' || typeof options.when !== 'string' || !Array.isArray(options.addOns)) return 'Refresh and try again.'
   if (!options.message.trim() || options.message.length > 4000) return 'Write a short message to go with the quote.'
+  if (options.frequency !== undefined && !FREQUENCIES.includes(options.frequency)) return 'Choose how often this service repeats.'
   if (options.when.length > 80) return 'Keep the timing note under 80 characters.'
   if (options.addOns.length > 6 || options.addOns.some(a => typeof a?.label !== 'string' || !a.label.trim() || a.label.length > 60
     || !Number.isSafeInteger(a.cents) || a.cents <= 0 || a.cents > 100000)) return 'Give each add-on a name and a price.'
   return null
 }
 
-export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailOptions, 'when' | 'addOns'>, introEligible = true): QuoteEmailBreakdown {
+export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailOptions, 'when' | 'addOns' | 'frequency'>, introEligible = true): QuoteEmailBreakdown {
   const offer = quoteOffer(draft)
   const addOns = options.addOns.map(a => ({ label: a.label.trim(), cents: a.cents }))
   const addOnCents = addOns.reduce((sum, a) => sum + a.cents, 0)
@@ -48,7 +50,10 @@ export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailO
       ...(draft.discountCents ? [quoteItem('Quote discount', -draft.discountCents)] : []),
     ]
     const regularItems = [...work, ...addOnItems]
-    return { sqFt: offer.sqFt, recurring: false, addOns, rows: [{ freq: 'onetime', label: 'This job', when: options.when.trim(), detail: 'Single visit',
+    const freq = options.frequency ?? 'onetime'
+    const label = work.filter(item => item.kind === 'service').map(item => item.description).join(' + ') || 'Service visit'
+    return { sqFt: offer.sqFt, mowing: false, addOns, rows: [{ freq, label, when: options.when.trim(),
+      detail: freq === 'onetime' ? 'Single visit' : FREQUENCY_LABEL[freq],
       mowCents: cents, addOnCents, perVisitCents: cents + addOnCents, firstVisitCents: null, regularItems, firstItems: regularItems }] }
   }
   const option = offer.options.find(row => row.freq === draft.freq)!
@@ -58,7 +63,7 @@ export function quoteEmailBreakdown(draft: QuoteDraft, options: Pick<QuoteEmailO
   const firstItems = first < mowCents ? [...regularItems, quoteItem('Introductory mowing discount', first - mowCents)] : regularItems
   const rows: QuoteEmailRow[] = [{ freq: draft.freq, label: option.label, when: options.when.trim(), detail: option.detail, mowCents, addOnCents,
     perVisitCents: mowCents + addOnCents, firstVisitCents: first < mowCents ? first + addOnCents : null, regularItems, firstItems }]
-  return { sqFt: offer.sqFt, recurring: true, rows, addOns }
+  return { sqFt: offer.sqFt, mowing: true, rows, addOns }
 }
 
 function quoteItem(description: string, cents: number): JobItemInput {
@@ -75,14 +80,15 @@ export function quoteEmailContent({ draft, address, options, bookUrl, hasMap, in
   const notice = revision === 'replaces' ? 'This updated quote replaces the previous open quote.'
     : revision === 'proposal' ? 'This is a new proposal for review. Your previous agreement stays in place.' : null
   const sqFt = b.sqFt ? `${b.sqFt.toLocaleString('en-US')} sq ft` : null
-  const repeating = (row: QuoteEmailRow) => b.recurring && row.freq !== 'onetime'
+  const repeating = (row: QuoteEmailRow) => row.freq !== 'onetime'
   const perVisit = (row: QuoteEmailRow) => `${emailMoney(row.perVisitCents)}${repeating(row) ? '/visit' : ''}`
-  const service = (row: QuoteEmailRow) => repeating(row) ? `${row.label} mowing` : b.recurring ? 'One-time mowing' : row.label
+  const service = (row: QuoteEmailRow) => b.mowing ? repeating(row) ? `${row.label} mowing` : 'One-time mowing'
+    : repeating(row) ? `${row.label} · ${row.detail}` : row.label
   const priceLabel = (row: QuoteEmailRow) => repeating(row) ? 'Per visit' : row.firstVisitCents !== null ? 'Standard price' : 'Total'
-  const subject = b.recurring
+  const subject = b.mowing
     ? `Your QuietGreen mowing quote: ${b.rows.map(row => `${row.label.toLowerCase()} ${perVisit(row)}`).join(', ')}`
-    : `Your QuietGreen quote: ${emailMoney(b.rows[0].perVisitCents)}`
-  const lines = (row: QuoteEmailRow) => b.recurring ? [
+    : `Your QuietGreen quote: ${perVisit(b.rows[0])}`
+  const lines = (row: QuoteEmailRow) => b.mowing ? [
     { label: `Mowing${planDiscountPct(row.freq) ? ` (${planDiscountPct(row.freq)}% off)` : ''}`, value: emailMoney(row.mowCents) },
     ...b.addOns.map(a => ({ label: a.label, value: `+${emailMoney(a.cents)}` })),
   ] : row.regularItems.map(item => ({ label: item.description, value: emailMoney(Math.round(Number(item.amount) * 100)) }))
@@ -109,7 +115,7 @@ export function quoteEmailContent({ draft, address, options, bookUrl, hasMap, in
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;font-size:14px;color:#111c17;border-collapse:collapse">
       ${lines(row).map(line => `<tr><td style="padding:3px 0;${muted}">${esc(line.label)}</td><td align="right" style="padding:3px 0">${esc(line.value)}</td></tr>`).join('')}
       <tr><td style="padding:8px 0 0;border-top:1px solid #e0ede6;font-weight:600">${priceLabel(row)}</td><td align="right" style="padding:8px 0 0 8px;border-top:1px solid #e0ede6;font-size:20px;font-weight:600;color:#1a3a2a">${emailMoney(row.perVisitCents)}</td></tr>
-      </table>${b.recurring ? `<p style="margin:6px 0 0;font-size:12px;${muted}">${esc(row.detail)}</p>` : ''}</div>`
+      </table>${b.mowing ? `<p style="margin:6px 0 0;font-size:12px;${muted}">${esc(row.detail)}</p>` : ''}</div>`
   const html = `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#111c17">
     <div style="background:#1a3a2a;padding:24px 28px;border-radius:12px 12px 0 0"><p style="color:#52b788;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px">Your quote</p>
     <h1 style="color:#fff;font-size:22px;margin:0">${esc(address || 'QuietGreen lawn care')}</h1></div>
@@ -128,7 +134,8 @@ export function quoteEmailContent({ draft, address, options, bookUrl, hasMap, in
 
 /** One line for the lead history: what was quoted, without the message. */
 export function quoteEmailSummary(b: QuoteEmailBreakdown) {
-  const plans = b.rows.map(row => `${b.recurring ? `${row.label} ${emailMoney(row.perVisitCents)}/visit` : emailMoney(row.perVisitCents)}${row.when ? ` (${row.when})` : ''}`).join(', ')
+  const plans = b.rows.map(row => `${row.freq === 'onetime' ? emailMoney(row.perVisitCents)
+    : `${b.mowing ? row.label : `${row.label} · ${row.detail}`} ${emailMoney(row.perVisitCents)}/visit`}${row.when ? ` (${row.when})` : ''}`).join(', ')
   const first = b.rows.find(row => row.firstVisitCents !== null)
   return `${plans}${b.addOns.length ? `, incl. ${b.addOns.map(a => `${a.label.toLowerCase()} +${emailMoney(a.cents)}`).join(', ')}` : ''}${first ? `; first visit ${emailMoney(first.firstVisitCents!)}` : ''}`
 }

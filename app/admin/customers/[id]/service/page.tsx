@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { austinDay, calendarDate } from '@/lib/calendar-view'
 import { jobPrice, type JobLine } from '@/lib/crm-jobs'
 import { customerDisplayName } from '@/lib/lead-labels'
-import { definitionFrom, serviceEditorHref, serviceEditorOrigin, UUID, type ServiceEditorSource } from '@/lib/service-schedules'
+import { definitionFrom, serviceEditorHref, serviceEditorOrigin, UUID, type IntroContinuation, type ServiceEditorSource } from '@/lib/service-schedules'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import Icon from '../../../icons'
@@ -22,12 +22,14 @@ export default async function CustomerServicePage({ params, searchParams }: {
   let sourceQuery = db.from('bookings').select('id,property_id,service_label_id,confirmed_date,completed_at,updated_at,job_total,first_visit_price,price_per_visit,confirmed_time,job_items(kind,description)')
     .eq('customer_id', id).is('agreement_id', null).in('status', ['confirmed', 'completed']).not('property_id', 'is', null)
   if (visit) sourceQuery = sourceQuery.eq('id', visit)
-  const [customer, properties, plan, labels, sources] = await Promise.all([
+  const [customer, properties, plan, labels, sources, intro, grant] = await Promise.all([
     db.from('customers').select('id,name').eq('id', id).maybeSingle().throwOnError(),
     db.from('properties').select('id,address').eq('customer_id', id).order('address').throwOnError(),
     schedule ? db.from('recurring_agreements').select('*').eq('id', schedule).eq('customer_id', id).maybeSingle().throwOnError() : { data: null },
-    db.from('service_labels').select('id,name,retired_at,updated_at').order('name').throwOnError(),
+    db.from('service_labels').select('id,name,retired_at,updated_at,semantic_key').order('name').throwOnError(),
     !schedule ? sourceQuery.order('confirmed_date', { ascending: false, nullsFirst: false }).limit(50).throwOnError() : { data: [] },
+    !schedule && !visit ? db.rpc('crm_intro_continuation', { p_customer_id: id }).maybeSingle().throwOnError() : { data: null },
+    !schedule ? db.from('crm_intro_grants').select('allocated_booking_id,standard_items').eq('customer_id', id).maybeSingle().throwOnError() : { data: null },
   ])
   if (!customer.data || (schedule && !plan.data) || (extra && (!plan.data?.service_label_id || plan.data.status === 'ended'))) notFound()
   const today = austinDay()
@@ -37,10 +39,13 @@ export default async function CustomerServicePage({ params, searchParams }: {
   const meaningful = (revisions.data ?? []).filter(row => !row.ends_before || row.ends_before > row.starts_on)
   const revision = meaningful.find(row => row.starts_on <= effective && (!row.ends_before || row.ends_before > effective)) ?? meaningful[0]
   const selectedLabel = labels.data.find(label => label.id === plan.data?.service_label_id)
+  const savedGrant = grant.data
   const choices: ServiceEditorSource[] = sources.data.flatMap(row => {
     const date = row.confirmed_date ?? (row.completed_at ? austinDay(new Date(row.completed_at)) : null)
     return row.property_id && date ? [{ id: row.id, propertyId: row.property_id, labelId: row.service_label_id,
       date, version: row.updated_at, price: jobPrice(row), arrival: row.confirmed_time,
+      regularPrice: savedGrant && savedGrant.allocated_booking_id === row.id && Array.isArray(savedGrant.standard_items)
+        ? (savedGrant.standard_items as JobLine[]).reduce((sum, item) => sum + Math.round(Number(item.amount) * 100), 0) / 100 : undefined,
       service: row.job_items.find(item => item.kind === 'service')?.description ?? 'Saved visit' }] : []
   })
   if (visit && !choices.some(choice => choice.id === visit)) notFound()
@@ -82,6 +87,7 @@ export default async function CustomerServicePage({ params, searchParams }: {
           </div>}
         </> : <ScheduleEditor customerId={id} properties={properties.data} labels={labels.data} sources={choices}
           initialSource={visit} plan={plan.data} definition={definitionFrom(revision?.definition)}
+          intro={intro.data as IntroContinuation | null} mowingLabelId={labels.data.find(label => label.semantic_key === 'mowing' && !label.retired_at)?.id}
           itemsFromVisit={itemsFromVisit} initialArrival={revision?.visit_time ?? null} today={today} from={effective} extra={extra} back={back} backLabel={backLabel} />}
     </section>
   </main>

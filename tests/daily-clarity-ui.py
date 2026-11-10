@@ -196,8 +196,7 @@ def service_editor_browser():
     customer_url = f"{BASE}/admin/customers/{customer['id']}"
     year = TODAY.year + 1
     first_date = f"{year}-03-01"
-    create_visit(customer, customer["name"], "92 Garden Lane, Austin, TX 78704",
-                 (TODAY - timedelta(days=7)).isoformat(), None, "Earlier visit", 70, status="completed")
+    assert request(f"bookings?customer_id=eq.{customer['id']}&select=id") == []
     pending_customer = create_customer("Pending first visit", "97 Orchard Lane, Austin, TX 78704", 78)
     pending_url = f"{BASE}/admin/customers/{pending_customer['id']}"
     pending_date = (TODAY + timedelta(days=3)).isoformat()
@@ -402,22 +401,24 @@ def quote_browser():
     import hmac
 
     provider_log = Path(os.environ["QG_QUOTE_PROVIDER_LOG"])
-    lead_id, legacy_id = str(uuid4()), str(uuid4())
+    lead_id, legacy_id, phone_id, cleanup_id = (str(uuid4()) for _ in range(4))
     address = "9 Quote Lane, Austin, TX 78704"
     draft = {"address": address, "contactAddressAtReview": address, "sections": [], "freq": "onetime",
              "jobLatLng": None, "calculatedPrice": 83.55, "calculatedFirstVisit": 58.49, "overridePrice": None,
              "includeMowing": True, "manualLines": [], "discountCents": 0, "totalCents": 8355, "notes": ""}
-    ids = f"'{lead_id}', '{legacy_id}'"
+    ids = f"'{lead_id}', '{legacy_id}', '{phone_id}', '{cleanup_id}'"
 
     def attempts():
         return [json.loads(line) for line in provider_log.read_text().splitlines()]
 
-    def open_preview(page, body, addon=True):
+    def open_preview(page, body, addon=True, cadence=None):
         page.wait_for_load_state("networkidle")
         page.get_by_role("button", name=re.compile(r"^Email (quote|revised quote)$")).click()
         composer = page.locator(".crm-booking-request").filter(has=page.get_by_role("heading", name="Email quote", exact=True))
         expect(composer).to_be_visible()
         composer.locator("textarea").fill(body)
+        if cadence:
+            composer.get_by_label("Repeat", exact=True).select_option(cadence)
         if addon:
             page.get_by_role("button", name="+ Add-on", exact=True).click()
             page.get_by_label("Add-on", exact=True).fill("Bagging clippings")
@@ -432,6 +433,16 @@ def quote_browser():
                     "email": "jordan@example.test", "address": address, "source": "staff", "quote_draft": draft,
                     "quote_confirmed_at": f"{TODAY.isoformat()}T12:00:00Z", "services": ["Lawn care"],
                     "attribution": {"utm_source": "quote-browser"}})
+        request("leads", "POST", {"id": phone_id, "name": "Test Phone Mow", "phone": "5125550188",
+                "address": "18 Phone Lane, Austin, TX 78704", "source": "staff", "services": ["Lawn care"]})
+        cleanup_address = "19 Cleanup Lane, Austin, TX 78704"
+        cleanup_draft = {**draft, "address": cleanup_address, "contactAddressAtReview": cleanup_address,
+                         "includeMowing": False, "totalCents": 25000,
+                         "manualLines": [{"id": "cleanup", "service": "Leaf cleanup", "amountCents": 25000}]}
+        request("leads", "POST", {"id": cleanup_id, "name": "Test Cleanup", "phone": "5125550189",
+                "email": "cleanup@example.test", "address": cleanup_address, "source": "staff",
+                "quote_draft": cleanup_draft, "quote_confirmed_at": f"{TODAY.isoformat()}T12:00:00Z",
+                "services": ["Leaf cleanup"]})
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             staff = local_browser(browser, 1440, 1000)
@@ -473,6 +484,13 @@ def quote_browser():
             assert attempts()[0] == attempts()[1]
             original = sent.get_by_role("link", name="View sent terms", exact=True).get_attribute("href")
             assert original and original.startswith("/quote/q1.")
+            expect(page.locator(".crm-price-card .crm-bignum")).to_contain_text("$68.74")
+            expect(page.get_by_text("$93.80 standard price", exact=True)).to_be_visible()
+            expect(page.get_by_text("Calculator amount", exact=True)).to_be_visible()
+            assert original in page.get_by_role("link", name="Text price", exact=True).get_attribute("href").replace("%2F", "/")
+            page.get_by_role("button", name="Book visit", exact=True).click()
+            expect(page.get_by_text("Use the exact terms from sent quote 1.", exact=False)).to_be_visible()
+            page.get_by_role("button", name="Cancel", exact=True).click()
             shot(page, "quote-sent-desktop")
 
             request(f"leads?id=eq.{lead_id}", "PATCH", {"quote_draft": {**draft, "calculatedPrice": 100, "totalCents": 10000}})
@@ -525,6 +543,12 @@ def quote_browser():
                 expect(page.get_by_label("Visit date", exact=True)).to_have_value(day(4))
                 assert_no_overflow(page)
                 shot(page, f"quote-confirm-first-{width}")
+                if width < 500:
+                    save = page.get_by_role("button", name="Confirm visit", exact=True)
+                    save.scroll_into_view_if_needed()
+                    save.click(trial=True)
+                    assert save.bounding_box()["y"] + save.bounding_box()["height"] <= page.locator(".admin-nav").bounding_box()["y"]
+                    shot(page, f"quote-confirm-save-viewport-{width}", full_page=False)
                 if width != 320:
                     page.get_by_role("button", name="Close", exact=True).click()
             page.get_by_role("button", name="Confirm visit", exact=True).click()
@@ -566,15 +590,108 @@ def quote_browser():
             expect(page.get_by_text("This attempt is outside the safe retry window.", exact=False)).to_be_visible()
             expect(page.get_by_text("Check the provider’s email history", exact=False)).to_be_visible()
             assert not any(a["key"] == f"quote/{expired}" for a in attempts())
+
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.goto(f"{BASE}/admin/leads/{phone_id}")
+            page.get_by_role("button", name="Log call", exact=True).first.click()
+            page.get_by_role("radio", name="Talked", exact=True).click()
+            page.get_by_role("radio", name=re.compile(r"^Booked")).click()
+            page.get_by_label("Price", exact=False).fill("82.00")
+            page.get_by_role("radio", name="Weekly", exact=True).click()
+            page.get_by_label("First visit", exact=True).fill(day(3))
+            page.get_by_role("button", name="Review first visit", exact=True).click()
+            page.wait_for_url(re.compile(r"/admin/jobs/[0-9a-f-]+"))
+            phone_booking = page.url.split("/")[-1]
+            phone_request = request(f"bookings?id=eq.{phone_booking}&select=status,lead_id,job_total")[0]
+            assert phone_request == {"status": "pending", "lead_id": phone_id, "job_total": 57.00}
+            page.get_by_role("button", name="Confirm first visit", exact=True).click()
+            expect(page.get_by_text("First visit $57.00", exact=True)).to_be_visible()
+            expect(page.get_by_text("Weekly $82.00 per visit", exact=False)).to_be_visible()
+            shot(page, "phone-confirm-first-390")
+            page.get_by_role("button", name="Confirm visit", exact=True).click()
+            expect(page.get_by_role("link", name="Customer history")).to_be_visible()
+            phone_series = request(f"bookings?id=eq.{phone_booking}&select=agreement_id")[0]["agreement_id"]
+            assert phone_series
+            page.get_by_role("button", name="Edit schedule", exact=True).click()
+            expect(page.get_by_role("link", name="Add extra visit", exact=True)).to_be_visible()
+            future = request(f"bookings?agreement_id=eq.{phone_series}&id=neq.{phone_booking}&order=confirmed_date&limit=2&select=id,job_total,confirmed_date")
+            assert [visit["job_total"] for visit in future] == [82, 82]
+            page.goto(f"{BASE}/admin/jobs/{future[0]['id']}")
+            page.get_by_role("button", name="Mark done", exact=True).click()
+            page.get_by_label("Date completed", exact=True).fill(future[0]["confirmed_date"])
+            page.get_by_role("button", name="Save completion", exact=True).click()
+            expect(page.get_by_role("alert").filter(has_text="Resolve the earlier scheduled mow first")).to_be_visible()
+            page.get_by_role("link", name="Review the earlier visit").click()
+            page.wait_for_url(re.compile(phone_booking))
+            page.get_by_role("button", name="More actions", exact=True).click()
+            page.once("dialog", lambda dialog: dialog.accept())
+            page.get_by_role("button", name="Skip this visit", exact=True).click()
+            expect(page.get_by_text("Skipped", exact=True)).to_be_visible()
+            assert request(f"bookings?id=eq.{future[0]['id']}&select=job_total")[0]["job_total"] == 57.00
+            page.goto(f"{BASE}/admin/jobs/{future[0]['id']}")
+            page.get_by_role("button", name="Mark done", exact=True).click()
+            page.get_by_label("Date completed", exact=True).fill(future[0]["confirmed_date"])
+            page.get_by_role("button", name="Save completion", exact=True).click()
+            expect(page.get_by_text("Done", exact=True)).to_be_visible()
+            page.goto(f"{BASE}/admin/jobs/{future[1]['id']}")
+            page.get_by_role("button", name="Mark done", exact=True).click()
+            page.get_by_label("Date completed", exact=True).fill(day(2))
+            page.get_by_role("button", name="Save completion", exact=True).click()
+            expect(page.get_by_text("This completion is earlier than", exact=False)).to_be_visible()
+            expect(page.get_by_role("button", name="Save reviewed completion", exact=True)).to_be_enabled()
+            assert_no_overflow(page)
+            shot(page, "intro-backdated-review-390")
+            page.get_by_role("button", name="Save reviewed completion", exact=True).click()
+            expect(page.get_by_text("Done", exact=True)).to_be_visible()
+            assert request(f"bookings?id=eq.{future[1]['id']}&select=status,job_total")[0] == {"status": "completed", "job_total": 82}
+
+            page.goto(f"{BASE}/admin/leads/{cleanup_id}")
+            open_preview(page, "Agreed monthly leaf cleanup", addon=False, cadence="monthly")
+            email = page.frame_locator('iframe[title="Email preview"]')
+            expect(email.get_by_text("Leaf cleanup · Monthly", exact=True)).to_be_visible()
+            expect(email.get_by_text("$250", exact=True).first).to_be_visible()
+            assert_no_overflow(page)
+            shot(page, "quote-monthly-cleanup-preview-390")
+            page.get_by_role("button", name="Send quote", exact=True).click()
+            cleanup_sent = page.get_by_role("region", name="Sent quotes")
+            expect(cleanup_sent.get_by_text("Email sent", exact=False)).to_be_visible()
+            cleanup_link = cleanup_sent.get_by_role("link", name="View sent terms").get_attribute("href")
+            public = context.new_page()
+            public.goto(BASE + cleanup_link)
+            expect(public.get_by_text("Leaf cleanup · Monthly", exact=True)).to_be_visible()
+            expect(public.get_by_text("$250 / visit", exact=True)).to_be_visible()
+            assert_no_overflow(public)
+            shot(public, "quote-monthly-cleanup-public-390")
+            public.get_by_role("button", name="Request first visit", exact=True).click()
+            expect(public.get_by_role("heading", name="Request received")).to_be_visible()
+            row = request(f"bookings?lead_id=eq.{cleanup_id}&select=id,status,job_total")[0]
+            assert row["status"] == "pending" and row["job_total"] == 250
+            page.goto(f"{BASE}/admin/jobs/{row['id']}")
+            page.get_by_role("button", name="Confirm first visit", exact=True).click()
+            page.get_by_label("Service label", exact=True).select_option(label="Leaf cleanup")
+            page.get_by_label("Visit date", exact=True).fill(day(4))
+            expect(page.get_by_text("Monthly $250.00 per visit", exact=False)).to_be_visible()
+            shot(page, "quote-monthly-cleanup-confirm-390")
+            page.get_by_role("button", name="Confirm visit", exact=True).click()
+            expect(page.get_by_role("link", name="Customer history")).to_be_visible()
+            saved_cleanup = request(f"bookings?id=eq.{row['id']}&select=agreement_id,customer_id,status,job_total")[0]
+            assert saved_cleanup["status"] == "confirmed" and saved_cleanup["job_total"] == 250
+            assert saved_cleanup["agreement_id"] and saved_cleanup["customer_id"]
+            future_cleanup = request(f"bookings?agreement_id=eq.{saved_cleanup['agreement_id']}&id=neq.{row['id']}&select=job_total")
+            assert future_cleanup and all(visit["job_total"] == 250 for visit in future_cleanup)
+            assert request(f"crm_intro_grants?customer_id=eq.{saved_cleanup['customer_id']}&select=source_booking_id") == []
             assert not errors, errors
             browser.close()
-        print("Quote preview, retry, revision, and preferred-date request passed in Chromium at 1440/390/320.")
+        print("Quote delivery, first-visit review, and introductory completion passed in Chromium at 1440/390/320.")
     finally:
         subprocess.run([cli, "db", "query", "--local", f"""
         do $fixture$ declare fixture_customers uuid[]; begin
           select array_agg(distinct customer_id) into fixture_customers
           from public.bookings where lead_id in ({ids}) and customer_id is not null;
-          delete from public.crm_operations where target_id in (select id from public.bookings where lead_id in ({ids}));
+          update public.recurring_agreements set schedule_source_booking_id = null where customer_id = any(fixture_customers);
+          delete from public.crm_intro_grants where customer_id = any(fixture_customers);
+          delete from public.crm_operations where target_id in (select id from public.bookings where lead_id in ({ids}))
+            or target_id in ({ids});
           delete from public.staff_texts where lead_id in ({ids});
           delete from public.lead_calls where lead_id in ({ids});
           delete from public.staff_alerts where event_id in (select id from public.intake_events where lead_id in ({ids}));
@@ -584,6 +701,9 @@ def quote_browser():
           delete from public.job_items where booking_id in (select id from public.bookings where lead_id in ({ids}));
           delete from public.bookings where lead_id in ({ids});
           delete from public.leads where id in ({ids});
+          delete from public.agreement_schedule_revisions where agreement_id in (select id from public.recurring_agreements
+            where customer_id = any(fixture_customers));
+          delete from public.recurring_agreements where customer_id = any(fixture_customers);
           delete from public.properties where customer_id = any(fixture_customers);
           delete from public.customers where id = any(fixture_customers);
         end $fixture$;

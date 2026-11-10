@@ -296,10 +296,10 @@ test('native reviewed edits race on one agreement version and replay the winning
   })
 })
 
-test('two native acceptances of one frozen offer share one booking and one alert event', async () => {
+test('native acceptance, confirmation and completion races share one booking and consume one intro', async () => {
   const leadId = randomUUID(), offerId = randomUUID()
   const address = '6 Native Quote Lane, Austin, TX'
-  const draft = { address, sections: [], freq: 'onetime', calculatedPrice: 90 }
+  const draft = { address, sections: [], freq: 'weekly', calculatedPrice: 90 }
   const regularItems = [{ kind: 'service', description: 'Lawn care', amount: '90.00' }]
   const firstItems = [...regularItems, { kind: 'discount', description: 'Introductory mowing discount', amount: '-27.00' }]
   try {
@@ -307,13 +307,13 @@ test('two native acceptances of one frozen offer share one booking and one alert
       address, quote_draft: draft, attribution: { utm_source: 'native-quote' } }).select('updated_at').single())
     await data(admin.rpc('crm_prepare_sent_offer', {
       p_lead_id: leadId, p_version: lead.updated_at, p_offer_id: offerId, p_replaces: null,
-      p_terms: { draft, address, rows: [{ freq: 'onetime', regularItems, firstItems }], mowing: true, mode: 'choices' },
+      p_terms: { draft, address, rows: [{ freq: 'weekly', regularItems, firstItems }], mowing: true, mode: 'choices' },
       p_message: { to: 'native@example.test', subject: 'Synthetic quote' }, p_recipient: 'native@example.test',
     }))
     await data(admin.rpc('crm_finish_sent_offer', { p_lead_id: leadId, p_offer_id: offerId, p_state: 'sent',
       p_provider_id: randomUUID(), p_actor_email: 'staff@example.test' }))
     const args = { p_lead_id: leadId, p_offer_id: offerId, p_hash: 'same-request',
-      p_request: { date: day(4), frequency: 'onetime', arrival: 'Any time' }, p_recipients: ['+15125550101', '+15125550102'] }
+      p_request: { date: day(4), frequency: 'weekly', arrival: 'Any time' }, p_recipients: ['+15125550101', '+15125550102'] }
     const responses = await Promise.all([admin, client(config.SECRET_KEY)].map(worker => data(worker.rpc('crm_accept_sent_offer', args))))
     assert.deepEqual(responses.map(result => result.duplicate).sort(), [false, true])
     assert.equal(responses[0].booking_id, responses[1].booking_id)
@@ -322,8 +322,45 @@ test('two native acceptances of one frozen offer share one booking and one alert
       .eq('lead_id', leadId)), [{ status: 'pending', confirmed_date: null, preferred_date: day(4),
       job_total: 63, attribution: { utm_source: 'native-quote' } }])
     assert.equal((await data(admin.from('staff_alerts').select('id').eq('event_id', responses[0].event_id))).length, 4)
+    const bookingId = responses[0].booking_id
+    const [visit, reviewLead] = await Promise.all([
+      data(admin.from('bookings').select('updated_at').eq('id', bookingId).single()),
+      data(admin.from('leads').select('updated_at').eq('id', leadId).single()),
+    ])
+    const workers = [admin, client(config.SECRET_KEY)]
+    const requests = workers.map(() => ({
+      p_booking_id: bookingId, p_expected_updated_at: visit.updated_at, p_lead_version: reviewLead.updated_at,
+      p_operation_id: randomUUID(), p_request: { date: day(4), arrival: 'Morning', name: 'Native Quote',
+        address, staff_user_id: randomUUID() },
+    }))
+    const confirmations = await Promise.all(workers.map((worker, i) => worker.rpc('crm_confirm_first_visit', requests[i])))
+    const winner = confirmations.findIndex(result => !result.error)
+    assert.ok(winner >= 0)
+    assert.equal(confirmations[1 - winner].error.code, 'PT409')
+    const confirmed = confirmations[winner].data
+    assert.equal(confirmed.booking_id, bookingId)
+    assert.ok(confirmed.customer_id && confirmed.property_id && confirmed.agreement_id)
+    assert.deepEqual(await data(admin.rpc('crm_confirm_first_visit', requests[winner])), { ...confirmed, duplicate: true })
+    assert.equal((await data(admin.from('customers').select('id').eq('name', 'Native Quote'))).length, 1)
+    assert.equal((await data(admin.from('properties').select('id').eq('address', address))).length, 1)
+    const first = await data(admin.from('bookings').select('updated_at,job_total').eq('id', bookingId).single())
+    assert.equal(first.job_total, 63)
+    const completions = await Promise.all(workers.map(worker => worker.rpc('complete_job', {
+      p_booking_id: bookingId, p_expected_updated_at: first.updated_at, p_operation_id: randomUUID(), p_completed_on: day(4),
+    })))
+    assert.equal(completions.filter(result => !result.error).length, 1)
+    assert.equal(completions.find(result => result.error).error.code, 'PT409')
+    assert.deepEqual(await data(admin.from('crm_intro_grants').select('allocated_booking_id,consumed_on').eq('customer_id', confirmed.customer_id).single()),
+      { allocated_booking_id: bookingId, consumed_on: day(4) })
+    const future = await data(admin.from('bookings').select('job_total').eq('agreement_id', confirmed.agreement_id).neq('id', bookingId))
+    assert.ok(future.length && future.every(visit => visit.job_total === 90))
+    assert.equal((await data(admin.from('staff_alerts').select('id').eq('event_id', responses[0].event_id))).length, 4)
   } finally {
-    execFileSync('supabase', ['db', 'query', '--local', `do $fixture$ begin
+    execFileSync('supabase', ['db', 'query', '--local', `do $fixture$ declare v_customer uuid; begin
+      select customer_id into v_customer from public.leads where id = '${leadId}';
+      update public.recurring_agreements set schedule_source_booking_id = null where customer_id = v_customer;
+      delete from public.crm_intro_grants where customer_id = v_customer;
+      delete from public.crm_operations where target_id in (select id from public.bookings where lead_id = '${leadId}');
       delete from public.staff_alerts where event_id in (select id from public.intake_events where lead_id = '${leadId}');
       delete from public.intake_events where lead_id = '${leadId}';
       delete from public.sent_offers where lead_id = '${leadId}';
@@ -331,6 +368,10 @@ test('two native acceptances of one frozen offer share one booking and one alert
       delete from public.job_items where booking_id in (select id from public.bookings where lead_id = '${leadId}');
       delete from public.bookings where lead_id = '${leadId}';
       delete from public.leads where id = '${leadId}';
+      delete from public.agreement_schedule_revisions where agreement_id in (select id from public.recurring_agreements where customer_id = v_customer);
+      delete from public.recurring_agreements where customer_id = v_customer;
+      delete from public.properties where customer_id = v_customer;
+      delete from public.customers where id = v_customer;
     end $fixture$;`], { stdio: 'pipe' })
   }
 })

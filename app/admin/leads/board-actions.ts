@@ -74,10 +74,9 @@ export async function logCall(leadId: string, operationId: string, outcome: stri
     const mowing = services.length === 1 && services[0] === 'Mowing'
     let introEligible = mowing
     if (mowing && lead.customer_id) {
-      const { data: past, error } = await db.from('bookings').select('id,service_labels!bookings_service_label_id_fkey!inner(semantic_key)')
-        .eq('customer_id', lead.customer_id).eq('status', 'completed').eq('service_labels.semantic_key', 'mowing').limit(1).maybeSingle()
+      const { data: eligible, error } = await db.rpc('crm_intro_customer_eligible', { p_customer_id: lead.customer_id })
       if (error) return { ok: false, error: 'Could not verify the first-mow price' }
-      introEligible = !past
+      introEligible = eligible === true
     }
     const description = mowing ? 'Lawn care' : services.join(', ').slice(0, 100) || 'Service'
     const { items, plan } = callVisitItems(Number(clean.price_cents), freq, description, introEligible)
