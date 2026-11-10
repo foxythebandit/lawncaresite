@@ -4,12 +4,14 @@ import { useState } from 'react'
 import { CALL_OUTCOME, CALL_OUTCOMES, CLOSED_REASONS, CLOSED_REASON_LABEL, COLUMN_LABEL, FREQUENCIES, FREQUENCY_LABEL, QUOTED_REASONS,
   QUOTED_REASON_LABEL, type CallOutcome, type ClosedReason, type Frequency, type QuotedReason } from '@/lib/lead-board'
 import { columnChip } from '@/lib/lead-summary'
+import type { IntroChoice, IntroEligibility } from '@/lib/quote-offer'
+import IntroPriceChoice from './IntroPriceChoice'
 import type { CallDetail } from './board-actions'
 import { CheckBack, Choices, todayChicago } from './pickers'
 
 export type LogCallDraft = {
   step: 'not_reached' | 'talked' | null; outcome: CallOutcome | null
-  price: string; frequency: Frequency | null; firstVisit: string; checkBack: string; reason: string | null; note: string
+  price: string; service: string; introChoice: IntroChoice | null; frequency: Frequency | null; firstVisit: string; checkBack: string; reason: string | null; note: string
 }
 
 const stepOptions = [{ value: 'not_reached', label: 'Didn\'t reach' }, { value: 'talked', label: 'Talked' }] as const
@@ -18,7 +20,7 @@ const quotedOptions = QUOTED_REASONS.map(value => ({ value, label: QUOTED_REASON
 const closedOptions = CLOSED_REASONS.map(value => ({ value, label: CLOSED_REASON_LABEL[value] }))
 const ASKS: Record<CallOutcome, string | null> = {
   no_answer: null, voicemail: null, bad_number: null,
-  booked: 'Price · frequency · first visit', yes_tbd: 'Price · frequency · set date by', not_now: 'Price · reason · check back', no: 'Reason · price',
+  booked: 'Price · frequency · first-visit review', yes_tbd: 'Price · frequency · set date by', not_now: 'Price · reason · check back', no: 'Reason · price',
 }
 
 function cents(text: string): number | null {
@@ -28,20 +30,21 @@ function cents(text: string): number | null {
 }
 
 /** Log call sheet v2 (PLAN.md 3.2, S11): step 1 Didn't reach / Talked, then one of seven outcomes. */
-export default function LogCallForm({ initial, priceCents, frequency, onSave }: {
-  initial: LogCallDraft | null; priceCents: number | null; frequency: Frequency | null
+export default function LogCallForm({ initial, priceCents, frequency, services, introEligibility, onSave }: {
+  initial: LogCallDraft | null; priceCents: number | null; frequency: Frequency | null; services: string[]; introEligibility: IntroEligibility
   onSave: (outcome: CallOutcome, detail: CallDetail, draft: LogCallDraft) => void
 }) {
   const [form, setForm] = useState<LogCallDraft>(() => initial ?? {
-    step: null, outcome: null, price: priceCents ? String(priceCents / 100) : '', frequency, firstVisit: '', checkBack: '', reason: null, note: '',
+    step: null, outcome: null, service: services.length === 1 ? services[0] : '', introChoice: null, price: priceCents ? String(priceCents / 100) : '', frequency, firstVisit: '', checkBack: '', reason: null, note: '',
   })
   const set = (changes: Partial<LogCallDraft>) => setForm(current => ({ ...current, ...changes }))
   const outcome = form.outcome
   const price = cents(form.price)
   const needsPrice = outcome === 'booked' || outcome === 'yes_tbd' || outcome === 'not_now'
+  const needsIntroReview = outcome === 'booked' && form.service === 'Mowing' && introEligibility === 'review'
   const valid = !!outcome && (!needsPrice || !!price) && (outcome !== 'no' || !form.price.trim() || !!price)
     && (outcome !== 'booked' && outcome !== 'yes_tbd' || !!form.frequency)
-    && (outcome !== 'booked' || !!form.firstVisit)
+    && (outcome !== 'booked' || (!!form.firstVisit && (services.length < 2 || !!form.service) && (!needsIntroReview || !!form.introChoice)))
     && (outcome !== 'not_now' || (!!form.checkBack && !!form.reason))
     && (outcome !== 'no' || !!form.reason)
 
@@ -51,7 +54,11 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
       d.price_cents = price!
       if (form.frequency) d.frequency = form.frequency
     }
-    if (outcome === 'booked') d.first_visit_on = form.firstVisit
+    if (outcome === 'booked') {
+      d.first_visit_on = form.firstVisit
+      if (form.service) d.agreed_service = form.service
+      if (form.introChoice) d.intro_choice = form.introChoice
+    }
     if ((outcome === 'not_now' || outcome === 'yes_tbd') && form.checkBack) d.check_back_on = form.checkBack
     if ((outcome === 'not_now' || outcome === 'no') && form.reason) d.reason = form.reason
     if (form.note.trim()) d.note = form.note.trim()
@@ -66,12 +73,20 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
         className="crm-outcome" onClick={() => set({ outcome: key, reason: null, ...(key === 'no' && outcome !== 'no' ? { price: '' } : {}),
           ...(key !== 'no' && outcome === 'no' && !form.price && priceCents ? { price: String(priceCents / 100) } : {}) })}>
         <span className="crm-outcome-main"><span className="crm-outcome-radio" aria-hidden="true" />{CALL_OUTCOME[key].label}</span>
-        <span className={`crm-pill crm-pill-${columnChip(CALL_OUTCOME[key].to).tone}`}>→ {COLUMN_LABEL[CALL_OUTCOME[key].to]}</span>
+        <span className={`crm-pill crm-pill-${columnChip(key === 'booked' ? 'booking_request' : CALL_OUTCOME[key].to).tone}`}>→ {COLUMN_LABEL[key === 'booked' ? 'booking_request' : CALL_OUTCOME[key].to]}</span>
         {ASKS[key] && <small>{ASKS[key]}</small>}
       </button>)}
     </div>}
 
     {outcome && CALL_OUTCOME[outcome].step === 'talked' && <div className="crm-logcall-fields">
+      {outcome === 'booked' && services.length > 1 && <label className="crm-field">Agreed service
+        <select aria-label="Agreed service" value={form.service} required
+          onChange={event => set({ service: event.target.value, introChoice: null })}>
+          <option value="">Choose the service agreed on the call</option>
+          {services.map(service => <option key={service}>{service}</option>)}
+        </select>
+      </label>}
+      {needsIntroReview && <IntroPriceChoice value={form.introChoice} onChange={introChoice => set({ introChoice })} />}
       <div className="crm-logcall-row">
         <label className="crm-field crm-price-field">{outcome === 'no' ? 'Price told (optional)' : 'Price'}
           <span className="crm-money-input"><span aria-hidden="true">$</span>
@@ -103,7 +118,7 @@ export default function LogCallForm({ initial, priceCents, frequency, onSave }: 
     </label>}
     <div className="crm-dialog-actions crm-logcall-actions">
       <button type="submit" className="crm-button crm-button-primary crm-button-lg" disabled={!valid}>
-        {outcome ? `Save · ${COLUMN_LABEL[CALL_OUTCOME[outcome].to]}` : 'Pick an outcome'}</button>
+        {outcome === 'booked' ? 'Review first visit' : outcome ? `Save · ${COLUMN_LABEL[CALL_OUTCOME[outcome].to]}` : 'Pick an outcome'}</button>
     </div>
   </form>
 }

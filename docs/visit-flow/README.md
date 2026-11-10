@@ -1,5 +1,7 @@
 # Plan customers: log, pay, move (30 Oct 2026)
 
+This is the earlier visit-flow incident record. The current Calendar, service scheduling and visit commands are documented in [Calendar and service schedules](../daily-clarity/README.md).
+
 Owner report: no clear way to log each visit for an existing plan customer; Liz Watson's data looked
 inconsistent; no obvious way to move Dmitre's visit a week earlier.
 
@@ -20,7 +22,7 @@ From the code paths (production rows were not read; run the check below to confi
    the 10% plan discount back out of $65. $85 is what was typed into Start mowing plan. Pick one; later
    plan visits use the plan price ($85) until it is changed.
 
-## The flow now (customer page)
+## Earlier customer-page flow
 
 Customer → **Upcoming visits** → on a visit:
 - **Done** → date + optional "Paid now" amount/method → *Mark done & record payment*. A plan visit books

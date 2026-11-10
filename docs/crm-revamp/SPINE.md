@@ -313,3 +313,28 @@ Built from `docs/ops-plan/PLAN.md` (decisions, execution ledger in section 11) o
 ### Plan customer visit flow — 30 October 2026
 
 Owner could not log visits for existing plan customers (Liz Watson's lead visit outside her plan, stale plan "next visit", Mark complete disabled) or move one visit (Dmitre). Branch `claude/visit-flow-d5e70c`. Customer page now lists **Upcoming visits** with Done (+ payment), Move (one visit or the whole plan, optional email), Add to mowing plan and Cancel; plan card shows the real next booked visit; Start mowing plan can reuse a visit already booked at the property and schedules the first visit. Jobs card: Add to mowing plan, Move the rest of the plan. Migration `20261030120000_crm_visit_flow.sql`: next plan visit never in the past and never a second open one; `crm_attach_to_agreement`; `crm_shift_agreement`. Not applied to prod. Tests: `tests/visit-flow.test.mjs` (PGlite, all migrations). Details, root cause and the in-app fix for existing data: `docs/visit-flow/README.md`.
+
+### Calendar schedule foundation — 9 November 2026
+
+Slice 1 of daily-clarity adds bounded visit generation, date-range and attention reads, and a database-only schedule worker. Existing visit IDs, prices, acquisition records and completed work survive cutover. The compatibility commands keep individual moves and skips through a series shift. See [Calendar and service schedules](../daily-clarity/README.md) for data identity and rollout details.
+
+Slice 1 review fixes preserve actual dates in the next-visit summary, remap monthly shifts by cadence order and route ambiguous first dates or legacy moves to schedule review. The existing plan controls can restart from an explicit date after saved work. Tests cover exact-cents repricing with protected exclusions, native concurrent generation and the customer portal’s owned past and upcoming visits.
+
+The second Slice 1 review fix checks saved and projected dates before single moves or series shifts. A pre-existing collision keeps the saved visit visible and pauses that plan’s generation without stopping other agreements.
+
+A time-only plan edit keeps the saved date and cadence slot for each visit, including an explicit next date and any individual moves or skips. The new window carries forward on the existing rule segments without changing their dates or prices.
+
+
+### Daily clarity Slice 2 — staff Calendar and visit page
+
+The Calendar tab retains `/admin/jobs` and opens on Week at desktop and phone widths. Day and Month are available from the calendar header. Staff sign-in restores calendar and visit link context. Exact arrival times sort chronologically within their group. Saved visits open by booking ID. Projected visits open by revision and date with the same controls. A deliberate edit saves atomically with the visit record. An explicit payment link or reminder prepares the visit and then calls the existing provider. Preferred-date requests stay in Needs scheduling. Overdue and schedule-review queues share their count and drilldown predicates. Today, Next 7 days, customer history, revenue and lead links lead to the selected visit where its ID is known. Staff keep the existing contact, property, pricing, completion, payment, and service schedule actions on the visit page. See `docs/daily-clarity/README.md` for the local browser checks.
+
+### Daily clarity Slice 3 — independent service scheduling
+
+Customers can have multiple separately priced services at a property, including one-off and same-day work. Staff can manage service labels and review concrete dates and amounts before creating or editing a schedule. Weekly, biweekly and monthly schedules support annual seasons and bounded overrides. A one-off can become the first visit of a repeating service with a separately agreed ongoing price. Notes and contact corrections stay with the visit, and date, arrival and price edits have separate protections. A reviewed resume restores eligible visits canceled by a service pause while preserving individual cancellations. Staff schedule revisions carry the operation and actor. See [Calendar and service schedules](../daily-clarity/README.md).
+
+### Daily clarity Slice 4 checkpoint — frozen email offers
+
+Staff review the exact email before sending. Each email offer retains its terms and its own signed customer link. A revised send can replace an open offer after provider acceptance, and an uncertain send retries the same frozen request within the provider's supported window. A customer request keeps exact prices and acquisition facts and stays pending until staff confirms the visit. Older links use the saved request or continue to staff review. The shared intake path supplies defaults for the calendar visit flags.
+
+This checkpoint covers a single quoted option. The multi-row quote decision, first-visit activation, and introductory price carry remain in the daily-clarity plan.

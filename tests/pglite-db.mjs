@@ -27,12 +27,13 @@ export function migrationFiles() {
   return files.map(f => ({ name: f, sql: fs.readFileSync(path.join(dir, f), 'utf8') }))
 }
 
-export async function freshDb() {
+export async function freshDb({ beforeMigration } = {}) {
   const db = new PGlite()
   await db.exec(PREAMBLE)
   for (const { name, sql } of migrationFiles()) {
     if (/pg_cron|cron\.schedule/.test(sql)) continue // prod scheduler only
     try {
+      await beforeMigration?.(db, name)
       await db.exec(sql)
     } catch (error) {
       throw new Error(`${name}: ${error.message}`)

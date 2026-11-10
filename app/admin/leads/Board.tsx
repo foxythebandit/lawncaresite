@@ -180,6 +180,7 @@ export default function Board({ cards, initialView, initialColumn, children }: {
       onPointerEnter={() => prefetch(card.href)} onFocus={() => prefetch(card.href)} onKeyDown={event => onKeyDown(event, card)}
       onClick={event => { if (suppressClick.current) event.preventDefault() }}>
       <span className="crm-bcard-top"><strong>{card.name}</strong><span className="crm-bcard-ago">{card.ago}</span></span>
+      {card.phone && <span className="crm-bcard-phone">{card.phone}</span>}
       {row && <span className={`crm-chip crm-chip-col crm-chip-${card.column}`}>{COLUMN_LABEL[card.column]}</span>}
       <span className="crm-bcard-line">
         {card.card.amount ? <span className="crm-bcard-price">{card.card.amount}<small>{card.card.unit}</small></span>
@@ -195,12 +196,14 @@ export default function Board({ cards, initialView, initialColumn, children }: {
   return <div className="crm-board" ref={boardRef} data-view={listed ? 'list' : 'board'}>
     <div className="crm-page-heading crm-board-heading">
       <h1>Leads</h1>
-      <AddLeadButton />
-      <div className="admin-view-toggle crm-board-toggle" role="group" aria-label="Board view">
-        <button type="button" className={`admin-view-btn${view === 'board' ? ' active' : ''}`} aria-pressed={view === 'board'}
-          onClick={() => { setView('board'); remember({ view: 'board' }) }}><Icon name="columns" size={15} />Board</button>
-        <button type="button" className={`admin-view-btn${view === 'list' ? ' active' : ''}`} aria-pressed={view === 'list'}
-          onClick={() => { setView('list'); remember({ view: 'list' }) }}><Icon name="list" size={15} />List</button>
+      <div className="crm-board-heading-actions">
+        <AddLeadButton />
+        <div className="admin-view-toggle crm-board-toggle" role="group" aria-label="Board view">
+          <button type="button" className={`admin-view-btn${view === 'board' ? ' active' : ''}`} aria-pressed={view === 'board'}
+            onClick={() => { setView('board'); remember({ view: 'board' }) }}><Icon name="columns" size={15} />Board</button>
+          <button type="button" className={`admin-view-btn${view === 'list' ? ' active' : ''}`} aria-pressed={view === 'list'}
+            onClick={() => { setView('list'); remember({ view: 'list' }) }}><Icon name="list" size={15} />List</button>
+        </div>
       </div>
     </div>
     {children}

@@ -3,13 +3,16 @@
 import { createClient } from '@supabase/supabase-js'
 import { createClient as sessionClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/staff'
+import { calendarDate } from '@/lib/calendar-view'
 import { isStaff, staffReturnTo } from '@/lib/staff-policy'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { sendEmail } from '@/lib/email'
 import Stripe from 'stripe'
-import { addInterval, centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type JobLine } from '@/lib/crm-jobs'
+import { providerRetryExpired, saveVisitPaymentLink, type PreparedVisit } from '@/lib/visit-payment-link'
+import { centsAmount, commandError, jobPrice, moneyCents, type ActionResult, type IntroCompletionReview, type JobLine } from '@/lib/crm-jobs'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
+import type { Database, Json } from '@/supabase/database.types'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -52,11 +55,20 @@ export async function logout() {
   redirect('/admin/login')
 }
 
-export async function updateNotes(id: string, notes: string) {
+export async function updateNotes(input: {
+  bookingId: string; expectedUpdatedAt: string; operationId: string; note: string
+}): Promise<ActionResult> {
   await requireStaff()
-  if (!UUID_RE.test(id)) return
-  await getAdmin().from('bookings').update({ notes: notes.slice(0, 2000) }).eq('id', id)
-  revalidatePath('/admin/jobs')
+  if (![input.bookingId, input.operationId].every(id => UUID_RE.test(id)) || input.note.length > 2000) {
+    return { success: false, error: 'Enter a note of up to 2,000 characters.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_calendar_save_note', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_operation_id: input.operationId, p_note: input.note,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  return { success: true, data: data as Record<string, unknown> }
 }
 
 export async function deleteBooking(id: string): Promise<ActionResult> {
@@ -84,7 +96,7 @@ export async function deleteBooking(id: string): Promise<ActionResult> {
 // address, price, or frequency. Changing the phone deliberately splits the
 // booking off from the old tenant's history — the old tenant's past visits
 // stay under their number, future ones follow the new contact.
-export async function updateContactDetails(id: string, data: { name: string; phone: string; email: string }) {
+export async function updateContactDetails(id: string, data: { name: string; phone: string; email: string; expectedUpdatedAt: string }): Promise<ActionResult> {
   await requireStaff()
   if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
   const name  = data.name.trim()
@@ -93,7 +105,10 @@ export async function updateContactDetails(id: string, data: { name: string; pho
   if (!name) return { success: false, error: 'Name is required.' }
   if (!phone) return { success: false, error: 'Phone is required.' }
   if (email && !EMAIL_RE.test(email)) return { success: false, error: 'Enter a valid email address.' }
-  await getAdmin().from('bookings').update({ name, phone, email: email || null }).eq('id', id)
+  const { data: saved, error } = await getAdmin().from('bookings').update({ name, phone, email: email || null }).eq('id', id)
+    .eq('updated_at', data.expectedUpdatedAt).select('id').maybeSingle()
+  if (error) return { success: false, error: commandError(error) }
+  if (!saved) return { success: false, error: 'Visit changed since it was opened. Reload and try again.' }
   revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
   revalidatePath('/admin/week')
@@ -103,6 +118,10 @@ export async function updateContactDetails(id: string, data: { name: string; pho
 
 export async function sendReminderEmail(id: string): Promise<{ success: boolean; error?: string }> {
   await requireStaff()
+  return emailReminder(id)
+}
+
+async function emailReminder(id: string, prepared?: PreparedVisit): Promise<{ success: boolean; error?: string }> {
   if (!UUID_RE.test(id)) return { success: false, error: 'Invalid booking.' }
   const db = getAdmin()
   const { data: booking } = await db.from('bookings').select('*').eq('id', id).single()
@@ -110,6 +129,13 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
   if (!booking.email) return { success: false, error: 'No email on file for this client.' }
   if (!booking.confirmed_date) return { success: false, error: 'No confirmed date to remind about.' }
   if (!process.env.RESEND_API_KEY) return { success: false, error: 'Email not configured.' }
+
+  if (prepared) {
+    if (booking.last_reminder_sent_at && Date.parse(booking.last_reminder_sent_at) >= Date.parse(prepared.preparedAt)) return { success: true }
+    if (booking.updated_at !== prepared.updatedAt || providerRetryExpired(prepared)) {
+      return { success: false, error: 'Reopen the saved visit and review its date before sending a reminder.' }
+    }
+  }
 
   const firstName = booking.name.split(' ')[0]
   const scheduledDate = new Date(booking.confirmed_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -140,7 +166,7 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
         </div>
       </div>
     `,
-  })
+  }, prepared ? { idempotencyKey: `visit-reminder/${prepared.operationId}` } : undefined)
 
   if (error) return { success: false, error: 'Failed to send reminder email.' }
 
@@ -152,11 +178,21 @@ export async function sendReminderEmail(id: string): Promise<{ success: boolean;
   return { success: true }
 }
 
+function completionError(error: { code?: string; message?: string; details?: string }): ActionResult {
+  if (error.code === 'PT422' && error.details) {
+    try {
+      const introReview = JSON.parse(error.details) as IntroCompletionReview
+      return { success: false, error: commandError(error), data: { introReview } }
+    } catch { /* Fall through to the database message. */ }
+  }
+  return { success: false, error: commandError(error) }
+}
+
 export async function markComplete(
   id: string,
-  data: { completed_at: string; expected_updated_at: string; operation_id: string }
+  data: { completed_at: string; expected_updated_at: string; operation_id: string; introReview?: string }
 ): Promise<ActionResult> {
-  await requireStaff()
+  const staff = await requireStaff()
   if (!UUID_RE.test(id) || !UUID_RE.test(data.operation_id) || !/^\d{4}-\d{2}-\d{2}$/.test(data.completed_at)) {
     return { success: false, error: 'Choose a valid completion date.' }
   }
@@ -164,8 +200,9 @@ export async function markComplete(
   const { data: result, error } = await db.rpc('complete_job', {
     p_booking_id: id, p_expected_updated_at: data.expected_updated_at,
     p_operation_id: data.operation_id, p_completed_on: data.completed_at,
+    p_intro_review: data.introReview ?? null, p_staff_user_id: staff.id,
   })
-  if (error) return { success: false, error: commandError(error) }
+  if (error) return completionError(error)
 
   revalidatePath('/admin/jobs')
   revalidatePath('/admin/revenue')
@@ -176,11 +213,17 @@ export async function markComplete(
 
 export async function getBookings() {
   await requireStaff()
-  const { data } = await getAdmin()
-    .from('bookings')
-    .select('*')
-    .order('created_at', { ascending: false })
-  return data ?? []
+  const db = getAdmin()
+  const bookings: Database['public']['Tables']['bookings']['Row'][] = []
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db.from('bookings').select('*')
+      .order('created_at', { ascending: false }).order('id')
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error('Could not load visits.')
+    bookings.push(...data)
+    if (data.length < pageSize) return bookings
+  }
 }
 
 function refreshJobs() {
@@ -271,30 +314,6 @@ export async function recordManualPayment(input: {
   return { success: true, data: { payment_id: data } }
 }
 
-export async function startJobAgreement(input: {
-  bookingId: string; expectedUpdatedAt: string; operationId: string
-  anchorOn: string; nextOn: string; endOn?: string | null
-  intervalUnit: 'week' | 'month'; intervalCount: number; itemsTemplate: JobLine[]
-}): Promise<ActionResult> {
-  await requireStaff()
-  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId)) {
-    return { success: false, error: 'Invalid job.' }
-  }
-  let template: JobLine[]
-  try { template = cleanJobLines(input.itemsTemplate) }
-  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
-  const { data, error } = await getAdmin().rpc('crm_start_agreement', {
-    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
-    p_operation_id: input.operationId,
-    p_config: { anchor_on: input.anchorOn, next_on: input.nextOn,
-      end_on: input.endOn || null, interval_unit: input.intervalUnit,
-      interval_count: input.intervalCount, items_template: template },
-  })
-  if (error) return { success: false, error: commandError(error) }
-  refreshJobs()
-  return { success: true, data: data as Record<string, unknown> }
-}
-
 function revalidateCustomer(customerId: string) {
   refreshJobs()
   revalidatePath(`/admin/customers/${customerId}`)
@@ -322,68 +341,6 @@ export async function addCustomerJob(input: {
   if (error) return { success: false, error: commandError(error) }
   revalidateCustomer(input.customerId)
   return { success: true, data: data as Record<string, unknown> }
-}
-
-/**
- * Start a mowing plan for an existing customer. The first visit is either a visit they already have
- * booked at that property (a lead's booking, so it is not duplicated) or a new one; either way it is
- * scheduled on its date so it can be marked done.
- */
-export async function startCustomerPlan(input: {
-  jobOperationId: string; planOperationId: string; confirmOperationId: string; customerId: string
-  propertyId: string | null; newAddress: string | null; existingBookingId?: string | null
-  firstDate: string; intervalUnit: 'week' | 'month'; intervalCount: number; pricePerVisit: string
-}): Promise<ActionResult> {
-  await requireStaff(`/admin/customers/${input.customerId}`)
-  if (![input.jobOperationId, input.planOperationId, input.confirmOperationId, input.customerId].every(v => UUID_RE.test(v))
-    || (input.propertyId && !UUID_RE.test(input.propertyId)) || (input.existingBookingId && !UUID_RE.test(input.existingBookingId))) {
-    return { success: false, error: 'Refresh this customer and try again.' }
-  }
-  if (!input.propertyId && !input.newAddress?.trim()) return { success: false, error: 'Choose a property or enter an address.' }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.firstDate)) return { success: false, error: 'Choose the first visit date.' }
-  if (!['week', 'month'].includes(input.intervalUnit) || !Number.isInteger(input.intervalCount) || input.intervalCount < 1 || input.intervalCount > 52) {
-    return { success: false, error: 'Choose how often to visit.' }
-  }
-  let items: JobLine[]
-  try { items = cleanJobLines([{ kind: 'service', description: 'Lawn care', amount: input.pricePerVisit }]) }
-  catch (error) { return { success: false, error: error instanceof Error ? error.message : 'Invalid price.' } }
-  if (moneyCents(items[0].amount) <= 0) return { success: false, error: 'Enter the price per visit.' }
-  const label = input.intervalUnit === 'week'
-    ? (input.intervalCount === 1 ? 'Weekly' : input.intervalCount === 2 ? 'Bi-weekly' : `Every ${input.intervalCount} weeks`)
-    : (input.intervalCount === 1 ? 'Monthly' : `Every ${input.intervalCount} months`)
-  const db = getAdmin()
-  let bookingId = input.existingBookingId ?? null
-  if (bookingId) {
-    const { data: existing } = await db.from('bookings').select('customer_id,property_id,status,agreement_id').eq('id', bookingId).single()
-    if (!existing || existing.customer_id !== input.customerId || existing.property_id !== input.propertyId
-      || existing.agreement_id || !['pending', 'confirmed'].includes(existing.status)) {
-      return { success: false, error: 'That visit can no longer start the plan. Refresh this customer.' }
-    }
-  } else {
-    const created = await db.rpc('crm_create_customer_job', {
-      p_operation_id: input.jobOperationId, p_customer_id: input.customerId, p_property_id: input.propertyId,
-      p_property: input.propertyId ? null : { address: input.newAddress!.trim() },
-      p_job: { preferred_date: input.firstDate, notes: '', one_time: false, frequency: label }, p_items: items,
-    })
-    if (created.error) return { success: false, error: commandError(created.error) }
-    bookingId = (created.data as { booking_id: string }).booking_id
-  }
-  // The plan's first visit is on the chosen date: schedule it (an existing visit moves to that date).
-  const { data: job } = await db.from('bookings').select('status,updated_at,confirmed_date,agreement_id').eq('id', bookingId).single()
-  if (job && !job.agreement_id && (job.status === 'pending' || job.confirmed_date !== input.firstDate)) {
-    const scheduled = await changeJob({ bookingId, expectedUpdatedAt: job.updated_at, operationId: input.confirmOperationId,
-      action: job.status === 'pending' ? 'confirm' : 'reschedule', date: input.firstDate })
-    if (!scheduled.success) return scheduled
-  }
-  const { data: fresh } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
-  const { data, error } = await db.rpc('crm_start_agreement', {
-    p_booking_id: bookingId, p_expected_updated_at: fresh?.updated_at, p_operation_id: input.planOperationId,
-    p_config: { anchor_on: input.firstDate, next_on: addInterval(input.firstDate, input.intervalUnit, input.intervalCount),
-      end_on: null, interval_unit: input.intervalUnit, interval_count: input.intervalCount, items_template: items },
-  })
-  if (error) return { success: false, error: commandError(error) }
-  revalidateCustomer(input.customerId)
-  return { success: true, data: { ...(data as Record<string, unknown>), booking_id: bookingId } }
 }
 
 /** Quote outcome: a lead's booked visit (its latest quote booking) canceled before it happens counts as a canceled quote. */
@@ -433,6 +390,37 @@ export async function changeJob(input: {
   return { success: true, data: data as Record<string, unknown> }
 }
 
+export async function confirmFirstVisit(input: {
+  bookingId: string; expectedUpdatedAt: string; leadVersion: string | null; operationId: string
+  date: string; time: string; email: boolean; customerId: string | null; propertyId: string | null
+  name: string; address: string; labelId: string | null; frequency: string; reviewedTerms: boolean
+  reviewedPropertyAddress: string | null; reviewedIntro: boolean
+}): Promise<ActionResult> {
+  const staff = await requireStaff()
+  if (![input.bookingId, input.operationId].every(id => UUID_RE.test(id))
+    || [input.customerId, input.propertyId, input.labelId].some(id => id !== null && !UUID_RE.test(id))
+    || !calendarDate(input.date) || input.time.length > 80 || input.name.length > 150 || input.address.length > 500 || (input.reviewedPropertyAddress?.length ?? 0) > 500) {
+    return { success: false, error: 'Review the customer, property, and visit date.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_confirm_first_visit', {
+    p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
+    p_lead_version: input.leadVersion, p_operation_id: input.operationId,
+    p_request: { date: input.date, arrival: input.time, customer_id: input.customerId, property_id: input.propertyId,
+      name: input.name, address: input.address, label_id: input.labelId, frequency: input.frequency,
+      reviewed_terms: input.reviewedTerms, reviewed_property_address: input.reviewedPropertyAddress,
+      reviewed_intro: input.reviewedIntro, staff_user_id: staff.id },
+  })
+  if (error) return { success: false, error: commandError(error) }
+  refreshJobs()
+  revalidatePath('/admin/leads')
+  revalidatePath('/admin/customers')
+  const result: ActionResult = { success: true, data: data as Record<string, unknown> }
+  if (input.email && !result.data?.duplicate) {
+    return emailVisitDate(input.bookingId, 'confirm', input.date, input.time, result)
+  }
+  return result
+}
+
 export async function scheduleJobAndEmail(input: {
   bookingId: string; expectedUpdatedAt: string; operationId: string
   action: 'confirm' | 'reschedule'; date: string; time?: string
@@ -443,6 +431,93 @@ export async function scheduleJobAndEmail(input: {
     return { success: true, data: { warning: 'Visit was already saved. Check the customer email before sending again.' } }
   }
   return emailVisitDate(input.bookingId, input.action, input.date, input.time, result)
+}
+
+export type ProjectedVisitEdit =
+  | { action: 'reschedule'; date: string; time?: string; email?: boolean }
+  | { action: 'complete'; date: string; introReview?: string }
+  | { action: 'notes'; note: string }
+  | { action: 'items'; items: JobLine[] }
+  | { action: 'payment'; amount: string; date: string; method: string }
+  | { action: 'contact'; name: string; phone: string; email: string }
+  | { action: 'skip' | 'cancel' | 'payment_link' | 'reminder' }
+
+export async function editProjectedVisit(input: ProjectedVisitEdit & {
+  agreementId: string; revisionId: string; on: string; operationId: string; expectedItems?: JobLine[]
+}): Promise<ActionResult> {
+  await requireStaff()
+  if (![input.agreementId, input.revisionId, input.operationId].every(id => UUID_RE.test(id)) || !calendarDate(input.on)) {
+    return { success: false, error: 'Reopen the calendar and choose a visit.' }
+  }
+  let payload: Record<string, Json> = {}
+  try {
+    switch (input.action) {
+      case 'reschedule':
+        if (!calendarDate(input.date) || (input.time?.length ?? 0) > 80) throw new Error('Review the visit date and arrival window.')
+        payload = { date: input.date, time: input.time?.trim() || null }
+        break
+      case 'complete':
+        if (!calendarDate(input.date)) throw new Error('Choose a completion date.')
+        payload = { date: input.date, ...(input.introReview ? { intro_review: input.introReview } : {}) }
+        break
+      case 'notes':
+        if (input.note.length > 2000) throw new Error('Enter a note of up to 2,000 characters.')
+        payload = { note: input.note }
+        break
+      case 'items':
+        payload = { items: cleanJobLines(input.items) }
+        break
+      case 'payment': {
+        const cents = moneyCents(input.amount)
+        if (!calendarDate(input.date) || cents <= 0 || !input.method.trim()) throw new Error('Enter a payment amount, date, and method.')
+        payload = { date: input.date, amount: centsAmount(cents), method: input.method.trim() }
+        break
+      }
+      case 'contact':
+        if (!input.name.trim() || !input.phone.trim()) throw new Error('Enter a name and phone number.')
+        if (input.email.trim() && !EMAIL_RE.test(input.email.trim())) throw new Error('Enter a valid email address.')
+        payload = { name: input.name.trim(), phone: input.phone.trim(), email: input.email.trim() }
+        break
+      case 'payment_link':
+        if (!process.env.STRIPE_SECRET_KEY) throw new Error('Stripe not configured.')
+        break
+      case 'reminder':
+        if (!process.env.RESEND_API_KEY) throw new Error('Email not configured.')
+        break
+      case 'skip':
+      case 'cancel':
+        break
+      default:
+        throw new Error('Choose a visit action.')
+    }
+    if (input.expectedItems) payload.expected_items = cleanJobLines(input.expectedItems)
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Review the visit details.' }
+  }
+  const { data, error } = await getAdmin().rpc('crm_calendar_edit_occurrence', {
+    p_agreement_id: input.agreementId, p_revision_id: input.revisionId, p_on: input.on,
+    p_operation_id: input.operationId, p_action: input.action, p_payload: payload,
+  })
+  if (error) return completionError(error)
+  const result = { success: true as const, data: data as Record<string, unknown> }
+  const id = result.data.booking_id as string
+  if (input.action === 'reschedule' && input.email && !result.data.duplicate) {
+    refreshJobs()
+    const notified = await emailVisitDate(id, 'reschedule', input.date, input.time, result)
+    return notified.success ? { ...notified, data: { ...result.data, ...notified.data } } : notified
+  }
+  if (input.action === 'payment_link' || input.action === 'reminder') {
+    const prepared = { operationId: input.operationId, updatedAt: result.data.updated_at as string, preparedAt: result.data.prepared_at as string }
+    if (input.action === 'payment_link') {
+      const link = await createBookingPaymentLink(id, prepared)
+      if ('error' in link) return { success: false, error: `Visit saved. ${link.error}` }
+    } else {
+      const reminder = await emailReminder(id, prepared)
+      if (!reminder.success) return { success: false, error: `Visit saved. ${reminder.error ?? 'Could not send the reminder.'}` }
+    }
+  }
+  refreshJobs()
+  return result
 }
 
 /** Customer email after a visit date is set; a send failure leaves the saved date as is. */
@@ -464,7 +539,7 @@ async function emailVisitDate(bookingId: string, action: 'confirm' | 'reschedule
 
 /**
  * Log one visit from the customer page: mark it done (scheduling it on that date first if it was
- * still "To schedule") and, when an amount is given, record the payment. A plan visit books the next one.
+ * still "To schedule") and, when an amount is given, record the payment.
  * Each step has its own operation ID, so a retry after a dropped connection repeats nothing.
  */
 export async function finishVisit(input: {
@@ -477,13 +552,14 @@ export async function finishVisit(input: {
     return { success: false, error: 'Choose the date of the visit.' }
   }
   const db = getAdmin()
-  let { data: job } = await db.from('bookings').select('status,updated_at,completion_operation_id').eq('id', input.bookingId).single()
+  let { data: job } = await db.from('bookings').select('status,updated_at,completion_operation_id,lead_id').eq('id', input.bookingId).single()
   if (!job) return { success: false, error: 'Visit not found.' }
   if (job.status === 'pending') {
+    if (job.lead_id) return { success: false, error: 'Open the request and confirm the first visit before marking it done.' }
     const scheduled = await changeJob({ bookingId: input.bookingId, expectedUpdatedAt: job.updated_at,
       operationId: input.confirmOperationId, action: 'confirm', date: input.completedOn })
     if (!scheduled.success) return scheduled
-    job = (await db.from('bookings').select('status,updated_at,completion_operation_id').eq('id', input.bookingId).single()).data
+    job = (await db.from('bookings').select('status,updated_at,completion_operation_id,lead_id').eq('id', input.bookingId).single()).data
     if (!job) return { success: false, error: 'Visit not found.' }
   }
   let next: unknown = null
@@ -502,31 +578,29 @@ export async function finishVisit(input: {
   return { success: true, data: { next_booking_id: next } }
 }
 
-/** Move one upcoming visit, or (plan visits) the whole plan from this visit on, and optionally email the customer. */
-export async function moveVisit(input: {
-  bookingId: string; expectedUpdatedAt: string; operationId: string; date: string; time?: string
-  wholePlan: boolean; email: boolean
-}): Promise<ActionResult> {
-  await requireStaff()
-  if (!UUID_RE.test(input.bookingId) || !UUID_RE.test(input.operationId) || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    return { success: false, error: 'Choose the new date.' }
+export async function reviewPlanMove(input: {
+  agreementId: string; date: string; time: string; email: boolean; operationId?: string; preview?: string
+} & ({ bookingId: string; version: string } | { revisionId: string; on: string })): Promise<ActionResult> {
+  const staff = await requireStaff()
+  if (!UUID_RE.test(input.agreementId) || !calendarDate(input.date) || input.time.length > 80
+    || (input.operationId && !UUID_RE.test(input.operationId))
+    || ('bookingId' in input ? !UUID_RE.test(input.bookingId) : !UUID_RE.test(input.revisionId) || !calendarDate(input.on))) {
+    return { success: false, error: 'Review the visit and choose the new date.' }
   }
-  let result: ActionResult
-  if (input.wholePlan) {
-    const { data, error } = await getAdmin().rpc('crm_shift_agreement', {
-      p_booking_id: input.bookingId, p_expected_updated_at: input.expectedUpdatedAt,
-      p_operation_id: input.operationId, p_date: input.date, p_time: input.time || null,
-    })
-    if (error) return { success: false, error: commandError(error) }
-    refreshJobs()
-    result = { success: true, data: data as Record<string, unknown> }
-  } else {
-    const { data: job } = await getAdmin().from('bookings').select('status').eq('id', input.bookingId).single()
-    result = await changeJob({ ...input, action: job?.status === 'pending' ? 'confirm' : 'reschedule' })
-    if (!result.success) return result
-  }
-  if (!input.email || result.data?.duplicate) return result
-  return emailVisitDate(input.bookingId, 'reschedule', input.date, input.time, result)
+  const { data, error } = await getAdmin().rpc('crm_review_schedule_shift', {
+    p_agreement_id: input.agreementId, p_staff_user_id: staff.id,
+    p_request: { date: input.date, time: input.time, email: input.email,
+      ...('bookingId' in input ? { booking_id: input.bookingId, version: input.version }
+        : { revision_id: input.revisionId, on: input.on }) },
+    p_operation_id: input.operationId ?? null, p_preview: input.preview ?? null,
+  })
+  if (error) return { success: false, error: commandError(error) }
+  const result = { success: true as const, data: data as Record<string, unknown> }
+  if (!input.operationId) return result
+  refreshJobs()
+  if (!input.email || result.data.duplicate || typeof result.data.booking_id !== 'string') return result
+  const notified = await emailVisitDate(result.data.booking_id, 'reschedule', input.date, input.time, result)
+  return notified.success ? { ...notified, data: { ...result.data, ...notified.data } } : notified
 }
 
 /** Fold a recurring visit that is not in a plan (booked from a lead) into the customer's plan at that property. */
@@ -582,10 +656,16 @@ export async function getJobPayments() {
 
 export async function getJobItems() {
   await requireStaff()
-  const { data, error } = await getAdmin().from('job_items')
-    .select('booking_id,kind,description,amount').order('created_at', { ascending: true })
-  if (error) throw new Error(commandError(error))
-  return data ?? []
+  const db = getAdmin()
+  const items: Pick<Database['public']['Tables']['job_items']['Row'], 'booking_id' | 'kind' | 'description' | 'amount'>[] = []
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await db.from('job_items').select('booking_id,kind,description,amount')
+      .order('created_at').order('id').range(offset, offset + pageSize - 1)
+    if (error) throw new Error(commandError(error))
+    items.push(...data)
+    if (data.length < pageSize) return items
+  }
 }
 
 export async function getCustomers() {
@@ -599,9 +679,10 @@ export async function getCustomers() {
   return { customers: customers.data ?? [], properties: properties.data ?? [] }
 }
 
-export async function getAgreements() {
+export async function getAgreements(customerId?: string) {
   await requireStaff()
-  const { data, error } = await getAdmin().from('recurring_agreements').select('*')
+  const query = getAdmin().from('recurring_agreements').select('*,service_labels(id,name,semantic_key,retired_at)')
+  const { data, error } = await (customerId ? query.eq('customer_id', customerId) : query)
   if (error) throw new Error(commandError(error))
   return data ?? []
 }
@@ -627,42 +708,13 @@ export async function createPaymentLink(
   _address: string,
 ): Promise<{ url: string } | { error: string }> {
   await requireStaff()
+  return createBookingPaymentLink(bookingId)
+}
+
+async function createBookingPaymentLink(bookingId: string, prepared?: PreparedVisit): Promise<{ url: string } | { error: string }> {
   if (!UUID_RE.test(bookingId)) return { error: 'Invalid booking ID' }
   if (!process.env.STRIPE_SECRET_KEY) return { error: 'Stripe not configured' }
-  const db = getAdmin()
-  const { data: booking, error: readError } = await db.from('bookings')
-    .select('id,name,address,job_total,first_visit_price,price_per_visit,status,updated_at').eq('id', bookingId).single()
-  if (readError || !booking) return { error: 'Job not found.' }
-  if (!['confirmed','completed'].includes(booking.status)) return { error: 'Confirm the visit first.' }
-  const amountCents = moneyCents(jobPrice(booking).toFixed(2))
-  if (amountCents <= 0) return { error: 'Set a positive job total first.' }
-
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
-
-  try {
-    const price = await stripe.prices.create({
-      currency: 'usd',
-      unit_amount: amountCents,
-      product_data: {
-        name: `QuietGreen service — ${booking.address}`,
-      },
-    })
-
-    const link = await stripe.paymentLinks.create({
-      line_items: [{ price: price.id, quantity: 1 }],
-      metadata: { booking_id: bookingId, customer_name: booking.name },
-    })
-
-    const { data: saved, error: saveError } = await db.from('bookings')
-      .update({ payment_link: link.url }).eq('id', bookingId)
-      .eq('updated_at', booking.updated_at).select('id').maybeSingle()
-    if (saveError || !saved) return { error: 'Job changed while creating the link. Refresh and review its current total.' }
-
-    return { url: link.url }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Unknown error'
-    return { error: msg }
-  }
+  return saveVisitPaymentLink(getAdmin(), new Stripe(process.env.STRIPE_SECRET_KEY), bookingId, prepared)
 }
 
 // ── Extra charges: one-off work billed outside a booking (bed cleanups, trims…) ──

@@ -1,9 +1,11 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { createContext, useContext, useEffect, useOptimistic, useRef, useState, useTransition } from 'react'
 import { CALL_OUTCOME, COLUMN_LABEL, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { columnChip, type Chip } from '@/lib/lead-summary'
 import { logCall, type CallDetail } from './board-actions'
+import type { IntroEligibility } from '@/lib/quote-offer'
 import LogCallForm, { type LogCallDraft } from './LogCallForm'
 import Sheet from './Sheet'
 import Icon from '../icons'
@@ -17,9 +19,10 @@ const useLive = () => useContext(LiveContext)!
  * Lead page state that changes before the server answers (PLAN.md 6.2 "Instant feedback"): the
  * column chip moves as soon as a call is logged and snaps back with an error if the save fails.
  */
-export function LeadLive({ leadId, name, column, priceCents, frequency, children }: {
-  leadId: string; name: string; column: BoardColumn; priceCents: number | null; frequency: Frequency | null; children: React.ReactNode
+export function LeadLive({ leadId, name, column, priceCents, frequency, services, introEligibility, children }: {
+  leadId: string; name: string; column: BoardColumn; priceCents: number | null; frequency: Frequency | null; services: string[]; introEligibility: IntroEligibility; children: React.ReactNode
 }) {
+  const router = useRouter()
   const [shownColumn, setColumn] = useOptimistic(column)
   const [, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
@@ -38,7 +41,7 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
     const key = JSON.stringify([outcome, detail])
     if (operation.current?.key !== key) operation.current = { key, id: uuid() }
     const operationId = operation.current.id
-    const to = CALL_OUTCOME[outcome].to
+    const to = outcome === 'booked' ? 'booking_request' : CALL_OUTCOME[outcome].to
     setOpen(false); setDraft(form)
     setToast({ text: `${CALL_OUTCOME[outcome].label} · ${COLUMN_LABEL[to]}` })
     startTransition(async () => {
@@ -46,7 +49,11 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
       const result = await logCall(leadId, operationId, outcome, detail).catch(() => ({ ok: false as const, error: 'Not saved' }))
       if (result.ok) {
         operation.current = null; setDraft(null)
-        if ('warning' in result && result.warning) setToast({ text: result.warning, error: true })
+        setColumn(result.column)
+        if (result.bookingId && result.requestPending) {
+          setToast({ text: 'Call saved. Review and confirm the first visit.' })
+          router.push(`/admin/jobs/${result.bookingId}`)
+        }
       }
       else { setToast({ text: `Call not saved · ${result.error}`, error: true }); setOpen(true) }
     })
@@ -55,7 +62,7 @@ export function LeadLive({ leadId, name, column, priceCents, frequency, children
   return <LiveContext.Provider value={{ column: shownColumn, openLogCall: () => setOpen(true) }}>
     {children}
     <Sheet open={open} onClose={() => setOpen(false)} title={`Log call · ${name}`} className="crm-logcall">
-      <LogCallForm initial={draft} priceCents={priceCents} frequency={frequency} onSave={save} />
+      <LogCallForm initial={draft} priceCents={priceCents} frequency={frequency} services={services} introEligibility={introEligibility} onSave={save} />
     </Sheet>
     {toast && <div className={`crm-toast${toast.error ? ' crm-toast-error' : ''}`} role={toast.error ? 'alert' : 'status'}>
       <span>{toast.text}</span><button type="button" aria-label="Dismiss" onClick={() => setToast(null)}>×</button>

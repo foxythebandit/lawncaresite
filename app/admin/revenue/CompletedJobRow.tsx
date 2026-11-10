@@ -1,3 +1,4 @@
+import { customerDisplayName } from '@/lib/lead-labels'
 import { formatMoney, jobPrice } from '@/lib/crm-jobs'
 
 type Job = {
@@ -15,7 +16,7 @@ export default function CompletedJobRow({ job, payments }: { job: Job; payments:
   const status = paid > 0 ? (paid >= price ? 'Paid in full' : 'Partly paid') : 'Unpaid'
   return <tr>
     <td>{new Date(job.completed_at.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-    <td><a href={`/admin/jobs?search=${encodeURIComponent(job.name)}`}>{job.name}</a><br /><small>{status}</small></td>
+    <td><a href={`/admin/jobs/${job.id}`}>{customerDisplayName(job)}</a><br /><small>{status}</small></td>
     <td>{job.address}</td>
     <td>{formatMoney(price)}</td>
     <td>{payments.length || job.amount_charged != null ? formatMoney(paid) : '—'}{job.amount_charged != null && <><br /><small>{payments.length ? `incl. ${formatMoney(older)} ` : ''}older record{job.payment_method ? ` · ${job.payment_method}` : ''}</small></>}</td>

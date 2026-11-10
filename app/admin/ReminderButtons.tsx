@@ -20,7 +20,9 @@ function timeAgo(dateStr: string) {
 }
 
 interface Props {
-  bookingId: string
+  bookingId?: string
+  emailAction?: () => void
+  emailBusy?: boolean
   name: string
   phone: string
   email?: string | null
@@ -29,7 +31,7 @@ interface Props {
   lastReminderSentAt?: string | null
 }
 
-export default function ReminderButtons({ bookingId, name, phone, email, confirmedDate, confirmedTime, lastReminderSentAt }: Props) {
+export default function ReminderButtons({ bookingId, name, phone, email, confirmedDate, confirmedTime, lastReminderSentAt, emailAction, emailBusy = false }: Props) {
   const [pending, startTransition] = useTransition()
   const [result, setResult] = useState<{ success: boolean; error?: string } | null>(null)
 
@@ -44,9 +46,11 @@ export default function ReminderButtons({ bookingId, name, phone, email, confirm
       <button
         type="button"
         className="crm-button crm-button-sm"
-        disabled={pending || !email}
+        disabled={pending || emailBusy || !email || (!bookingId && !emailAction)}
         title={email ? undefined : 'No email on file'}
         onClick={() => {
+          if (emailAction) { emailAction(); return }
+          if (!bookingId) return
           setResult(null)
           startTransition(async () => {
             const r = await sendReminderEmail(bookingId)
@@ -54,7 +58,7 @@ export default function ReminderButtons({ bookingId, name, phone, email, confirm
           })
         }}
       >
-        {pending ? 'Sending…' : 'Email reminder'}
+        {pending || emailBusy ? 'Sending…' : 'Email reminder'}
       </button>
       <a href={`sms:${phone}&body=${encodeURIComponent(smsBody)}`} className="crm-button crm-button-sm">
         Text reminder

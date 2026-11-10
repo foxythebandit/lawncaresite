@@ -3,14 +3,13 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { ESRI_IMAGERY, MAPBOX_TOKEN } from '@/lib/map-imagery'
-import type { OfferFrequency, QuoteOffer } from '@/lib/quote-offer'
+import { emailMoney, type QuoteEmailRow } from '@/lib/quote-email'
 import { bookQuote } from './actions'
 
 type Section = { name: string; sqFt: number; coords: [number, number][] | null }
 type Start = 'asap' | 'date' | 'unsure'
 
-const EVERY: Partial<Record<OfferFrequency, string>> = { weekly: 'every week', biweekly: 'every 2 weeks', monthly: 'every month' }
-const money = (value: number) => `$${Number.isInteger(value) ? value : value.toFixed(2)}`
+type PublicOffer = { sqFt: number; mowing: boolean; rows: QuoteEmailRow[]; message: string }
 
 /* Live satellite map of the property with the traced lawn outlined, using the same imagery as the staff quote map. */
 function MeasurementView({ sections }: { sections: Section[] }) {
@@ -60,10 +59,11 @@ function MeasurementView({ sections }: { sections: Section[] }) {
   </div>
 }
 
-export default function QuoteBooking({ token, firstName, address, services, offer, sections, email: savedEmail }: {
-  token: string; firstName: string | null; address: string; services: string[]; offer: QuoteOffer; sections: Section[]; email: string
+
+export default function QuoteBooking({ token, firstName, address, offer, sections, email: savedEmail, notice, closed, historicalTotal }: {
+  token: string; firstName: string | null; address: string; offer?: PublicOffer; sections: Section[]
+  email: string; notice?: React.ReactNode; closed?: boolean; historicalTotal?: number | null
 }) {
-  const [freq, setFreq] = useState<OfferFrequency>(offer.quoted)
   const [start, setStart] = useState<Start>('asap')
   const [date, setDate] = useState('')
   const [timeOfDay, setTimeOfDay] = useState('Any time')
@@ -71,76 +71,79 @@ export default function QuoteBooking({ token, firstName, address, services, offe
   const [showMeasure, setShowMeasure] = useState(true)
   const [error, setError] = useState('')
   const [email, setEmail] = useState(savedEmail)
-  const [confirmedTo, setConfirmedTo] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [pending, startTransition] = useTransition()
-  const [submissionId] = useState(() => `qb-${crypto.randomUUID()}`)
-  const option = offer.options.find(o => o.freq === freq) ?? offer.options[0]
-  const today = new Date().toLocaleDateString('en-CA')
-  const jobName = offer.recurring ? (freq === 'onetime' ? 'one-time mowing' : `${option.label.toLowerCase()} mowing`) : 'this job'
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 
-  function submit() {
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
     setError('')
-    if (start === 'date' && !date) { setError('Pick a start date, or choose another option.'); return }
     startTransition(async () => {
-      const result = await bookQuote({ token, submissionId, freq, start, date, timeOfDay, notes, email }).catch(() => ({ error: 'Something went wrong. Please try again or call us.' }))
+      const result = await bookQuote({ token, freq: offer?.rows.length === 1 ? offer.rows[0].freq : undefined, start, date, timeOfDay, notes, email })
+        .catch(() => ({ error: 'Something went wrong. Please try again or call us.' }))
       if ('error' in result) setError(result.error)
-      else { setConfirmedTo(result.confirmationTo); setDone(true) }
+      else setDone(true)
     })
   }
 
   if (done) return <main className="qb-page"><div className="qb-wrap qb-done">
     <div className="qb-check" aria-hidden="true">✓</div>
-    <h1>You’re booked!</h1>
-    <p className="qb-sub">{jobName[0].toUpperCase() + jobName.slice(1)}{start === 'date' && date ? `, first visit ${new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}${timeOfDay !== 'Any time' ? ` (${timeOfDay.toLowerCase()})` : ''}` : start === 'asap' ? ', starting as soon as possible' : ''}.</p>
-    <p className="qb-sub">{option.firstVisit !== option.price ? `First visit ${money(option.firstVisit)}, then ${money(option.price)} ${EVERY[freq] ?? ''}.` : `${money(option.price)}${EVERY[freq] ? ` ${EVERY[freq]}` : ''}.`}</p>
-    <p className="qb-fine">{confirmedTo ? `A confirmation is on its way to ${confirmedTo}.` : 'Save this page for your records.'} Need to change anything? Just reply to that email.</p>
+    <h1>Request received</h1>
+    <p className="qb-sub">We’ll get in touch to confirm your first visit{start === 'date' && date ? `. You requested ${new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}` : ''}.</p>
   </div></main>
 
   return <main className="qb-page"><div className="qb-wrap">
     <p className="qb-brand">QuietGreen</p>
-    <h1>{firstName ? `${firstName}, here’s your quote` : 'Your quote'}</h1>
-    <p className="qb-sub">Double-check the details, choose how often, and pick a start. No payment now.</p>
+    <h1>{offer ? (firstName ? `${firstName}, here’s your quote` : 'Your quote') : 'Your visit request'}</h1>
+    {notice}
+    {offer?.message && <p className="qb-sub qb-message">{offer.message}</p>}
 
     <section className="qb-card">
       <h2>Your property</h2>
       <div className="qb-row"><span>Address</span><b>{address}</b></div>
-      {offer.sqFt > 0 && <div className="qb-row"><span>Lawn measured</span><b>{offer.sqFt.toLocaleString('en-US')} sq ft</b></div>}
-      <div className="qb-row"><span>Service</span><b>{services.join(', ')}</b></div>
+      {!!offer?.sqFt && <div className="qb-row"><span>Lawn measured</span><b>{offer.sqFt.toLocaleString('en-US')} sq ft</b></div>}
       {sections.length > 0 && <button type="button" className="qb-link" aria-expanded={showMeasure} onClick={() => setShowMeasure(v => !v)}>
         {showMeasure ? 'Hide map' : 'See how we measured your lawn ›'}</button>}
-      {showMeasure && <MeasurementView sections={sections} />}
+      {showMeasure && sections.length > 0 && <MeasurementView sections={sections} />}
     </section>
 
-    {offer.recurring ? <section className="qb-card">
-      <h2>How often?</h2>
-      {offer.options.map(o => <button key={o.freq} type="button" className="qb-opt" aria-pressed={freq === o.freq} onClick={() => setFreq(o.freq)}>
-        <span><span className="qb-opt-l">{o.label}{o.freq === offer.quoted && <span className="qb-tag">Quoted</span>}</span><span className="qb-opt-d">{o.detail}</span></span>
-        <span className="qb-opt-p">{money(o.price)}<small>{o.freq === 'onetime' ? 'one time' : 'per visit'}</small></span>
-      </button>)}
-    </section> : <section className="qb-card">
-      <h2>Your price</h2>
-      <div className="qb-row"><span>Quoted total</span><b>{money(option.price)}</b></div>
+    {offer && <section className="qb-card">
+      <h2>{offer.rows.length > 1 ? 'Your original quoted services' : 'Your quoted service'}</h2>
+      {offer.rows.length > 1 && <p className="qb-sub">We’ll review these terms with you before confirming the first visit.</p>}
+      {offer.rows.map(row => <div key={row.freq} className="qb-terms">
+        <div className="qb-row">
+          <b>{offer.mowing ? row.freq === 'onetime' ? 'One-time mowing' : `${row.label} mowing`
+            : row.freq === 'onetime' ? row.label : `${row.label} · ${row.detail}`}</b>
+          {row.firstVisitCents === null && <b>{emailMoney(row.perVisitCents)}{row.freq !== 'onetime' ? ' / visit' : ''}</b>}
+        </div>
+        {row.when && <p className="qb-sub">{row.when}</p>}
+        {row.regularItems.map((item, index) => <div className="qb-row" key={index}><span>{item.description}</span><span>{emailMoney(Math.round(Number(item.amount) * 100))}</span></div>)}
+        {row.firstVisitCents !== null && <>
+          <div className="qb-row"><span>Standard price</span><span>{emailMoney(row.perVisitCents)}{row.freq !== 'onetime' ? ' / visit' : ''}</span></div>
+          <div className="qb-row"><b>Introductory visit</b><b>{emailMoney(row.firstVisitCents)}</b></div>
+        </>}
+
+      </div>)}
+    </section>}
+    {historicalTotal != null && <section className="qb-card"><h2>Previously accepted quote</h2>
+      <div className="qb-row"><span>Saved total</span><b>{emailMoney(historicalTotal)}</b></div>
     </section>}
 
-    <section className="qb-card">
-      <h2>When should we start?</h2>
-      <div className="qb-chips">
-        {([['asap', 'As soon as possible'], ['date', 'Pick a date'], ['unsure', 'Not sure yet']] as [Start, string][]).map(([value, label]) =>
-          <button key={value} type="button" className="qb-chip" aria-pressed={start === value} onClick={() => setStart(value)}>{label}</button>)}
-      </div>
-      {start === 'date' && <label className="qb-field">Preferred first visit<input type="date" min={today} value={date} onChange={e => setDate(e.target.value)} /></label>}
-      <label className="qb-field">Time of day<select value={timeOfDay} onChange={e => setTimeOfDay(e.target.value)}><option>Any time</option><option>Morning</option><option>Afternoon</option></select></label>
-      <label className="qb-field">Email for your confirmation<input type="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label>
-      <label className="qb-field">Anything we should know? (gate code, pets, areas to skip)<textarea rows={2} maxLength={1500} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" /></label>
-    </section>
-
-    {option.firstVisit !== option.price
-      ? <><div className="qb-total"><span>First visit (30% off)</span><b>{money(option.firstVisit)}</b></div>
-        <div className="qb-row qb-then"><span>Then</span><b>{money(option.price)} {EVERY[freq]}</b></div></>
-      : <div className="qb-total"><span>Total</span><b>{money(option.price)}</b></div>}
-    {error && <p className="qb-error" role="alert">{error}</p>}
-    <button type="button" className="qb-btn" disabled={pending} onClick={submit}>{pending ? 'Booking…' : `Book ${jobName}`}</button>
-    <p className="qb-fine qb-center">No payment now. Need to change something later? Just reply to your confirmation email.</p>
+    {!closed && <form id="quote-request" onSubmit={submit}>
+      <section className="qb-card">
+        <h2>When would you like us to come?</h2>
+        <div className="qb-chips">
+          {([['asap', 'As soon as possible'], ['date', 'Pick a date'], ['unsure', 'Not sure yet']] as [Start, string][]).map(([value, label]) =>
+            <button key={value} type="button" className="qb-chip" aria-pressed={start === value} onClick={() => setStart(value)}>{label}</button>)}
+        </div>
+        {start === 'date' && <label className="qb-field">Preferred first visit<input type="date" min={today} value={date} onChange={e => setDate(e.target.value)} required /></label>}
+        <label className="qb-field">Time of day<select value={timeOfDay} onChange={e => setTimeOfDay(e.target.value)}><option>Any time</option><option>Morning</option><option>Afternoon</option></select></label>
+        <label className="qb-field">Email for follow-up<input type="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label>
+        <label className="qb-field">Anything we should know?<textarea rows={2} maxLength={1500} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" /></label>
+      </section>
+      {error && <p className="qb-error" role="alert">{error}</p>}
+      <button type="submit" className="qb-btn" disabled={pending}>{pending ? 'Saving request…' : 'Request first visit'}</button>
+      <p className="qb-fine qb-center">We’ll confirm the date with you. No payment is due now.</p>
+    </form>}
   </div></main>
 }

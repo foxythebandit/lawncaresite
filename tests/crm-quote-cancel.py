@@ -84,11 +84,10 @@ with sync_playwright() as playwright:
     assert rebooked['quote_status'] == 'accepted' and rebooked['stage'] == 'booked'
     jobs = db('bookings?lead_id=eq.' + lead_id + '&order=created_at')
     assert len(jobs) == 2 and jobs[1]['status'] == 'pending' and jobs[1]['agreement_id'] is None
-    page.goto(BASE + '/admin?search=' + urllib.parse.quote(name))
-    card = page.locator('.admin-card', has_text=name).filter(has=page.locator('.admin-badge-pending')).first
-    card.locator('.admin-card-summary').click()
-    card.get_by_role('button', name='Cancel visit').click()
-    page.get_by_text('Visit canceled and retained in history.').first.wait_for()
+    page.goto(BASE + '/admin/jobs/' + jobs[1]['id'])
+    page.get_by_role('button', name='More actions', exact=True).click()
+    page.get_by_role('button', name='Cancel this visit', exact=True).click()
+    page.get_by_text('Visit canceled.', exact=True).first.wait_for()
     assert db('bookings?id=eq.' + jobs[1]['id'])[0]['status'] == 'canceled'
     final = db('leads?id=eq.' + lead_id)[0]
     assert final['quote_status'] == 'canceled' and final['stage'] == 'lost'
@@ -125,27 +124,27 @@ with sync_playwright() as playwright:
     page.locator('.crm-booking-request input[type=date]').fill(first_visit)
     page.get_by_role('button', name='Confirm booking', exact=True).click()
     page.get_by_text('Visit booked and mowing plan started.').first.wait_for()
-    original = db('bookings?lead_id=eq.' + repeat['id'])[0]
-    page.goto(BASE + '/admin?search=' + urllib.parse.quote(repeat_name))
-    first_card = page.locator('.admin-card', has_text=repeat_name).first
-    first_card.locator('.admin-card-summary').click()
-    first_card.get_by_label('Visit date').fill(first_visit)
-    first_card.get_by_role('button', name='Save visit date').click()
-    page.get_by_text('Visit confirmed.').first.wait_for()
-    first_card = page.locator('.admin-card', has_text=repeat_name).first
-    first_card.get_by_label('Date completed').fill(first_visit)
-    first_card.get_by_role('button', name='Mark complete').click()
-    page.get_by_text('Visit completed.').first.wait_for()
-    generated = [row for row in db('bookings?lead_id=eq.' + repeat['id']) if row['id'] != original['id']]
-    assert len(generated) == 1 and generated[0]['status'] == 'confirmed'
+    original = next(row for row in db('bookings?lead_id=eq.' + repeat['id']) if row['creation_operation_id'] or 'agreement_id' not in (row['accepted_quote_snapshot'] or {}))
+    page.goto(BASE + '/admin/jobs/' + original['id'])
+    if original['status'] == 'pending':
+        page.get_by_role('button', name='Confirm first visit', exact=True).click()
+        page.get_by_label('Visit date', exact=True).fill(first_visit)
+        page.get_by_role('button', name='Confirm visit', exact=True).click()
+        page.get_by_text('Visit confirmed.').first.wait_for()
+    page.get_by_role('button', name='Mark done', exact=True).click()
+    page.get_by_label('Date completed').fill(first_visit)
+    page.get_by_role('button', name='Save completion', exact=True).click()
+    page.get_by_text('Visit marked done.').first.wait_for()
+    generated = sorted((row for row in db('bookings?lead_id=eq.' + repeat['id']) if row['id'] != original['id']),
+                       key=lambda row: row['confirmed_date'])
+    assert generated and generated[0]['status'] == 'confirmed'
     page.goto(BASE + '/admin/leads/' + repeat['id'])
     page.locator('.crm-quote-panel .crm-chip').filter(has_text='Booked').wait_for()
     assert page.get_by_role('button', name='Customer canceled', exact=True).count() == 0
-    page.goto(BASE + '/admin?search=' + urllib.parse.quote(repeat_name))
-    next_card = page.locator('.admin-card', has_text=repeat_name).filter(has=page.locator('.admin-badge-confirmed')).first
-    next_card.locator('.admin-card-summary').click()
-    next_card.get_by_role('button', name='Cancel visit').click()
-    page.get_by_text('Visit canceled and retained in history.').first.wait_for()
+    page.goto(BASE + '/admin/jobs/' + generated[0]['id'])
+    page.get_by_role('button', name='More actions', exact=True).click()
+    page.get_by_role('button', name='Cancel this visit', exact=True).click()
+    page.get_by_text('Visit canceled.', exact=True).first.wait_for()
     assert db('leads?id=eq.' + repeat['id'])[0]['quote_status'] == 'accepted'
     assert db('bookings?id=eq.' + original['id'])[0]['status'] == 'completed'
 

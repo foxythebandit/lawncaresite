@@ -1,6 +1,8 @@
-import { getBookings } from '../actions'
+import { austinDay, getCalendarAttention, getScheduledVisits } from '@/lib/calendar-data'
 import DayJobs from '../DayJobs'
 import ScheduleTabs from '../ScheduleTabs'
+import CalendarAttention from '../CalendarAttention'
+import { calendarContext } from '@/lib/calendar-view'
 import { formatMoney, formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
 
 export const dynamic = 'force-dynamic'
@@ -10,23 +12,21 @@ function dateKey(d: Date) {
 }
 
 export default async function WeekPage() {
-  const all = await getBookings()
-
-  const todayDate = new Date()
-  todayDate.setHours(0, 0, 0, 0)
-  const todayKey = dateKey(todayDate)
+  const todayKey = austinDay()
+  const todayDate = new Date(`${todayKey}T12:00:00Z`)
+  const lastDate = new Date(todayDate)
+  lastDate.setUTCDate(lastDate.getUTCDate() + 6)
+  const [all, counts] = await Promise.all([getScheduledVisits(todayKey, dateKey(lastDate)), getCalendarAttention(todayKey)])
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(todayDate)
-    d.setDate(d.getDate() + i)
+    d.setUTCDate(d.getUTCDate() + i)
     const key = dateKey(d)
-    const jobs = all
-      .filter(b => b.confirmed_date === key && b.status === 'confirmed')
-      .sort((a, b) => (a.confirmed_time ?? '99:99').localeCompare(b.confirmed_time ?? '99:99'))
+    const jobs = all.filter(b => b.confirmed_date === key)
     return {
       key,
       isToday: key === todayKey,
-      label: d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+      label: d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' }),
       jobs,
       revenue: jobs.reduce((s, b) => s + jobPrice(b), 0),
     }
@@ -44,14 +44,15 @@ export default async function WeekPage() {
       <div className="admin-stats">
         <div className="admin-stat">
           <span className="admin-stat-val">{weekJobs}</span>
-          <span className="admin-stat-label">Jobs next 7 days</span>
+          <span className="admin-stat-label">Visits next 7 days</span>
         </div>
         <div className="admin-stat">
           <span className="admin-stat-val">{formatMoneyWhole(weekRevenue)}</span>
-          <span className="admin-stat-label">Scheduled job value</span>
+          <span className="admin-stat-label">Scheduled visit value</span>
         </div>
       </div>
 
+      <CalendarAttention counts={counts} context={calendarContext({}, todayKey)} />
       <div className="admin-schedule-head"><ScheduleTabs current="week" /></div>
       <div className="admin-week">
         {days.map(day => (
@@ -62,7 +63,7 @@ export default async function WeekPage() {
                 {day.isToday && <span className="admin-week-day-today-tag">Today</span>}
               </span>
               <span className="admin-week-day-summary">
-                {day.jobs.length > 0 ? `${day.jobs.length} job${day.jobs.length === 1 ? '' : 's'} · ${formatMoney(day.revenue)}` : 'No jobs'}
+                {day.jobs.length > 0 ? `${day.jobs.length} visit${day.jobs.length === 1 ? '' : 's'} · ${formatMoney(day.revenue)}` : 'No visits'}
               </span>
             </div>
             {day.jobs.length > 0 && <DayJobs jobs={day.jobs} />}

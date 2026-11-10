@@ -25,7 +25,9 @@ assert.equal(rows.length, 0, 'paused converted agreements must not revive an old
 
 const gutterAgreement = { ...mowingAgreement, id: 'gutter', property_id: 'gutters',
   items_template: [{ kind: 'service', description: 'Gutter cleaning' }] }
-rows = mowingForecast([converted], [mowingAgreement, gutterAgreement], [{ id: 'customer', name: 'Customer' }])
+const customAgreement = { ...mowingAgreement, id: 'custom', property_id: 'cleanup',
+  service_labels: { semantic_key: null }, items_template: [{ kind: 'service', description: 'Mowing-season leaf cleanup' }] }
+rows = mowingForecast([converted], [mowingAgreement, gutterAgreement, customAgreement], [{ id: 'customer', name: 'Customer' }])
 assert.equal(rows.length, 1, 'gutter work must not be multiplied by 30 mows')
 console.log('PASS: conservative mowing forecast keeps legacy properties, deduplicates conversion, excludes non-mowing agreements')
 

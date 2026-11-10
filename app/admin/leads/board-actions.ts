@@ -1,12 +1,13 @@
 'use server'
-import { createHash } from 'node:crypto'
+import type { OfferTerms } from '@/lib/sent-offer'
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { isCallOutcome, isClosedReason, isColumn, isQuotedReason, FREQUENCIES, type BoardColumn, type CallOutcome, type Frequency } from '@/lib/lead-board'
 import { notifyCallLogged } from '@/lib/phone/notify'
-import { addInterval, callVisitItems } from '@/lib/crm-jobs'
+import { callVisitItems } from '@/lib/crm-jobs'
+import { introductoryPrice, type IntroChoice, type IntroEligibility } from '@/lib/quote-offer'
 import { serviceLabels } from '@/lib/lead-labels'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -45,91 +46,62 @@ export async function moveLead(leadId: string, column: string, detail: { closed_
   return { ok: true, column: (data as { board_column: BoardColumn }).board_column }
 }
 
-export type CallDetail = { price_cents?: number; frequency?: Frequency; first_visit_on?: string; check_back_on?: string; reason?: string; note?: string }
+export type CallDetail = { agreed_service?: string; intro_choice?: IntroChoice; price_cents?: number; frequency?: Frequency; first_visit_on?: string; check_back_on?: string; reason?: string; note?: string }
 
 /**
  * Log call sheet v2 (PLAN.md 3.2, S11). The client generates `operationId` once per attempt, so a
  * retry after a lost response returns the first result instead of logging twice.
  */
-export async function logCall(leadId: string, operationId: string, outcome: string, detail: CallDetail): Promise<BoardResult & { activityId?: string; warning?: string }> {
+export async function logCall(leadId: string, operationId: string, outcome: string, detail: CallDetail): Promise<BoardResult & {
+  activityId?: string; bookingId?: string; requestPending?: boolean
+}> {
   const user = await requireStaff(`/admin/leads/${leadId}`)
   if (!UUID.test(leadId) || !UUID.test(operationId) || !isCallOutcome(outcome)) return { ok: false, error: 'Refresh and try again' }
   const clean = cleanDetail(outcome, detail)
   if (typeof clean === 'string') return { ok: false, error: clean }
-  const { data, error } = await adminDb().rpc('crm_log_call', {
-    p_lead_id: leadId, p_operation_id: operationId, p_outcome: outcome, p_detail: clean, p_actor_email: user.email,
-  })
-  if (error) {
-    return { ok: false, error: error.code === '23514' ? 'Missing details' : error.code === '23505' ? 'Already saved differently · refresh' : error.code === 'P0002' ? 'Lead not found' : 'Not saved' }
-  }
-  const result = data as { board_column: BoardColumn; activity_id: string; duplicate: boolean }
-  // Every step is idempotent, so a retry of the same Log call resumes scheduling where it stopped.
-  const warning = outcome === 'booked' ? await scheduleCallVisit(leadId, operationId, clean) : null
-  // The other person's text must never hold up or fail the save (notify contract: never throws).
-  if (!result.duplicate && user.email) after(() => notifyCallLogged(leadId, result.activity_id, user.email!).catch(() => {}))
-  refresh(leadId)
-  return { ok: true, column: result.board_column, activityId: result.activity_id, ...(warning ? { warning } : {}) }
-}
-
-/** Stable sub-operation IDs derived from the Log call operation. */
-function subOperation(operationId: string, step: string) {
-  const hex = createHash('sha256').update(`${operationId}:${step}`).digest('hex')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`
-}
-
-const PLAN_INTERVALS: Partial<Record<Frequency, { unit: 'week' | 'month'; count: number }>> = {
-  weekly: { unit: 'week', count: 1 }, biweekly: { unit: 'week', count: 2 }, monthly: { unit: 'month', count: 1 },
-}
-
-/**
- * Booked by phone: confirmed first visit on Jobs at the phone price, linked to a new customer and,
- * for recurring mowing, a plan. A same-phone customer is never linked automatically (staff confirm
- * from the job). Returns a short warning when a step needs staff, or null.
- */
-async function scheduleCallVisit(leadId: string, operationId: string, detail: Record<string, string | number>): Promise<string | null> {
   const db = adminDb()
-  const cents = Number(detail.price_cents), freq = detail.frequency as Frequency, date = String(detail.first_visit_on)
-  const { data: lead } = await db.from('leads').select('name,phone,email,services').eq('id', leadId).single()
-  if (!lead) return 'Call saved · visit not scheduled'
-  const description = freq === 'onetime' ? serviceLabels(lead.services).join(', ').slice(0, 100) || 'Service' : 'Lawn care'
-  // The first visit is charged 30% off (plan price + discount line); later plan visits use `plan`.
-  const { items, plan, firstVisitPrice } = callVisitItems(cents, freq, description)
-  const job: Record<string, string | number> = { first_visit_on: date, frequency: freq, price_per_visit: cents / 100 }
-  if (firstVisitPrice != null) job.first_visit_price = firstVisitPrice
-  const { data: created, error } = await db.rpc('crm_create_call_job', {
-    p_lead_id: leadId, p_operation_id: subOperation(operationId, 'job'), p_job: job, p_items: items,
-  })
-  if (error) return 'Call saved · visit not scheduled'
-  revalidatePath('/admin/jobs')
-  const bookingId = (created as { booking_id: string }).booking_id
-  const { data: visit } = await db.from('bookings').select('updated_at,customer_id,property_id,address,agreement_id').eq('id', bookingId).single()
-  if (!visit) return 'Visit scheduled · refresh to link the customer'
-  if (!visit.customer_id) {
-    if (!visit.address?.trim()) return 'Visit scheduled · add an address, then link the customer'
-    const digits = String(lead.phone ?? '').replace(/\D/g, '').slice(-10)
-    const { data: customers } = await db.from('customers').select('phone')
-    if (digits.length === 10 && customers?.some(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === digits)) {
-      return 'Visit scheduled · same phone as a customer, link from the job'
+  const actor = user.email ?? 'Staff'
+  const args = { p_lead_id: leadId, p_operation_id: operationId, p_detail: clean, p_actor_email: actor }
+  let result
+  if (outcome === 'booked') {
+    const [{ data: lead }, { data: sent, error: sentError }, { data: introState, error: introError }] = await Promise.all([
+      db.from('leads').select('services').eq('id', leadId).maybeSingle(),
+      db.from('sent_offers').select('id,terms').eq('lead_id', leadId).eq('state', 'sent').is('replaced_by', null)
+        .order('version', { ascending: false }).limit(1).maybeSingle(),
+      db.rpc('crm_intro_lead_eligibility', { p_lead_id: leadId }),
+    ])
+    if (!lead || sentError || introError || !introState) return { ok: false, error: 'Could not verify the agreed service' }
+    const freq = clean.frequency as Frequency
+    const services = serviceLabels(lead.services)
+    const chosen = clean.agreed_service ?? (services.length <= 1 ? services[0] ?? 'Service' : null)
+    if (!chosen || (services.length > 0 && !services.includes(String(chosen)))) {
+      return { ok: false, error: 'Choose the service you agreed to on the call.' }
     }
-    const { error: linkError } = await db.rpc('crm_link_job', {
-      p_booking_id: bookingId, p_expected_updated_at: visit.updated_at, p_operation_id: subOperation(operationId, 'link'),
-      p_customer_id: null, p_property_id: null,
-      p_customer: { name: lead.name?.trim() || lead.phone, phone: lead.phone, email: lead.email ?? '' }, p_property: { address: visit.address },
-    })
-    if (linkError) return 'Visit scheduled · customer not linked'
-    revalidatePath('/admin/customers')
+    const mowing = chosen === 'Mowing'
+    const intro = mowing ? introductoryPrice(introState as IntroEligibility, clean.intro_choice as IntroChoice | undefined) : false
+    const description = mowing ? 'Lawn care' : String(chosen).slice(0, 100)
+    const quote = sent ? sent.terms as OfferTerms : null
+    const quoted = quote?.rows.length === 1 ? quote.rows[0] : null
+    const matchesSent = Boolean(quoted && quoted.freq === freq && quoted.perVisitCents === clean.price_cents
+      && (mowing ? quote?.mowing : !quote?.mowing && quoted.regularItems.some(item => item.kind === 'service' && item.description === description)))
+    if (!matchesSent && intro === null) return { ok: false, error: 'Review the introductory price before booking.' }
+    const { items, plan } = callVisitItems(Number(clean.price_cents), freq, description, intro === true)
+    const terms = matchesSent && sent ? { offer_id: sent.id } : { source: 'phone_call', frequency: freq, mowing,
+      items, regular_items: plan, agreed_service: chosen, intro_choice: clean.intro_choice ?? null }
+    result = await db.rpc('crm_record_booked_call', { ...args, p_terms: terms })
+  } else {
+    result = await db.rpc('crm_log_call', { ...args, p_outcome: outcome })
   }
-  const interval = PLAN_INTERVALS[freq]
-  if (interval && !visit.agreement_id) {
-    const { data: current } = await db.from('bookings').select('updated_at').eq('id', bookingId).single()
-    const { error: planError } = await db.rpc('crm_start_agreement', {
-      p_booking_id: bookingId, p_expected_updated_at: current?.updated_at, p_operation_id: subOperation(operationId, 'plan'),
-      p_config: { anchor_on: date, next_on: addInterval(date, interval.unit, interval.count), end_on: null,
-        interval_unit: interval.unit, interval_count: interval.count, items_template: plan },
-    })
-    if (planError) return 'Visit scheduled · start the plan from the customer page'
+  if (result.error) {
+    const error = result.error
+    return { ok: false, error: ['23514', '22023', 'PT409'].includes(error.code) ? error.message
+      : error.code === '23505' ? 'Already saved differently · refresh' : error.code === 'P0002' ? 'Lead not found' : 'Not saved' }
   }
-  return null
+  const saved = result.data as { board_column: BoardColumn; activity_id: string; duplicate: boolean; booking_id?: string; request_pending?: boolean }
+  if (!saved.duplicate && user.email) after(() => notifyCallLogged(leadId, saved.activity_id, user.email!).catch(() => {}))
+  refresh(leadId)
+  if (saved.booking_id) revalidatePath('/admin/jobs')
+  return { ok: true, column: saved.board_column, activityId: saved.activity_id, bookingId: saved.booking_id, requestPending: saved.request_pending }
 }
 
 /** The detail keys crm_log_call accepts for this outcome, or a short error. */
@@ -147,6 +119,10 @@ function cleanDetail(outcome: CallOutcome, detail: CallDetail): Record<string, s
   if (outcome === 'booked') {
     if (!validDay(detail.first_visit_on)) return 'Pick the first visit date'
     out.first_visit_on = detail.first_visit_on
+    if (typeof detail.agreed_service === 'string' && detail.agreed_service.trim().length <= 120) {
+      out.agreed_service = detail.agreed_service.trim()
+    }
+    if (detail.intro_choice === 'intro' || detail.intro_choice === 'standard') out.intro_choice = detail.intro_choice
   }
   if (outcome === 'not_now' || (outcome === 'yes_tbd' && detail.check_back_on)) {
     if (!validDay(detail.check_back_on)) return 'Pick a check-back date'
