@@ -817,12 +817,17 @@ def quote_browser():
             next_winter = datetime.fromisoformat(day(123))
             next_winter_label = f"{next_winter:%b} {next_winter.day}, {next_winter:%Y}"
             expect(page.locator(f"#schedule-{winter_plan}")).to_contain_text(f"Next {next_winter_label}")
+            next_on_calendar = page.get_by_role("region", name="Upcoming visits").get_by_role("link", name=re.compile("on Calendar"))
+            expect(next_on_calendar).to_have_attribute("href", f"/admin/jobs?view=day&date={day(123)}")
             shot(page, "winter-intro-customer-next-390")
             winter_calendar = request("rpc/crm_calendar_entries", "POST", {"p_from": day(120), "p_through": day(132)})
             projected = [row for row in winter_calendar if row["agreement_id"] == winter_plan]
             assert [(row["job_total"], row["booking_id"]) for row in projected] == [(56, None), (80, None)], projected
             key = "_".join((winter_plan, projected[0]["revision_id"], projected[0]["cadence_on"]))
-            page.goto(f"{BASE}/admin/jobs/occurrence/{key}")
+            next_on_calendar.click()
+            winter_event = page.get_by_role("link", name=re.compile("Test Winter Mow, Lawn care"))
+            expect(winter_event).to_have_attribute("href", re.compile(f"/admin/jobs/occurrence/{key}"))
+            winter_event.click()
             expect(page.get_by_text(f"Active · Next {next_winter_label}", exact=True)).to_be_visible()
             expect(page.get_by_text("$56.00", exact=True)).to_be_visible()
             page.get_by_role("button", name="Items and price", exact=True).click()

@@ -6,6 +6,7 @@ import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { changeJob, finishVisit } from '../../actions'
 import { formatMoney, jobStatusLabel } from '@/lib/crm-jobs'
+import { calendarHref } from '@/lib/calendar-view'
 import Icon from '../../icons'
 import { uuid } from '@/lib/uuid'
 
@@ -21,11 +22,14 @@ const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicag
 const dateLabel = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 
 /** The customer's open visits, each with the everyday actions: done + paid, move, and plan fixes. */
-export default function UpcomingVisits({ visits }: { visits: UpcomingVisit[] }) {
+export default function UpcomingVisits({ visits, nextScheduledOn }: { visits: UpcomingVisit[]; nextScheduledOn?: string }) {
   const [message, setMessage] = useState<Message>(null)
+  const calendarDate = visits.length === 0 ? nextScheduledOn : undefined
   return <section className="crm-panel crm-customer-wide crm-upcoming" aria-label="Upcoming visits">
-    <h2>Upcoming visits ({visits.length})</h2>
+    <h2>Upcoming visits{calendarDate ? '' : ` (${visits.length})`}</h2>
     {visits.length ? visits.map(visit => <VisitRow key={visit.id} visit={visit} setMessage={setMessage} />)
+      : calendarDate ? <p className="crm-muted"><Link href={calendarHref({ view: 'day', date: calendarDate, search: '' })}>
+        View {dateLabel(calendarDate)} on Calendar</Link></p>
       : <p className="crm-muted">Nothing booked. Add a service to get started.</p>}
     {message && <div className={`crm-toast${message.error ? ' crm-toast-error' : ''}`} role={message.error ? 'alert' : 'status'}>
       <span>{message.text}</span><button type="button" aria-label="Dismiss" onClick={() => setMessage(null)}>×</button>

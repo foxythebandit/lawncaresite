@@ -125,7 +125,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         </div>
       }) : <p className="crm-muted">No repeating services yet.</p>}
     </section>
-    <UpcomingVisits visits={upcomingVisits} />
+    <UpcomingVisits visits={upcomingVisits} nextScheduledOn={[...nextDates.values()].sort()[0]} />
     <div className="crm-customer-sections">
       <section className="crm-panel crm-customer-wide"><h2>Past visits ({pastJobs.length})</h2>
         {pastJobs.length ? pastJobs.map(job => <div className="crm-customer-entry" key={job.id}>
