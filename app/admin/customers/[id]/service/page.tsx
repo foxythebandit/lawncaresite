@@ -69,26 +69,29 @@ export default async function CustomerServicePage({ params, searchParams }: {
   const firstHref = pendingFirst && originBookingId === pendingFirst.id ? visitOrigin : firstPath
   const title = extra ? 'Add extra visit' : plan.data ? 'Edit repeating schedule' : visit ? 'Set repeat' : 'Add visit'
   const property = properties.data.find(p => p.id === plan.data?.property_id)
+  const heading = <div className="work-visit-heading">
+    <div>
+      <h1>{title}</h1>
+      <p>{customerDisplayName({ name: customer.data.name, address: property?.address })}{property && ` · ${property.address}`}</p>
+      {selectedLabel && <p className="crm-muted">{selectedLabel.name}</p>}
+    </div>
+  </div>
   return <main className="crm-page work-visit-page">
-    <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />{backLabel}</Link>
-    <section className="work-visit-card service-editor-card">
-      <div className="work-visit-heading">
-        <div>
-          <h1>{title}</h1>
-          <p>{customerDisplayName({ name: customer.data.name, address: property?.address })}{property && ` · ${property.address}`}</p>
-          {selectedLabel && <p className="crm-muted">{selectedLabel.name}</p>}
-        </div>
-      </div>
-      {plan.data?.status === 'ended' ? <p>This service schedule has ended. Its saved visits stay in customer history.</p>
-        : awaitingFirst ? <>
+    {plan.data?.status === 'ended' || awaitingFirst ? <>
+      <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />{backLabel}</Link>
+      <section className="work-visit-card service-editor-card">
+        {heading}
+        {awaitingFirst ? <>
           <p>Confirm the first visit before editing this schedule.</p>
           {firstHref && <div className="work-visit-actions">
             <Link href={firstHref} className="crm-button crm-button-primary">Confirm first visit</Link>
           </div>}
-        </> : <ScheduleEditor customerId={id} properties={properties.data} labels={labels.data} sources={choices}
-          initialSource={visit} plan={plan.data} definition={definitionFrom(revision?.definition)}
-          intro={intro.data as IntroContinuation | null} mowingLabelId={labels.data.find(label => label.semantic_key === 'mowing' && !label.retired_at)?.id}
-          itemsFromVisit={itemsFromVisit} initialArrival={revision?.visit_time ?? null} today={today} from={effective} extra={extra} back={back} backLabel={backLabel} />}
-    </section>
+        </> : <p>This service schedule has ended. Its saved visits stay in customer history.</p>}
+      </section>
+    </> : <ScheduleEditor customerId={id} properties={properties.data} labels={labels.data} sources={choices}
+      initialSource={visit} plan={plan.data} definition={definitionFrom(revision?.definition)}
+      intro={intro.data as IntroContinuation | null} mowingLabelId={labels.data.find(label => label.semantic_key === 'mowing' && !label.retired_at)?.id}
+      itemsFromVisit={itemsFromVisit} initialArrival={revision?.visit_time ?? null} today={today} from={effective} extra={extra}
+      back={back} backLabel={backLabel} heading={heading} />}
   </main>
 }

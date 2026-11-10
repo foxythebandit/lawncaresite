@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useTransition, type FormEvent } from 'react'
+import { useState, useTransition, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { addDays } from '@/lib/calendar-view'
 import { formatMoney, type JobLine } from '@/lib/crm-jobs'
@@ -15,6 +15,7 @@ import { reviewService } from './schedule-actions'
 import ServiceLabelPicker from './ServiceLabelPicker'
 import ServiceImpactPreview from './ServiceImpactPreview'
 import JobLineFields from './JobLineFields'
+import Icon from '../icons'
 
 type Mode = 'future' | 'range' | 'pause' | 'end' | 'resume'
 type Period = SchedulePeriod & { id: string }
@@ -132,12 +133,12 @@ function PeriodFields({ period, index, annual, onChange, onRemove }: {
 }
 
 export default function ScheduleEditor({ customerId, properties, labels, sources, initialSource, plan, definition,
-  initialArrival, today, from, extra, back, backLabel, itemsFromVisit, intro, mowingLabelId }: {
+  initialArrival, today, from, extra, back, backLabel, heading, itemsFromVisit, intro, mowingLabelId }: {
   customerId: string; properties: Property[]; labels: ServiceLabel[]; sources: ServiceEditorSource[]
   initialSource?: string; plan: Plan | null; definition: ScheduleDefinition | null; initialArrival: string | null
   intro: IntroContinuation | null
   mowingLabelId?: string
-  today: string; from: string; extra: boolean; back: string; backLabel: string; itemsFromVisit: JobLine[]
+  today: string; from: string; extra: boolean; back: string; backLabel: string; heading: ReactNode; itemsFromVisit: JobLine[]
 }) {
   const router = useRouter()
   const selectedSource = sources.find(visit => visit.id === initialSource)
@@ -225,7 +226,12 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     definition: repeat ? rules : null, arrival, price, notes,
   }
   const [initialRequest] = useState(() => JSON.stringify(request))
-  const canPreview = !edit || mode !== 'future' || JSON.stringify(request) !== initialRequest
+  const changed = JSON.stringify(request) !== initialRequest
+  const canPreview = !edit || mode !== 'future' || changed
+
+  function confirmBack(event: { preventDefault: () => void }) {
+    if (busy || (changed && !window.confirm('Discard your unsaved schedule changes?'))) event.preventDefault()
+  }
 
   function preview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -258,7 +264,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     })
   }
 
-  return <form className="service-editor-form" onSubmit={preview} onChange={invalidate}>
+  const form = <form className="service-editor-form" onSubmit={preview} onChange={invalidate}>
     <fieldset disabled={busy} className="service-editor-main">
       {edit ? <label className="crm-field">Change
         <select value={mode} onChange={event => setMode(event.target.value as Mode)}>
@@ -366,7 +372,15 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     <div className="work-visit-actions">
       {reviewed ? <button type="button" className="crm-button crm-button-primary" onClick={commit} disabled={busy || reviewed.preview.conflicts.length > 0}>Save reviewed change</button>
         : <button type="submit" className="crm-button crm-button-primary" disabled={busy || !canPreview}>{busy ? 'Loading preview…' : 'Preview changes'}</button>}
-      <Link href={back} className="crm-button">{backLabel}</Link>
+      <Link href={back} className="crm-button" onNavigate={confirmBack}>{backLabel}</Link>
     </div>
   </form>
+
+  return <>
+    <Link href={back} className="crm-back" onNavigate={confirmBack}><Icon name="arrowLeft" size={16} />{backLabel}</Link>
+    <section className="work-visit-card service-editor-card">
+      {heading}
+      {form}
+    </section>
+  </>
 }

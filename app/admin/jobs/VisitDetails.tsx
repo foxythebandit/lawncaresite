@@ -97,6 +97,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const [movePreview, setMovePreview] = useState<{ key: string; preview: ServicePreview } | null>(null)
   const paymentLink = booking.payment_link
   const total = jobPrice(booking)
+  const savedLines: JobLine[] = items.length ? items : [{ kind: 'service', description: 'Service', amount: total.toFixed(2) }]
+  const priceChanged = panel === 'price' && JSON.stringify(lines) !== JSON.stringify(savedLines)
   const paid = payments.reduce((sum, row) => sum + Math.round(Number(row.amount) * 100), 0) / 100
   const paymentStatus = paid > 0 ? paid >= total ? 'Paid in full' : 'Partly paid' : booking.amount_charged != null ? 'Older payment record' : 'Unpaid'
   const name = customerDisplayName(booking)
@@ -148,7 +150,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       setSelectedCustomer(firstReview?.customerId ?? (samePhone.length ? '' : 'new'))
       setSelectedProperty(firstReview?.propertyId ?? 'new')
     }
-    if (next === 'price') setLines(items.length ? items : [{ kind: 'service', description: 'Service', amount: total.toFixed(2) }])
+    if (next === 'price') setLines(savedLines)
     if (next === 'link') { setSelectedCustomer('new'); setSelectedProperty('new') }
     setPanel(next)
   }
@@ -284,7 +286,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   </div>
 
   return <div className={`crm-page work-visit-page${focusedEdit ? ' is-editing' : ''}`}>
-    <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />Back to calendar</Link>
+    {!focusedEdit && <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />Back to calendar</Link>}
     <header className="work-visit-card work-visit-hero">
       <div className="work-visit-title">
         <div><p className="crm-eyebrow">{serviceName}</p><h1 ref={pageHeading} tabIndex={-1}>{name}</h1>
@@ -315,7 +317,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     {panel && <section className="work-visit-card work-visit-editor" aria-labelledby="visit-editor-heading">
       <div className="work-visit-section-head">
         <h2 id="visit-editor-heading" tabIndex={-1} ref={editorHeading}>{PANELS[panel]}</h2>
-        <button type="button" className="crm-button crm-button-ghost" onClick={close} disabled={busy}>{focusedEdit ? 'Back to visit' : 'Close'}</button>
+        <button type="button" className="crm-button crm-button-ghost" onClick={() => {
+          if (!focusedEdit || (!dateChanged && !priceChanged) || window.confirm('Discard your unsaved visit changes?')) close()
+        }} disabled={busy}>{focusedEdit ? 'Back to visit' : 'Close'}</button>
       </div>
       {error && <p className="work-visit-error" role="alert">{error}</p>}
       <form key={panel} onSubmit={save} onChange={panel === 'date' ? event => {
