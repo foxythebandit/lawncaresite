@@ -673,6 +673,7 @@ def quote_browser():
             expect(price_continuation).to_be_visible()
             shot(page, "quote-legacy-inline-price-390")
             price_continuation.click()
+            expect(page.get_by_text("Enter the agreed items and price for this visit.", exact=True)).to_be_visible()
             page.get_by_label("Item 1 description").fill("Leaf cleanup")
             page.get_by_label("Item 1 amount").fill("125.00")
             page.get_by_role("button", name="Save visit price", exact=True).click()

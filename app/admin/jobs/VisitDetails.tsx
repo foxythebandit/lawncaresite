@@ -97,6 +97,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const [movePreview, setMovePreview] = useState<{ key: string; preview: ServicePreview } | null>(null)
   const paymentLink = booking.payment_link
   const total = jobPrice(booking)
+  const hasPrice = (booking.job_total ?? booking.first_visit_price ?? booking.price_per_visit) != null
   const savedLines: JobLine[] = items.length ? items : [{ kind: 'service', description: 'Service', amount: total.toFixed(2) }]
   const priceChanged = panel === 'price' && JSON.stringify(lines) !== JSON.stringify(savedLines)
   const paid = payments.reduce((sum, row) => sum + Math.round(Number(row.amount) * 100), 0) / 100
@@ -309,7 +310,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       <dl className="work-visit-facts">
         <div><dt>{pending ? 'Preferred date' : 'Visit date'}</dt><dd>{visitDate ? dateText(visitDate) : 'Not set'}</dd></div>
         <div><dt>Arrival</dt><dd>{visitTime(pending ? booking.preferred_time : booking.confirmed_time)}</dd></div>
-        <div><dt>Visit price</dt><dd><span>{(booking.job_total ?? booking.first_visit_price ?? booking.price_per_visit) == null ? 'Not set' : formatMoney(total)}</span>
+        <div><dt>Visit price</dt><dd><span>{hasPrice ? formatMoney(total) : 'Not set'}</span>
           {edit(current ? 'Edit price' : 'View items', 'price', false, undefined, 'facts')}
         </dd></div>
       </dl>
@@ -473,7 +474,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           <div className="work-visit-actions">{btn('Save payment')}</div>
         </>}
         {panel === 'price' && <>
-          <p className="crm-muted">Saved visit total {formatMoney(total)}{booking.accepted_quote_snapshot ? ' · Accepted quote saved in history' : ''}</p>
+          <p className="crm-muted">{hasPrice
+            ? <>Saved visit total {formatMoney(total)}{booking.accepted_quote_snapshot ? ' · Accepted quote saved in history' : ''}</>
+            : 'Enter the agreed items and price for this visit.'}</p>
           {current ? <>
             <JobLineFields lines={lines} setLines={setLines} />
             {agreement && agreement.status !== 'ended' && <p className="crm-muted">
