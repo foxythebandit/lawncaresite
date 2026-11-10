@@ -357,6 +357,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"sent_offers": {
+                  Row: {
+                    "accepted_booking_id": string | null,"channel": string,"created_at": string,"id": string,"lead_id": string,"message": NonNullable<Json>,"provider_id": string | null,"recipient": string,"replaced_by": string | null,"replaces_id": string | null,"sent_at": string | null,"state": string,"terms": NonNullable<Json>,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "accepted_booking_id"?: string | null,"channel"?: string,"created_at"?: string,"id": string,"lead_id": string,"message": NonNullable<Json>,"provider_id"?: string | null,"recipient": string,"replaced_by"?: string | null,"replaces_id"?: string | null,"sent_at"?: string | null,"state"?: string,"terms": NonNullable<Json>,"version": number
+                  }
+                  Update: {
+                    "accepted_booking_id"?: string | null,"channel"?: string,"created_at"?: string,"id"?: string,"lead_id"?: string,"message"?: NonNullable<Json>,"provider_id"?: string | null,"recipient"?: string,"replaced_by"?: string | null,"replaces_id"?: string | null,"sent_at"?: string | null,"state"?: string,"terms"?: NonNullable<Json>,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sent_offers_accepted_booking_id_fkey"
+      columns: ["accepted_booking_id"]
+isOneToOne: true
+      referencedRelation: "bookings"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sent_offers_lead_id_fkey"
+      columns: ["lead_id"]
+isOneToOne: false
+      referencedRelation: "leads"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sent_offers_replaced_by_fkey"
+      columns: ["replaced_by"]
+isOneToOne: false
+      referencedRelation: "sent_offers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sent_offers_replaces_id_fkey"
+      columns: ["replaces_id"]
+isOneToOne: false
+      referencedRelation: "sent_offers"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"service_labels": {
                   Row: {
                     "created_at": string,"id": string,"name": string,"retired_at": string | null,"semantic_key": string | null,"updated_at": string
@@ -434,6 +472,9 @@ isOneToOne: false
 "create_job_from_quote":
 { Args: { "p_expected_updated_at": string,"p_items": Json,"p_job": Json,"p_lead_id": string,"p_operation_id": string }; Returns: Json
                            },
+"crm_accept_sent_offer":
+{ Args: { "p_hash": string,"p_lead_id": string,"p_offer_id": string,"p_recipients": (string)[],"p_request": Json }; Returns: Json
+                           },
 "crm_activate_schedule":
 { Args: { "p_agreement_id": string,"p_legacy"?: boolean,"p_source_id": string }; Returns: undefined
                            },
@@ -487,6 +528,9 @@ isOneToOne: false
 "crm_finish_customer_leg":
 { Args: { "p_call_sid": string,"p_caller_id": string,"p_duration": number,"p_lead_id": string,"p_parent_call_sid": string,"p_result": string,"p_staff_name": string,"p_staff_phone": string,"p_to_phone": string }; Returns: Json
                            },
+"crm_finish_sent_offer":
+{ Args: { "p_actor_email": string,"p_lead_id": string,"p_offer_id": string,"p_provider_id": string,"p_state": string }; Returns: Json
+                           },
 "crm_generate_next_job":
 { Args: { "p_after": string,"p_booking_id": string,"p_force_on"?: string }; Returns: string
                            },
@@ -524,6 +568,9 @@ isOneToOne: false
                            },
 "crm_phone_recording":
 { Args: { "p_alert_call_id": string,"p_call_sid": string,"p_duration": number,"p_recording_sid": string }; Returns: Json
+                           },
+"crm_prepare_sent_offer":
+{ Args: { "p_lead_id": string,"p_message": Json,"p_offer_id": string,"p_recipient": string,"p_replaces": string,"p_terms": Json,"p_version": string }; Returns: Json
                            },
 "crm_reconcile_schedule":
 { Args: { "p_agreement_id": string,"p_today"?: string }; Returns: string

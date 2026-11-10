@@ -396,6 +396,178 @@ def service_editor_browser():
         browser.close()
     print("Service editor, first-visit confirmation, pause/resume and bounded skip passed at the exercised desktop and phone widths.")
 
+
+def quote_browser():
+    import hashlib
+    import hmac
+
+    provider_log = Path(os.environ["QG_QUOTE_PROVIDER_LOG"])
+    lead_id, legacy_id = str(uuid4()), str(uuid4())
+    address = "9 Quote Lane, Austin, TX 78704"
+    draft = {"address": address, "contactAddressAtReview": address, "sections": [], "freq": "onetime",
+             "jobLatLng": None, "calculatedPrice": 83.55, "calculatedFirstVisit": 58.49, "overridePrice": None,
+             "includeMowing": True, "manualLines": [], "discountCents": 0, "totalCents": 8355, "notes": ""}
+    ids = f"'{lead_id}', '{legacy_id}'"
+
+    def attempts():
+        return [json.loads(line) for line in provider_log.read_text().splitlines()]
+
+    def open_preview(page, body, addon=True):
+        page.wait_for_load_state("networkidle")
+        page.get_by_role("button", name=re.compile(r"^Email (quote|revised quote)$")).click()
+        composer = page.locator(".crm-booking-request").filter(has=page.get_by_role("heading", name="Email quote", exact=True))
+        expect(composer).to_be_visible()
+        composer.locator("textarea").fill(body)
+        if addon:
+            page.get_by_role("button", name="+ Add-on", exact=True).click()
+            page.get_by_label("Add-on", exact=True).fill("Bagging clippings")
+            page.get_by_label("Add-on price", exact=True).fill("10.25")
+        page.get_by_role("button", name="Preview email", exact=True).click()
+        expect(page.get_by_role("heading", name="Review email before sending")).to_be_visible()
+        return page.locator('iframe[title="Email preview"]').get_attribute("srcdoc")
+
+    try:
+        for id_ in (lead_id, legacy_id):
+            request("leads", "POST", {"id": id_, "name": "Test Jordan", "phone": "5125550199",
+                    "email": "jordan@example.test", "address": address, "source": "staff", "quote_draft": draft,
+                    "quote_confirmed_at": f"{TODAY.isoformat()}T12:00:00Z", "services": ["Lawn care"],
+                    "attribution": {"utm_source": "quote-browser"}})
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            staff = local_browser(browser, 1440, 1000)
+            page = staff.new_page()
+            errors = []
+            def staff_page_error(error):
+                # Playwright injects its service-worker guard into the scriptless email preview.
+                if str(error) != "Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.":
+                    errors.append(str(error))
+            page.on("pageerror", staff_page_error)
+            lead_url = f"{BASE}/admin/leads/{lead_id}"
+            page.goto(lead_url)
+            login(page)
+            page.wait_for_url(lead_url)
+            open_preview(page, "Preview that will become stale")
+            request(f"leads?id=eq.{lead_id}", "PATCH", {"quote_draft": {**draft, "calculatedPrice": 84.55, "totalCents": 8455}})
+            page.get_by_role("button", name="Send quote", exact=True).click()
+            expect(page.get_by_role("alert").filter(has_text="This lead changed")).to_be_visible()
+            assert not attempts()
+            request(f"leads?id=eq.{lead_id}", "PATCH", {"quote_draft": draft})
+            page.reload()
+            reviewed = open_preview(page, "Introductory fixture email")
+            expect(page.frame_locator('iframe[title="Email preview"]').get_by_text("$68.74", exact=False)).to_be_visible()
+            assert_no_overflow(page)
+            shot(page, "quote-email-preview-desktop")
+            for width, height in ((390, 844), (320, 740)):
+                page.set_viewport_size({"width": width, "height": height})
+                page.get_by_role("button", name="Send quote", exact=True).scroll_into_view_if_needed()
+                assert_no_overflow(page)
+                shot(page, f"quote-email-preview-{width}", full_page=False)
+            page.set_viewport_size({"width": 1440, "height": 1000})
+            page.get_by_role("button", name="Send quote", exact=True).click()
+            sent = page.get_by_role("region", name="Sent quotes")
+            expect(sent.get_by_text("Email delivery unconfirmed", exact=False)).to_be_visible()
+            assert len(attempts()) == 1 and attempts()[0]["body"]["html"] == reviewed
+            page.reload()
+            sent.get_by_role("button", name="Check or retry email").click()
+            expect(sent.get_by_text("Email sent", exact=False)).to_be_visible()
+            assert attempts()[0] == attempts()[1]
+            original = sent.get_by_role("link", name="View sent terms", exact=True).get_attribute("href")
+            assert original and original.startswith("/quote/q1.")
+            shot(page, "quote-sent-desktop")
+
+            request(f"leads?id=eq.{lead_id}", "PATCH", {"quote_draft": {**draft, "calculatedPrice": 100, "totalCents": 10000}})
+            page.reload()
+            open_preview(page, "Here is the revised quote", addon=False)
+            expect(page.get_by_text("Sending this revision replaces the previous open quote.")).to_be_visible()
+            page.get_by_role("button", name="Send revised quote", exact=True).click()
+            expect(sent.get_by_text("Replaced", exact=False)).to_be_visible()
+            revised = sent.get_by_role("link", name="View sent terms", exact=True).first.get_attribute("href")
+            assert revised and revised != original
+            assert attempts()[2]["key"] != attempts()[0]["key"]
+            for width, height in ((1440, 1000), (390, 844), (320, 740)):
+                context = local_browser(browser, width, height)
+                public = context.new_page()
+                public.on("pageerror", lambda error: errors.append(str(error)))
+                public.goto(BASE + original)
+                expect(public.get_by_role("heading", name="A revised quote is available")).to_be_visible()
+                expect(public.get_by_text("$68.74", exact=True)).to_be_visible()
+                expect(public.get_by_role("button", name="Request first visit")).to_have_count(0)
+                assert_no_overflow(public)
+                shot(public, f"quote-original-{width}")
+                public.get_by_role("link", name="Review the revised quote").click()
+                public.wait_for_url(BASE + revised)
+                expect(public.get_by_text("$70", exact=True)).to_be_visible()
+                assert_no_overflow(public)
+                shot(public, f"quote-current-{width}")
+                if width == 320:
+                    public.get_by_role("button", name="Pick a date", exact=True).click()
+                    public.get_by_label("Preferred first visit").fill(day(4))
+                    public.get_by_role("button", name="Request first visit", exact=True).click()
+                    expect(public.get_by_role("heading", name="Request received")).to_be_visible()
+                    expect(public.get_by_text("We’ll get in touch to confirm your first visit", exact=False)).to_be_visible()
+                    shot(public, "quote-request-received-320")
+                    public.reload()
+                    expect(public.get_by_text("We’ve received your request for this quote", exact=False)).to_be_visible()
+                    expect(public.get_by_role("button", name="Request first visit")).to_have_count(0)
+                context.close()
+            bookings = request(f"bookings?lead_id=eq.{lead_id}&select=id,status,preferred_date,confirmed_date,job_total,attribution")
+            assert len(bookings) == 1 and bookings[0]["status"] == "pending" and bookings[0]["confirmed_date"] is None
+            assert bookings[0]["preferred_date"] == day(4) and bookings[0]["job_total"] == 70
+            assert bookings[0]["attribution"] == {"utm_source": "quote-browser"}
+            page.reload()
+            expect(sent.get_by_text("Accepted", exact=False)).to_be_visible()
+            page.goto(f"{BASE}/admin/jobs/{bookings[0]['id']}")
+            expect(page.get_by_role("button", name="Confirm first visit", exact=True)).to_be_visible()
+
+            signature = hmac.new(SECRET.encode(), f"lead:{legacy_id}".encode(), hashlib.sha256).hexdigest()
+            context = local_browser(browser, 390, 844)
+            legacy = context.new_page()
+            legacy.goto(f"{BASE}/quote/{legacy_id}.{signature}")
+            expect(legacy.get_by_text("This is an older quote link", exact=False)).to_be_visible()
+            expect(legacy.get_by_text("$83.55", exact=True)).to_have_count(0)
+            assert_no_overflow(legacy)
+            shot(legacy, "quote-legacy-review-390")
+            legacy.get_by_role("button", name="Request first visit", exact=True).click()
+            expect(legacy.get_by_role("heading", name="Request received")).to_be_visible()
+            row = request(f"bookings?lead_id=eq.{legacy_id}&select=status,job_total,accepted_quote_snapshot")[0]
+            assert row["status"] == "pending" and row["job_total"] is None
+            assert row["accepted_quote_snapshot"]["source"] == "legacy_quote_review"
+            expired = str(uuid4())
+            request("sent_offers", "POST", {
+                "id": expired, "lead_id": legacy_id, "version": 1, "terms": {},
+                "message": {"to": "jordan@example.test", "subject": "Expired fixture"},
+                "recipient": "jordan@example.test", "state": "unknown",
+                "created_at": (datetime.now(ZoneInfo("UTC")) - timedelta(hours=24)).isoformat(),
+            })
+            page.goto(f"{BASE}/admin/leads/{legacy_id}")
+            page.wait_for_load_state("networkidle")
+            page.get_by_role("button", name="Check or retry email", exact=True).click()
+            expect(page.get_by_text("This attempt is outside the safe retry window.", exact=False)).to_be_visible()
+            expect(page.get_by_text("Check the provider’s email history", exact=False)).to_be_visible()
+            assert not any(a["key"] == f"quote/{expired}" for a in attempts())
+            assert not errors, errors
+            browser.close()
+        print("Quote preview, retry, revision, and preferred-date request passed in Chromium at 1440/390/320.")
+    finally:
+        subprocess.run([cli, "db", "query", "--local", f"""
+        do $fixture$ begin
+          delete from public.staff_texts where lead_id in ({ids});
+          delete from public.lead_calls where lead_id in ({ids});
+          delete from public.staff_alerts where event_id in (select id from public.intake_events where lead_id in ({ids}));
+          delete from public.intake_events where lead_id in ({ids});
+          delete from public.sent_offers where lead_id in ({ids});
+          delete from public.lead_activities where lead_id in ({ids});
+          delete from public.job_items where booking_id in (select id from public.bookings where lead_id in ({ids}));
+          delete from public.bookings where lead_id in ({ids});
+          delete from public.leads where id in ({ids});
+        end $fixture$;
+        """], check=True, capture_output=True, text=True)
+
+
+if os.environ.get("QG_QUOTE_ONLY") == "1":
+    quote_browser()
+    raise SystemExit(0)
+
 if os.environ.get("QG_SERVICE_EDITOR_ONLY") == "1":
     try:
         service_editor_browser()

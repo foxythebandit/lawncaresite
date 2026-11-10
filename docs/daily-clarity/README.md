@@ -31,8 +31,18 @@ Repeating services can be weekly, every two weeks, or monthly. An end date is op
 
 The service editor previews dated visits, prices and saved changes before staff applies a future edit, date range, pause, resume or end. The server recomputes the preview while locking the schedule and affected visits. A successful retry uses the original operation receipt. Schedule revisions made in the editor record the staff user and operation. Future prices can use a custom amount or priced items. Notes and contact corrections retain the visit and follow the schedule’s dates and price. Individually edited date, arrival and price fields have separate protections. If a changed rule removes a slot with an edited visit, the preview identifies the visit and lets staff retain it individually. Older ambiguous exceptions keep all protections. Resume can restore eligible visits canceled by the schedule pause. Individual skips and cancellations remain in history. Completed work, paid records and accepted quote snapshots are preserved.
 
+## Sent quotes and preferred-date requests
+
+A reviewed email and its customer link share the same frozen offer. Staff can see the recipient, time and original terms in Sent quotes. A draft edit leaves that link unchanged. Sending a revision replaces the previous open offer only after the email provider accepts it. An accepted visit keeps its original terms if a revision is in flight.
+
+An unconfirmed send can retry its stored email with the same provider key within 23 hours. The email is marked sent after provider acceptance. Check provider history for older attempts. [Resend idempotency keys](https://resend.com/docs/dashboard/emails/idempotency-keys)
+
+A customer requests a preferred date. The existing intake transaction saves a pending visit and the staff alert intent once per offer. Older links continue the request or show an existing visit. When the historical sent terms cannot be verified, staff review them before confirming the date.
+
 ## Browser checks
 
 From the isolated worktree, start the feature server with `work serve daily-clarity`. Use the local staff seed. With Python Playwright and Chromium installed, run `python3 tests/daily-clarity-ui.py`. Set `QG_CALENDAR_SCREEN_DIR` to the feature’s screens directory to save captures. The test uses a local database and synthetic data. It checks Week, Day and Month at phone and desktop widths, exact visit navigation and return, notes and edit conflicts, completion and payment separately, schedule review, search, projected edits, and related staff screens. It cleans up its fixtures. Set `QG_SERVICE_EDITOR_ONLY=1` for the seasonal service editor, one-off cleanup and series-move flow. It checks conversion through sign-in, independent amounts and completion, and the save button’s clearance above the phone navigation.
 
 The older CRM browser scripts still target their isolated fixture server and database. Their visit selectors follow the new detail page. The dedicated calendar browser test runs against this feature worktree’s server and seed.
+
+The quote browser path uses a synthetic Resend boundary and the isolated local database. To repeat it, stop the ordinary feature server, create an empty temporary provider log, then start `work serve daily-clarity` with `RESEND_API_KEY=re_quote_browser_fixture`, `EMAIL_DEV_RECIPIENT=delivery@example.test`, `QG_QUOTE_PROVIDER_LOG` set to that log, and `NODE_OPTIONS='--require ./tests/quote-email-mock.cjs'`. Run `QG_QUOTE_ONLY=1 QG_QUOTE_PROVIDER_LOG=<log> python3 tests/daily-clarity-ui.py`. The fixture verifies the provider sees the reviewed email and retry key, then checks revision and preferred-date request at desktop and phone widths. Stop the fixture server and restart the ordinary server afterward.

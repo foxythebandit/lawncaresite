@@ -1,4 +1,6 @@
 'use server'
+import { randomUUID } from 'node:crypto'
+import type { CreateEmailOptions } from 'resend'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
 import { dispatchAlert, refreshAlert } from '@/lib/staff-alerts'
@@ -9,11 +11,11 @@ import { revalidatePath } from 'next/cache'
 import { addInterval } from '@/lib/crm-jobs'
 import { changeAgreement, changeJob } from '../actions'
 import { latestQuoteBooking } from '@/lib/crm-quote-booking'
-import { leadToken } from '@/lib/intake'
-import { MAP_CID, quoteEmailContent, quoteEmailSummary, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
+import { offerPath, readSentOffer, signOfferProof, verifyOfferProof, type OfferTerms, type SentOffer } from '@/lib/sent-offer'
+import { MAP_CID, quoteEmailContent, validateQuoteEmailOptions, type QuoteEmailOptions } from '@/lib/quote-email'
 
 const uuidPattern = /^[0-9a-f-]{36}$/i
-type CommandResult = { success: true; updatedAt: string } | { error: string; conflict?: boolean }
+type CommandResult = { success: true; updatedAt: string; warning?: string } | { error: string; conflict?: boolean }
 
 async function updateWorkflow(id: string, expectedUpdatedAt: string, patch: LeadWorkflowPatch & { review_quote?: boolean; name?: string; email?: string }, activity: LeadActivityInput): Promise<CommandResult> {
   const user = await requireStaff(`/admin/leads/${id}`)
@@ -109,6 +111,7 @@ export async function requestLeadBooking(id: string, expectedUpdatedAt: string, 
   if (lead.quote_status !== 'accepted' || !lead.accepted_quote_snapshot) return { error: 'Mark the reviewed quote accepted first.' }
   if (!lead.name || !(lead.accepted_quote_snapshot.address || lead.address)) return { error: 'Add a contact name and property address first.' }
   const draft = lead.accepted_quote_snapshot as QuoteDraft
+  if ('sent_offer' in draft) return { error: 'Open the existing visit request to confirm this offer.' }
   const { data: addressChanges, error: addressHistoryError } = await db.from('lead_activities').select('id').eq('lead_id', id).eq('outcome', 'contact_address_changed').gt('occurred_at', lead.quote_accepted_at).limit(1)
   if (addressHistoryError) return { error: 'Could not verify the accepted property. Refresh and retry.' }
   if ((draft.contactAddressAtReview !== undefined && draft.contactAddressAtReview !== lead.address) || addressChanges?.length) return { error: 'The contact address changed after this quote. Review and accept a quote for the current property first.' }
@@ -307,35 +310,113 @@ export async function cancelLeadBooking(id: string, input: {
   return { success: true, updatedAt: lead.updated_at }
 }
 
-/** Biggest map picture accepted (base64 JPEG); keeps the request under the server-action body limit. */
+/** Inline JPEG, kept within the Server Action body limit. */
 const MAX_MAP_IMAGE = 900_000
+type EmailQuoteInput = { to: string; options: QuoteEmailOptions; image: string | null }
 
-/**
- * Emails the saved quote after staff previewed it. Prices come from the stored draft, never the
- * browser; the browser sends only the message, which plans and add-ons to show, and the map picture.
- */
-export async function emailLeadQuote(id: string, expectedUpdatedAt: string, to: string, options: QuoteEmailOptions, mapImage: string | null): Promise<CommandResult> {
-  await requireStaff(`/admin/leads/${id}`)
-  const email = to.trim()
-  if (!uuidPattern.test(id)) return { error: 'Invalid lead.' }
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Enter a valid email address.' }
-  const invalid = validateQuoteEmailOptions(options)
-  if (invalid) return { error: invalid }
-  if (mapImage !== null && (typeof mapImage !== 'string' || !mapImage.startsWith('data:image/jpeg;base64,') || mapImage.length > MAX_MAP_IMAGE)) return { error: 'The map picture is invalid. Preview again.' }
-  if (!process.env.RESEND_API_KEY) return { error: 'Email is not configured.' }
-  const { data: lead } = await adminDb().from('leads').select('name,email,address,quote_draft,updated_at').eq('id', id).single()
-  if (!lead?.quote_draft) return { error: 'Save the price before emailing it.' }
-  if (lead.updated_at !== expectedUpdatedAt) return { error: 'This lead changed since you opened it. Refresh before sending.', conflict: true }
+async function buildEmailQuote(id: string, version: string, offerId: string, input: EmailQuoteInput) {
+  if (![id, offerId].every(v => uuidPattern.test(v))) return { error: 'Invalid quote.' } as const
+  const email = input.to.trim()
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'Enter a valid email address.' } as const
+  const invalid = validateQuoteEmailOptions(input.options)
+  if (invalid) return { error: invalid } as const
+  if (input.options.plans.length > 1) return { error: 'Choose one plan for this preview.' } as const
+  const image = input.image
+  if (image !== null && (typeof image !== 'string' || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image) || image.length > MAX_MAP_IMAGE)) {
+    return { error: 'The map picture is invalid. Preview again.' } as const
+  }
+  const db = adminDb()
+  const [{ data: lead }, { data: prior, error: priorError }] = await Promise.all([
+    db.from('leads').select('name,address,quote_draft,quote_status,updated_at,customer_id').eq('id', id).maybeSingle(),
+    db.from('sent_offers').select('id,accepted_booking_id').eq('lead_id', id).eq('state', 'sent').is('replaced_by', null).order('version', { ascending: false }).limit(1).maybeSingle(),
+  ])
+  if (priorError || !lead?.quote_draft) return { error: 'Could not load the saved quote.' } as const
+  if (lead.updated_at !== version) return { error: 'This lead changed. Review the quote again.' } as const
   const draft = lead.quote_draft as QuoteDraft
-  // The booking page needs an address to show the measured property.
-  const bookUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
-  const { subject, text, html, breakdown } = quoteEmailContent({ draft, address: lead.address, options, bookUrl, hasMap: !!mapImage })
-  const { sendEmail } = await import('@/lib/email')
-  const { error } = await sendEmail({
-    from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co', subject, text, html,
-    ...(mapImage ? { attachments: [{ filename: 'your-lawn.jpg', content: mapImage.split(',')[1], contentType: 'image/jpeg', contentId: MAP_CID }] } : {}),
+  if (draft.contactAddressAtReview !== undefined && draft.contactAddressAtReview !== lead.address) {
+    return { error: 'The property changed. Save a quote for the current property first.' } as const
+  }
+  let introEligible = true
+  if (lead.customer_id) {
+    const { data: pastMow, error } = await db.from('bookings')
+      .select('id, service_labels!bookings_service_label_id_fkey!inner(semantic_key)')
+      .eq('customer_id', lead.customer_id).eq('status', 'completed').eq('service_labels.semantic_key', 'mowing').limit(1).maybeSingle()
+    if (error) return { error: 'Could not check the customer’s mowing history.' } as const
+    introEligible = !pastMow
+  }
+  const revision: 'replaces' | 'proposal' | undefined = lead.quote_status === 'accepted' || prior?.accepted_booking_id ? 'proposal' : prior ? 'replaces' : undefined
+  const bookUrl = lead.address
+    ? new URL(offerPath(id, offerId), process.env.CRM_BASE_URL ?? 'https://quietgreen.co').href : null
+  const emailContent = quoteEmailContent({ draft, address: lead.address, options: input.options, bookUrl, hasMap: !!image, introEligible, revision })
+  if (emailContent.breakdown.rows.some(row => row.perVisitCents <= 0)) return { error: 'Enter a quote price first.' } as const
+  const terms: OfferTerms = { ...emailContent.breakdown, draft, address: lead.address,
+    firstName: lead.name?.trim().split(/\s+/)[0] || null, message: input.options.message.trim(),
+    mode: 'choices', mowing: emailContent.breakdown.recurring }
+  const message = {
+    from: 'QuietGreen <hello@quietgreen.co>', to: email, replyTo: 'hello@quietgreen.co',
+    subject: emailContent.subject, text: emailContent.text, html: emailContent.html,
+    ...(image ? { attachments: [{ filename: 'your-lawn.jpg', content: image.split(',')[1], contentType: 'image/jpeg', contentId: MAP_CID }] } : {}),
+  } satisfies CreateEmailOptions
+  const replaces = prior?.id ?? null
+  const proofInput = JSON.stringify(['preview', id, version, offerId, replaces, terms, message])
+  return { terms, message, proofInput, replaces, revision }
+}
+
+export async function previewLeadQuote(id: string, version: string, input: EmailQuoteInput) {
+  await requireStaff(`/admin/leads/${id}`)
+  const offerId = randomUUID()
+  const candidate = await buildEmailQuote(id, version, offerId, input)
+  if ('error' in candidate) return { error: candidate.error ?? 'Could not load the saved quote.' }
+  return { offerId, proof: signOfferProof(candidate.proofInput), subject: candidate.message.subject,
+    html: candidate.message.html, revision: candidate.revision }
+}
+
+export async function emailLeadQuote(id: string, version: string, offerId: string, proof: string, input: EmailQuoteInput): Promise<CommandResult> {
+  const actor = await requireStaff(`/admin/leads/${id}`)
+  if (!process.env.RESEND_API_KEY) return { error: 'Email is not configured.' }
+  const candidate = await buildEmailQuote(id, version, offerId, input)
+  if ('error' in candidate) return { error: candidate.error ?? 'Could not load the saved quote.' }
+  if (!verifyOfferProof(candidate.proofInput, proof)) return { error: 'The quote changed after the preview. Review it again.', conflict: true }
+  const { data, error } = await adminDb().rpc('crm_prepare_sent_offer', {
+    p_lead_id: id, p_version: version, p_offer_id: offerId, p_replaces: candidate.replaces,
+    p_terms: candidate.terms, p_message: candidate.message, p_recipient: input.to.trim(),
   })
-  if (error) return { error: 'The email could not be sent. Check the address and try again.' }
-  return updateWorkflow(id, expectedUpdatedAt, email !== lead.email ? { email } : {},
-    { kind: 'quote', outcome: 'emailed', body: `Emailed quote to ${email}: ${quoteEmailSummary(breakdown)}${mapImage ? ' (with lawn map)' : ''}.` })
+  if (error) return { error: error.code === 'PT409' ? error.message : 'Could not prepare the quote email.' }
+  return deliverQuote(data as SentOffer, actor.email ?? 'Staff', data.new_attempt === true)
+}
+
+export async function retryLeadQuote(id: string, offerId: string): Promise<CommandResult> {
+  const actor = await requireStaff(`/admin/leads/${id}`)
+  if (![id, offerId].every(v => uuidPattern.test(v))) return { error: 'Invalid quote.' }
+  if (!process.env.RESEND_API_KEY) return { error: 'Email is not configured.' }
+  const offer = await readSentOffer(id, offerId)
+  if (!offer) return { error: 'Quote attempt unavailable.' }
+  return deliverQuote(offer, actor.email ?? 'Staff')
+}
+
+async function deliverQuote(offer: SentOffer, actor: string, firstAttempt = false): Promise<CommandResult> {
+  if (offer.state === 'failed') return { error: 'The provider rejected this email. Review the address and prepare a new send.' }
+  if (!offer.sent_at && Date.now() - Date.parse(offer.created_at) >= 23 * 60 * 60 * 1000) {
+    return { error: 'This attempt is outside the safe retry window. Check the provider’s email history before sending again.' }
+  }
+  let providerId: string | null = null
+  let state = 'unknown'
+  if (!offer.sent_at) {
+    try {
+      const { sendEmail } = await import('@/lib/email')
+      const { data, error } = await sendEmail(offer.message, { idempotencyKey: `quote/${offer.id}` })
+      if (data?.id) { state = 'sent'; providerId = data.id }
+      else if (firstAttempt && [400, 401, 403, 422].includes(error?.statusCode ?? 0)) state = 'failed'
+    } catch {
+      // A transport error does not establish whether Resend accepted the message.
+    }
+  }
+  const { data, error } = await adminDb().rpc('crm_finish_sent_offer', {
+    p_lead_id: offer.lead_id, p_offer_id: offer.id, p_state: state, p_provider_id: providerId, p_actor_email: actor,
+  })
+  revalidatePath(`/admin/leads/${offer.lead_id}`)
+  if (error || data.state === 'unknown') return { error: 'Email delivery is unconfirmed. Check or retry this same attempt from Sent quotes.' }
+  if (data.state === 'failed') return { error: 'The provider rejected the email. Check the address and try again.' }
+  if (data.state === 'review') return { success: true, updatedAt: data.updated_at, warning: 'Proposal emailed. Staff review is needed because a visit or quote was already accepted.' }
+  return { success: true, updatedAt: data.updated_at }
 }

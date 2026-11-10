@@ -332,3 +332,9 @@ The Calendar tab retains `/admin/jobs` and opens on Week at desktop and phone wi
 ### Daily clarity Slice 3 — independent service scheduling
 
 Customers can have multiple separately priced services at a property, including one-off and same-day work. Staff can manage service labels and review concrete dates and amounts before creating or editing a schedule. Weekly, biweekly and monthly schedules support annual seasons and bounded overrides. A one-off can become the first visit of a repeating service with a separately agreed ongoing price. Notes and contact corrections stay with the visit, and date, arrival and price edits have separate protections. A reviewed resume restores eligible visits canceled by a service pause while preserving individual cancellations. Staff schedule revisions carry the operation and actor. See [Calendar and service schedules](../daily-clarity/README.md).
+
+### Daily clarity Slice 4 checkpoint — frozen email offers
+
+Staff review the exact email before sending. Each email offer retains its terms and its own signed customer link. A revised send can replace an open offer after provider acceptance, and an uncertain send retries the same frozen request within the provider's supported window. A customer request keeps exact prices and acquisition facts and stays pending until staff confirms the visit. Older links use the saved request or continue to staff review. The shared intake path supplies defaults for the calendar visit flags.
+
+This checkpoint covers a single quoted option. The multi-row quote decision, first-visit activation, and introductory price carry remain in the daily-clarity plan.

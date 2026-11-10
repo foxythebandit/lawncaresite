@@ -67,3 +67,16 @@ test('map picture view fits the whole tracing with a margin', () => {
   }
   assert.ok(view.tileZ <= 19 && view.scale === 2 ** (view.z - view.tileZ))
 })
+
+test('an introductory one-time mow preserves cents and charges add-ons at their quoted price', () => {
+  const job = { ...draft, freq: 'onetime', calculatedPrice: 83.55, totalCents: 8355 } as QuoteDraft
+  const options = { ...seasonal, plans: [], addOns: [{ label: 'Bagging', cents: 1025 }] }
+  const [row] = quoteEmailBreakdown(job, options).rows
+  assert.equal(row.perVisitCents, 9380)
+  assert.equal(row.firstVisitCents, 6874)
+  assert.deepEqual(row.firstItems.map(item => item.amount), ['83.55', '10.25', '-25.06'])
+  assert.equal(quoteEmailBreakdown(job, options, false).rows[0].firstVisitCents, null)
+  const email = quoteEmailContent({ draft: job, address: job.address, options, bookUrl: null, hasMap: false })
+  assert.match(email.text, /One-time mowing/)
+  assert.doesNotMatch(email.text, /Per visit/)
+})

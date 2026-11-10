@@ -295,3 +295,42 @@ test('native reviewed edits race on one agreement version and replay the winning
     assert.ok(prices.every(visit => visit.job_total === Number(amounts[winner])))
   })
 })
+
+test('two native acceptances of one frozen offer share one booking and one alert event', async () => {
+  const leadId = randomUUID(), offerId = randomUUID()
+  const address = '6 Native Quote Lane, Austin, TX'
+  const draft = { address, sections: [], freq: 'onetime', calculatedPrice: 90 }
+  const regularItems = [{ kind: 'service', description: 'Lawn care', amount: '90.00' }]
+  const firstItems = [...regularItems, { kind: 'discount', description: 'Introductory mowing discount', amount: '-27.00' }]
+  try {
+    const lead = await data(admin.from('leads').insert({ id: leadId, name: 'Native Quote', phone: '5125550199',
+      address, quote_draft: draft, attribution: { utm_source: 'native-quote' } }).select('updated_at').single())
+    await data(admin.rpc('crm_prepare_sent_offer', {
+      p_lead_id: leadId, p_version: lead.updated_at, p_offer_id: offerId, p_replaces: null,
+      p_terms: { draft, address, rows: [{ freq: 'onetime', regularItems, firstItems }], mowing: true, mode: 'choices' },
+      p_message: { to: 'native@example.test', subject: 'Synthetic quote' }, p_recipient: 'native@example.test',
+    }))
+    await data(admin.rpc('crm_finish_sent_offer', { p_lead_id: leadId, p_offer_id: offerId, p_state: 'sent',
+      p_provider_id: randomUUID(), p_actor_email: 'staff@example.test' }))
+    const args = { p_lead_id: leadId, p_offer_id: offerId, p_hash: 'same-request',
+      p_request: { date: day(4), frequency: 'onetime', arrival: 'Any time' }, p_recipients: ['+15125550101', '+15125550102'] }
+    const responses = await Promise.all([admin, client(config.SECRET_KEY)].map(worker => data(worker.rpc('crm_accept_sent_offer', args))))
+    assert.deepEqual(responses.map(result => result.duplicate).sort(), [false, true])
+    assert.equal(responses[0].booking_id, responses[1].booking_id)
+    assert.equal(responses[0].event_id, responses[1].event_id)
+    assert.deepEqual(await data(admin.from('bookings').select('status,confirmed_date,preferred_date,job_total,attribution')
+      .eq('lead_id', leadId)), [{ status: 'pending', confirmed_date: null, preferred_date: day(4),
+      job_total: 63, attribution: { utm_source: 'native-quote' } }])
+    assert.equal((await data(admin.from('staff_alerts').select('id').eq('event_id', responses[0].event_id))).length, 4)
+  } finally {
+    execFileSync('supabase', ['db', 'query', '--local', `do $fixture$ begin
+      delete from public.staff_alerts where event_id in (select id from public.intake_events where lead_id = '${leadId}');
+      delete from public.intake_events where lead_id = '${leadId}';
+      delete from public.sent_offers where lead_id = '${leadId}';
+      delete from public.lead_activities where lead_id = '${leadId}';
+      delete from public.job_items where booking_id in (select id from public.bookings where lead_id = '${leadId}');
+      delete from public.bookings where lead_id = '${leadId}';
+      delete from public.leads where id = '${leadId}';
+    end $fixture$;`], { stdio: 'pipe' })
+  }
+})

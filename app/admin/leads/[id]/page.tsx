@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireStaff } from '@/lib/staff'
 import { adminDb } from '@/lib/supabase/admin'
-import { leadToken } from '@/lib/intake'
+import { offerPath, type SentOfferSummary } from '@/lib/sent-offer'
 import { FREQUENCY_LABEL, normalizeFrequency } from '@/lib/lead-board'
 import { ago, alertLegHistory, allPrices, dayLabel, historyItem, money, phoneDisplay, requestBookings, summarizeLead,
   type HistoryIcon, type SummaryBooking, type SummaryLead } from '@/lib/lead-summary'
@@ -73,19 +73,22 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   // customers.phone is stored in mixed formats: match the ten digits in order on the server, then exactly below.
   const phonePattern = phoneDigits.length === 10 ? `%${phoneDigits.split('').join('%')}%` : null
   const customerFields = 'id,name,phone,created_at'
-  const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }] = await Promise.all([
+  const [{ data: activities }, { data: events }, { data: bookings }, { data: phoneCustomers }, { data: linkedCustomer }, { data: calls }, { data: offerRows }] = await Promise.all([
     db.from('lead_activities').select('id,kind,outcome,body,actor_email,occurred_at,data').eq('lead_id', id).order('occurred_at').limit(200),
     db.from('intake_events').select('id,source,submission_id,booking_id,created_at,staff_alerts(*)').eq('lead_id', id).order('created_at'),
     db.from('bookings').select('*').eq('lead_id', id).order('created_at'),
     phonePattern ? db.from('customers').select(customerFields).ilike('phone', phonePattern).limit(25) : { data: [] as Customer[] },
     lead.customer_id ? db.from('customers').select(customerFields).eq('id', lead.customer_id).maybeSingle() : { data: null as Customer | null },
     db.from('lead_calls').select('id,leg,staff_name,staff_phone,caller_id,result,status,duration_seconds,recording_sid,answered_at,ended_at,created_at').eq('lead_id', id).order('created_at'),
+    db.from('sent_offers').select('id,version,recipient,state,created_at,sent_at,replaced_by,accepted_booking_id').eq('lead_id', id).order('version', { ascending: false }).limit(10),
   ])
   // Same-phone customers are suggestions only; staff confirms before linking.
   const customerMatches = ((phoneCustomers ?? []) as Customer[]).filter(c => String(c.phone ?? '').replace(/\D/g, '').slice(-10) === phoneDigits)
   const existing = linkedCustomer ?? customerMatches[0] ?? null
   const existedBefore = !!existing && Date.parse(existing.created_at) < Date.parse(lead.created_at)
-  const quoteUrl = lead.address ? `${new URL(process.env.CRM_BASE_URL ?? 'https://quietgreen.co').origin}/quote/${leadToken(id)}` : null
+  const sentOffers = (offerRows ?? []).map(({ replaced_by, ...offer }) => ({
+    ...offer, replaced: !!replaced_by, href: offer.sent_at ? offerPath(id, offer.id) : null,
+  })) as SentOfferSummary[]
   // One request timestamp for every relative label on the page.
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now()
@@ -112,7 +115,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const history = [
     { key: 'in', at: lead.created_at, time: historyItem({ kind: 'note', occurred_at: lead.created_at }, now).time, icon: 'in' as HistoryIcon, text: 'Came in', quote: null as string | null, recording: null as string | null },
     ...(events ?? []).slice(1).map(event => ({ key: event.id, at: event.created_at, time: historyItem({ kind: 'note', occurred_at: event.created_at }, now).time,
-      icon: 'booking' as HistoryIcon, text: event.booking_id ? 'Booked online' : 'Came in again', quote: null, recording: null })),
+      icon: 'booking' as HistoryIcon, text: event.booking_id ? 'Visit requested' : 'Came in again', quote: null, recording: null })),
     ...legRows,
     ...(activities ?? []).map(activity => {
       const item = historyItem(activity, now)
@@ -153,7 +156,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     : null
 
   return <LeadLive leadId={lead.id} name={s.name} column={s.column} priceCents={price?.cents ?? null} frequency={price?.frequency ?? normalizeFrequency(lead.frequency)}>
-    <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} customerMatches={customerMatches} quoteUrl={quoteUrl}>
+    <QuoteProvider lead={lead as QuoteLead} activities={activities ?? []} bookings={(bookings ?? []) as QuoteBooking[]} customerMatches={customerMatches} sentOffers={sentOffers}>
       <div className="crm-workspace crm-lead2">
         <div className="crm-lead2-top">
           <Link className="crm-back" href="/admin/leads"><Icon name="arrowLeft" size={15} />Board</Link>
