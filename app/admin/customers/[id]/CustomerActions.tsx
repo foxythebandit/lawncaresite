@@ -72,7 +72,7 @@ export default function CustomerActions({ customerId, properties }: { customerId
 
   return <>
     <div className="crm-customer-actions">
-      <Link className="crm-button crm-button-primary" href={serviceEditorHref(customerId)}><Icon name="calendar" size={15} />Add service</Link>
+      <Link className="crm-button crm-button-primary" href={serviceEditorHref(customerId)}><Icon name="calendar" size={15} />Add visit</Link>
       <button type="button" className="crm-button" onClick={() => { setOpen(!open); setMessage(null) }}>Add itemized visit</button>
     </div>
 

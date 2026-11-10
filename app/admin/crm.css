@@ -1210,24 +1210,24 @@
 .work-cal-empty { margin: 12px 3px; color: var(--c-text-2); font-size: 12px; }
 .work-cal-window + .work-cal-window { margin-top: 12px; }
 .work-cal-window > p { margin: 4px 2px 6px; color: var(--c-text-2); font-size: 11px; font-weight: 650; }
-.work-cal-property { padding: 6px; border-radius: var(--r-control); background: var(--c-subtle); }
-.work-cal-property-label { display: grid; gap: 3px; margin-bottom: 6px; overflow-wrap: anywhere; }
+.work-cal-property { padding-inline: 2px; }
+.work-cal-property-label { display: grid; gap: 2px; margin: 4px 2px 5px; overflow-wrap: anywhere; }
 .work-cal-property-label strong, .work-cal-event strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .work-cal-property-label strong { font-size: 13px; line-height: 1.25; }
 .work-cal-property-label small { color: var(--c-text-2); font-size: 11px; }
 .work-cal-event {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  min-width: 0; margin-bottom: 5px; padding: 8px;
-  background: var(--c-brand-tint); border-left: 3px solid var(--c-green); border-radius: var(--r-control);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-width: 0; margin-bottom: 4px; padding: 6px 8px;
+  background: var(--c-brand-tint); border-radius: var(--r-control);
   color: var(--c-text); text-decoration: none; overflow-wrap: anywhere;
 }
 .work-cal-event:hover { box-shadow: inset 0 0 0 1px var(--c-border-strong); }
 .work-cal-event strong { font-size: 13px; font-weight: 650; line-height: 1.25; }
 .work-cal-event span { font-size: 12px; line-height: 1.3; color: var(--c-text-2); }
 .work-cal-event small { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 650; color: var(--c-green); }
-.work-cal-event[data-status="Overdue"] { background: var(--c-red-bg); border-color: var(--c-red); }
+.work-cal-event[data-status="Overdue"] { background: var(--c-red-bg); }
 .work-cal-event[data-status="Overdue"] small { color: var(--c-red); }
-.work-cal-event[data-status="Done"] { background: var(--c-green-bg); }
+.work-cal-event[data-status="Done"] { background: var(--c-subtle); }
 .work-cal-event:focus-visible { outline-offset: -2px; }
 .work-cal-strip, .work-cal-scroll-hint { display: none; }
 .work-cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--c-border); }
@@ -1263,6 +1263,7 @@
 
 /* Exact visit */
 .work-visit-page { max-width: 1040px; }
+.work-visit-page.is-editing { max-width: 720px; }
 .work-visit-card {
   min-width: 0; padding: 18px; background: var(--c-surface);
   border: 1px solid var(--c-border); border-radius: var(--r-card); box-shadow: var(--shadow-card);
@@ -1276,6 +1277,9 @@
 .work-visit-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0 12px; padding-block: 13px; border-block: 1px solid var(--c-border); }
 .work-visit-facts dt { color: var(--c-text-2); font-size: 12px; margin-bottom: 4px; }
 .work-visit-facts dd { margin: 0; font-size: 15px; font-weight: 650; overflow-wrap: anywhere; }
+.work-visit-price-edit { display: block; margin-top: 1px; padding: 4px 0; border: 0; background: transparent; color: var(--c-brand); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+.work-visit-price-edit:disabled { cursor: default; opacity: .6; }
+.work-visit-price-edit[hidden], .work-visit-actions[hidden] { display: none; }
 .work-visit-status { display: inline-flex; width: fit-content; align-items: center; gap: 4px; padding: 4px 8px; border-radius: var(--r-control); background: var(--c-gray-bg); color: var(--c-gray); font-size: 12px; font-weight: 650; }
 .work-visit-status[data-status="Scheduled"], .work-visit-status[data-status="Done"], .work-visit-status[data-status="Paid in full"] { color: var(--c-green); background: var(--c-green-bg); }
 .work-visit-status[data-status="Overdue"] { color: var(--c-red); background: var(--c-red-bg); }

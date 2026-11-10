@@ -29,7 +29,7 @@ function VisitLink({ visit, context, today, compact, selectedDay, grouped }: {
     aria-label={`${name}, ${visit.service}, ${when}, ${status}`}>
     <strong>{grouped ? visit.service : name}</strong>
     <span>{compact ? visit.service : grouped ? when : `${visit.service} · ${when}`}</span>
-    <small>{status === 'Done' && <Icon name="check" size={13} />}{status}</small>
+    {status !== 'Scheduled' && <small>{status === 'Done' && <Icon name="check" size={12} />}{status}</small>}
   </Link>
 }
 

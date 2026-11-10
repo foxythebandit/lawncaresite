@@ -154,7 +154,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
   const [through, setThrough] = useState(addDays(from, 27))
   const [end, setEnd] = useState(plan?.end_on ?? '')
   const [mode, setMode] = useState<Mode>(plan && (plan.status === 'paused' || plan.schedule_review_reason) ? 'resume' : 'future')
-  const [repeat, setRepeat] = useState(!extra)
+  const [repeat, setRepeat] = useState(!extra && Boolean(plan || initialSource))
   const [base, setBase] = useState<Cadence>(definition?.base ?? (plan ? {
     frequency: 'legacy', anchor_on: plan.anchor_on, unit: plan.interval_unit === 'month' ? 'month' : 'week', count: plan.interval_count,
   } : { frequency: 'weekly', anchor_on: selectedSource?.date ?? today }))
@@ -203,30 +203,34 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     setEffective(on)
     if (range.frequency !== 'paused') setRange({ ...range, anchor_on: on })
   }
+  const selectedBase = !edit && base.frequency !== 'paused' ? { ...base, anchor_on: first } : base
+  const periods = (values: Period[]) => values.map(({ start, end, rule }) => ({ start, end, rule }))
+  const rules = { version: 1, base: selectedBase, annual: periods(annual), temporary: periods(temporary),
+    excluded_on: definition?.excluded_on ?? [] }
+  const request: Json = edit ? {
+    mode, from: mode === 'pause' || mode === 'end' ? today : effective,
+    ...(mode === 'range' ? { through, rule: range } : {}),
+    ...(mode === 'future' ? { definition: rules, label_id: labelId || null, end_on: end || null, arrival,
+      ...(itemized ? { items_template: priceItems.map(item => ({
+        ...item, description: item.description.trim(),
+        amount: (item.kind === 'discount' ? '-' : '') + item.amount.replace(/^-/, ''),
+      })) } : { price: Number(price) === Number(plan?.price_per_visit) ? null : price }),
+    } : {}),
+    ...(mode === 'range' || mode === 'future' ? { keep_unmatched: keep } : {}),
+  } : {
+    label_id: labelId, property_id: propertyId || null, address: propertyId ? null : address,
+    source_id: source?.id ?? null, source_version: source?.version ?? null,
+    ...(carryIntro && continuation ? { intro_source_id: continuation.source_id } : {}),
+    related_agreement_id: extra ? plan?.id : null, first_on: first, end_on: repeat ? end || null : null,
+    definition: repeat ? rules : null, arrival, price, notes,
+  }
+  const [initialRequest] = useState(() => JSON.stringify(request))
+  const canPreview = !edit || mode !== 'future' || JSON.stringify(request) !== initialRequest
+
   function preview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!canPreview) return
     setError('')
-    const selectedBase = !edit && base.frequency !== 'paused' ? { ...base, anchor_on: first } : base
-    const periods = (values: Period[]) => values.map(({ start, end, rule }) => ({ start, end, rule }))
-    const rules = { version: 1, base: selectedBase, annual: periods(annual), temporary: periods(temporary),
-      excluded_on: definition?.excluded_on ?? [] }
-    const request: Json = edit ? {
-      mode, from: mode === 'pause' || mode === 'end' ? today : effective,
-      ...(mode === 'range' ? { through, rule: range } : {}),
-      ...(mode === 'future' ? { definition: rules, label_id: labelId || null, end_on: end || null, arrival,
-        ...(itemized ? { items_template: priceItems.map(item => ({
-          ...item, description: item.description.trim(),
-          amount: (item.kind === 'discount' ? '-' : '') + item.amount.replace(/^-/, ''),
-        })) } : { price: Number(price) === Number(plan?.price_per_visit) ? null : price }),
-      } : {}),
-      ...(mode === 'range' || mode === 'future' ? { keep_unmatched: keep } : {}),
-    } : {
-      label_id: labelId, property_id: propertyId || null, address: propertyId ? null : address,
-      source_id: source?.id ?? null, source_version: source?.version ?? null,
-      ...(carryIntro && continuation ? { intro_source_id: continuation.source_id } : {}),
-      related_agreement_id: extra ? plan?.id : null, first_on: first, end_on: repeat ? end || null : null,
-      definition: repeat ? rules : null, arrival, price, notes,
-    }
     const target = edit && plan ? { agreementId: plan.id, version: plan.updated_at } : { customerId }
     startTransition(async () => {
       try {
@@ -280,9 +284,9 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
           </label>}
         </div>}
         {initialSource && source && <p><strong>First visit</strong> {source.service} · {serviceDate(source.date)} · {formatMoney(source.price)}</p>}
-        {!extra && !initialSource && <label className="crm-field">Visit pattern<select value={repeat ? 'repeat' : 'once'}
+        {!extra && !initialSource && <label className="crm-field">Repeat<select value={repeat ? 'repeat' : 'once'}
           onChange={event => { setRepeat(event.target.value === 'repeat'); if (event.target.value === 'once') chooseSource('') }}>
-          <option value="repeat">Repeating schedule</option><option value="once">One visit</option>
+          <option value="once">Does not repeat</option><option value="repeat">Repeats</option>
         </select></label>}
       </>}
       {(edit ? mode === 'future' : true) && <>
@@ -361,7 +365,7 @@ export default function ScheduleEditor({ customerId, properties, labels, sources
     {error && <p className="work-visit-error" role="alert">{error}</p>}
     <div className="work-visit-actions">
       {reviewed ? <button type="button" className="crm-button crm-button-primary" onClick={commit} disabled={busy || reviewed.preview.conflicts.length > 0}>Save reviewed change</button>
-        : <button type="submit" className="crm-button crm-button-primary" disabled={busy}>{busy ? 'Loading preview…' : 'Preview changes'}</button>}
+        : <button type="submit" className="crm-button crm-button-primary" disabled={busy || !canPreview}>{busy ? 'Loading preview…' : 'Preview changes'}</button>}
       <Link href={back} className="crm-button">{backLabel}</Link>
     </div>
   </form>

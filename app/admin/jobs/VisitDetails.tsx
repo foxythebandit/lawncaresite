@@ -33,11 +33,11 @@ type Candidate = Pick<Agreement, 'id' | 'interval_count' | 'interval_unit' | 'pr
 type Result = { success: boolean; error?: string; data?: Record<string, unknown> }
 const PANELS = {
   complete: 'Mark done',
-  date: 'Visit date and arrival',
+  date: 'Visit date and time',
   note: 'Visit note',
   payment: 'Record payment',
-  price: 'Visit items and price',
-  schedule: 'Service schedule',
+  price: 'Visit price and items',
+  schedule: 'Repeat this visit',
   link: 'Link customer and property',
   contact: 'Visit contact',
   more: 'More visit actions',
@@ -91,7 +91,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const [lines, setLines] = useState(items)
   const [introReview, setIntroReview] = useState<IntroCompletionReview | null>(null)
   const extraReview = introReview?.extraReview
+  const focusedEdit = panel === 'date' || panel === 'price'
   const [wholeMove, setWholeMove] = useState(false)
+  const [dateChanged, setDateChanged] = useState(false)
   const [movePreview, setMovePreview] = useState<{ key: string; preview: ServicePreview } | null>(null)
   const paymentLink = booking.payment_link
   const total = jobPrice(booking)
@@ -141,6 +143,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     if (next === 'complete') setIntroReview(null)
     if (next === 'date') {
       setWholeMove(false)
+      setDateChanged(false)
       setMovePreview(null)
       setSelectedCustomer(firstReview?.customerId ?? (samePhone.length ? '' : 'new'))
       setSelectedProperty(firstReview?.propertyId ?? 'new')
@@ -214,6 +217,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           reviewedTerms: form.has('reviewed-terms'), reviewedIntro: form.has('reviewed-intro'),
           reviewedPropertyAddress: form.has('reviewed-property') ? selectedAddress ?? null : null }), 'Visit confirmed.')
       } else if (wholeMove && agreement) {
+        if (!dateChanged) return
         const request = { agreementId: agreement.id, date, time, email,
           ...(occurrence ? { revisionId: occurrence.revisionId, on: occurrence.on } : { bookingId, version: versions.current.visit }) }
         if (movePreview?.key === key) {
@@ -279,7 +283,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     <div className="work-visit-card"><p role="status">{message}</p><Link className="crm-button" href={savedHref}>Open saved visit</Link></div>
   </div>
 
-  return <div className="crm-page work-visit-page">
+  return <div className={`crm-page work-visit-page${focusedEdit ? ' is-editing' : ''}`}>
     <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />Back to calendar</Link>
     <header className="work-visit-card work-visit-hero">
       <div className="work-visit-title">
@@ -292,13 +296,16 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       <dl className="work-visit-facts">
         <div><dt>{pending ? 'Preferred date' : 'Visit date'}</dt><dd>{visitDate ? dateText(visitDate) : 'Not set'}</dd></div>
         <div><dt>Arrival</dt><dd>{visitTime(pending ? booking.preferred_time : booking.confirmed_time)}</dd></div>
-        <div><dt>Visit price</dt><dd>{(booking.job_total ?? booking.first_visit_price ?? booking.price_per_visit) == null ? 'Not set' : formatMoney(total)}</dd></div>
+        <div><dt>Visit price</dt><dd><span>{(booking.job_total ?? booking.first_visit_price ?? booking.price_per_visit) == null ? 'Not set' : formatMoney(total)}</span>
+          <button type="button" className="work-visit-price-edit" aria-label={current ? 'Edit price' : 'View price items'}
+            hidden={focusedEdit} disabled={busy} onClick={event => open('price', event.currentTarget)}>{current ? 'Edit price' : 'View items'}</button>
+        </dd></div>
       </dl>
       {booking.completed_at && booking.status === 'completed' && <p className="crm-muted">Completed {dateText(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date(booking.completed_at)))}.</p>}
-      <div className="work-visit-actions">
+      <div className="work-visit-actions" hidden={focusedEdit}>
         {pending && edit('Confirm first visit', 'date', true, 'calendar')}
         {confirmed && edit('Mark done', 'complete', true, 'check')}
-        {confirmed && edit('Reschedule', 'date', false, 'calendar')}
+        {confirmed && edit('Edit date & time', 'date', false, 'calendar')}
         {edit(booking.notes ? 'Edit note' : 'Add note', 'note', false, 'note')}
         {edit('More actions', 'more')}
       </div>
@@ -308,10 +315,15 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     {panel && <section className="work-visit-card work-visit-editor" aria-labelledby="visit-editor-heading">
       <div className="work-visit-section-head">
         <h2 id="visit-editor-heading" tabIndex={-1} ref={editorHeading}>{PANELS[panel]}</h2>
-        <button type="button" className="crm-button crm-button-ghost" onClick={close} disabled={busy}>Close</button>
+        <button type="button" className="crm-button crm-button-ghost" onClick={close} disabled={busy}>{focusedEdit ? 'Back to visit' : 'Close'}</button>
       </div>
       {error && <p className="work-visit-error" role="alert">{error}</p>}
-      <form key={panel} onSubmit={save} onChange={panel === 'date' ? () => setMovePreview(null) : undefined}>
+      <form key={panel} onSubmit={save} onChange={panel === 'date' ? event => {
+        const form = new FormData(event.currentTarget)
+        const savedTime = (pending ? booking.preferred_time : booking.confirmed_time) ?? ''
+        setDateChanged(field(form, 'date') !== (visitDate ?? '') || field(form, 'time').trim() !== savedTime.trim())
+        setMovePreview(null)
+      } : undefined}>
         {panel === 'date' && <>
           {firstReview && pending && <>
             <p className="crm-muted">Review the identity, agreed work, and preferred date. Confirming saves them together.</p>
@@ -378,8 +390,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           {hasEmail && <label className="crm-check"><input type="checkbox" name="email" disabled={busy} />Email this date to the customer</label>}
           {movePreview && <ServiceImpactPreview preview={movePreview.preview} moving />}
           <div className="work-visit-actions">
-            <button type="submit" className="crm-button crm-button-primary" disabled={busy || Boolean(movePreview?.preview.conflicts.length) || (pending && (!firstReview || firstReview.terms.multiple || firstReview.terms.first_total == null))}>
-              {busy ? 'Working…' : pending ? 'Confirm visit' : wholeMove ? movePreview ? 'Save reviewed dates' : 'Review dates' : 'Save visit date'}
+            <button type="submit" className="crm-button crm-button-primary" disabled={busy || (wholeMove && !dateChanged) || Boolean(movePreview?.preview.conflicts.length) || (pending && (!firstReview || firstReview.terms.multiple || firstReview.terms.first_total == null))}>
+              {busy ? 'Working…' : pending ? 'Confirm visit' : wholeMove ? movePreview ? 'Save reviewed dates' : 'Review dates' : 'Save date & time'}
             </button>
           </div>
         </>}
@@ -387,7 +399,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           {needsSchedule ? <>
             <p role="alert">Review this recurring visit’s service schedule before marking it done.</p>
             <div className="work-visit-actions">
-              {edit(linked ? 'Review schedule' : 'Link customer and property', linked ? 'schedule' : 'link')}
+              {linked && startSchedule && candidates.length === 0
+                ? <Link className="crm-button" href={startSchedule}>Set repeat</Link>
+                : edit(linked ? 'Set repeat' : 'Link customer and property', linked ? 'schedule' : 'link')}
               {bookingId && <button type="button" className="crm-button" disabled={busy} onClick={() => run('one-time', op => changeJob({ ...command(bookingId, op), action: 'mark_one_time' }), 'This visit is marked one-time.')}>Mark this visit one-time</button>}
             </div>
           </> : <>
@@ -440,13 +454,12 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         </>}
         {panel === 'price' && <>
           <p className="crm-muted">Saved visit total {formatMoney(total)}{booking.accepted_quote_snapshot ? ' · Accepted quote saved in history' : ''}</p>
-          {(current || agreement && agreement.status !== 'ended') ? <>
+          {current ? <>
             <JobLineFields lines={lines} setLines={setLines} />
-            {agreement && agreement.status !== 'ended' && <p className="crm-muted">A future price applies to untouched visits in this service schedule.</p>}
-            <div className="work-visit-actions">
-              {current && btn('Save this visit price', 'visit')}
-              {scheduleEditor && agreement?.status !== 'ended' && <Link className="crm-button" href={scheduleEditor}>Review future visit price</Link>}
-            </div>
+            {agreement && agreement.status !== 'ended' && <p className="crm-muted">
+              Changes here apply to this visit. The repeating price is {formatMoney(agreement.price_per_visit)} per visit.
+            </p>}
+            <div className="work-visit-actions">{btn('Save visit price', 'visit')}</div>
           </> : <ul className="work-visit-records">{items.map((item, index) => <li key={index}>{item.description}<strong>{formatMoney(item.amount)}</strong></li>)}</ul>}
         </>}
         {panel === 'contact' && <>
@@ -475,17 +488,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
           </div>
           <div className="work-visit-actions">{btn('Link reviewed identity')}</div>
         </>}
-        {panel === 'schedule' && (agreement ? <>
-          <p className="crm-muted">{scheduleSummary ?? cadence(agreement)} · {formatMoney(agreement.price_per_visit)} per visit</p>
-          {reviewReason && <p role="alert">{reviewReason}</p>}
-          {reviewReason && !agreement.schedule_review_reason && <Link className="crm-button" href="/admin/jobs?attention=schedule_review">Review conflicting visits</Link>}
-          {agreement.status !== 'ended' && scheduleEditor && <div className="work-visit-actions">
-            <Link className="crm-button crm-button-primary" href={scheduleEditor}>
-              {agreement.schedule_review_reason ? 'Review restart' : agreement.status === 'paused' ? 'Review resume' : 'Review schedule changes'}
-            </Link>
-            {addExtra && <Link className="crm-button" href={addExtra}>Add extra visit</Link>}
-          </div>}
-        </> : !linked ? <>
+        {panel === 'schedule' && (!linked ? <>
           <p>Link a customer and property before setting a schedule.</p>
           <div className="work-visit-actions">{edit('Link customer and property', 'link')}</div>
         </> : <>
@@ -529,7 +532,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       </form>
     </section>}
 
-    <div className="work-visit-grid">
+    {!focusedEdit && <div className="work-visit-grid">
       <section className="work-visit-card work-visit-notes">
         <h2>Notes</h2>
         <h3>Visit note</h3><p className={booking.notes ? 'work-visit-note' : 'crm-muted'}>{booking.notes || 'No internal note yet.'}</p>
@@ -553,20 +556,28 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
               if ('error' in result) return { success: false, error: result.error }
               return { success: true }
             }, 'Payment link created.')}>Create payment link</button>}
-          {edit('Items and price', 'price')}
         </div>
         {!panel && error && <p className="work-visit-error" role="alert">{error}</p>}
       </section>
       <section className="work-visit-card">
-        <h2>Service schedule</h2>
+        <h2>Repeating schedule</h2>
         {agreement ? <>
           <p>{scheduleSummary ?? cadence(agreement)} · {formatMoney(agreement.price_per_visit)} per visit</p>
           <p className="crm-muted">{reviewReason ? 'Needs schedule review' : awaitingFirst ? 'Awaiting first-visit confirmation'
             : agreement.status === 'active' ? <>Active{nextScheduleOn && ` · Next ${dateText(nextScheduleOn)}`}</>
             : agreement.status === 'paused' ? 'Paused' : 'Ended'}</p>
-          {occurrence && reviewReason && <p className="crm-muted">{reviewReason}</p>}
+          {reviewReason && <p className="crm-muted">{reviewReason}</p>}
         </> : <p className="crm-muted">{needsSchedule ? 'Review the schedule for this recurring visit.' : 'No repeating schedule for this visit.'}</p>}
-        {!awaitingFirst && (agreement || current || booking.status === 'completed') && <div className="work-visit-actions">{edit(agreement ? 'Edit schedule' : 'Set schedule', 'schedule')}</div>}
+        {agreement && scheduleEditor && agreement.status !== 'ended' && <div className="work-visit-actions">
+          <Link className="crm-button" href={scheduleEditor}>
+            {agreement.schedule_review_reason ? 'Fix schedule' : agreement.status === 'paused' ? 'Resume schedule' : 'Edit repeat'}
+          </Link>
+          {addExtra && <Link className="crm-button" href={addExtra}>Add extra visit</Link>}
+          {reviewReason && !agreement.schedule_review_reason && <Link className="crm-button" href="/admin/jobs?attention=schedule_review">See schedule conflict</Link>}
+        </div>}
+        {!agreement && (current || booking.status === 'completed') && <div className="work-visit-actions">
+          {startSchedule && candidates.length === 0 ? <Link className="crm-button" href={startSchedule}>Set repeat</Link> : edit('Set repeat', 'schedule')}
+        </div>}
       </section>
       <section className="work-visit-card">
         <h2>Contact and property</h2>
@@ -579,6 +590,6 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         {booking.customer_id ? <Link className="work-visit-history" href={`/admin/customers/${booking.customer_id}`}>Customer history <Icon name="arrowRight" size={15} /></Link>
           : booking.phone ? <Link className="work-visit-history" href={`/admin/client/${encodeURIComponent(booking.phone)}`}>Unlinked phone history <Icon name="arrowRight" size={15} /></Link> : null}
       </section>
-    </div>
+    </div>}
   </div>
 }

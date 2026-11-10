@@ -119,7 +119,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           {pendingFirst && <Link className="crm-button crm-button-sm" href={`/admin/jobs/${pendingFirst.id}`}>Confirm first visit</Link>}
           {agreement.status !== 'ended' && !awaitingFirst && <div className="work-visit-actions">
             <Link className="crm-button crm-button-sm" href={serviceEditorHref(id, { schedule: agreement.id })}>
-              {agreement.schedule_review_reason ? 'Review schedule' : 'Edit schedule'}</Link>
+              {agreement.schedule_review_reason ? 'Fix schedule' : agreement.status === 'paused' ? 'Resume schedule' : 'Edit repeat'}</Link>
             {agreement.service_label_id && <Link className="crm-button crm-button-sm" href={serviceEditorHref(id, { schedule: agreement.id, extra: true })}>Add extra visit</Link>}
           </div>}
         </div>

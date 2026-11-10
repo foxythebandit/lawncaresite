@@ -67,7 +67,7 @@ export default async function CustomerServicePage({ params, searchParams }: {
     : { data: null }
   const firstPath = pendingFirst ? `/admin/jobs/${pendingFirst.id}` : null
   const firstHref = pendingFirst && originBookingId === pendingFirst.id ? visitOrigin : firstPath
-  const title = extra ? 'Add extra visit' : plan.data ? 'Edit service schedule' : 'Add service'
+  const title = extra ? 'Add extra visit' : plan.data ? 'Edit repeating schedule' : visit ? 'Set repeat' : 'Add visit'
   const property = properties.data.find(p => p.id === plan.data?.property_id)
   return <main className="crm-page work-visit-page">
     <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />{backLabel}</Link>
