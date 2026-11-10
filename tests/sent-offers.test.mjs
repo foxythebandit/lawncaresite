@@ -846,6 +846,35 @@ test('an explicitly separate completed visit leaves the next eligible projected 
   assert.deepEqual(await introOutcome(agreement.customer_id), { replaced_by_booking_id: null, consumed_on: day(123) })
 })
 
+test('reviewed separate work immediately restores the intro to an already saved eligible mow', async () => {
+  const { agreement, visit } = await mismatchedExtra()
+  const id = agreement.agreement_id
+  await sqlValue('select crm_reconcile_schedule($1,$2)', [id, day(120)])
+  const [before] = await entries(id, 123)
+  assert.ok(before.booking_id)
+  assert.equal(before.price, 93.80)
+  const review = await completionOptions(visit)
+  await reviewedComplete(visit, review.separateToken)
+  const [after] = await entries(id, 123)
+  assert.equal(after.booking_id, before.booking_id)
+  assert.equal(after.price, 68.74)
+  assert.equal((await promo(agreement.customer_id)).allocated_booking_id, before.booking_id)
+})
+
+test('reviewed separate work completes while a later saved price remains protected', async () => {
+  const { agreement, visit } = await mismatchedExtra()
+  await sqlValue('select crm_reconcile_schedule($1,$2)', [agreement.agreement_id, day(120)])
+  const [next] = await entries(agreement.agreement_id, 123)
+  await db.query("update bookings set payment_link='https://example.test/next' where id=$1", [next.booking_id])
+  const review = await completionOptions(visit)
+  await reviewedComplete(visit, review.separateToken)
+  assert.equal((await savedVisit(visit.id)).status, 'completed')
+  const protectedNext = await savedVisit(next.booking_id)
+  assert.equal(protectedNext.job_total, '93.80')
+  assert.equal(protectedNext.payment_link, 'https://example.test/next')
+  assert.deepEqual(await introOutcome(agreement.customer_id), { replaced_by_booking_id: null, consumed_on: null })
+})
+
 test('a pause-canceled first visit returns at its standard amount after an agreed replacement', async () => {
   const agreement = await confirmedPromotion()
   const id = agreement.agreement_id

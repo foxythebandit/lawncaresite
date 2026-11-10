@@ -191,6 +191,8 @@ begin
     completion_operation_id = p_operation_id where id = p_booking_id;
   if v_booking.agreement_id is not null then
     v_next_id := public.crm_generate_next_job(p_booking_id,v_booking.occurrence_on);
+  elsif v_resolution->>'disposition' = 'separate_work' then
+    perform public.crm_intro_sync(v_agreement_id);
   end if;
   v_result := jsonb_build_object('booking_id',p_booking_id,'next_booking_id',v_next_id,
     'duplicate',false);
