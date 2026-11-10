@@ -637,7 +637,7 @@ def quote_browser():
                     assert save.bounding_box()["y"] + save.bounding_box()["height"] <= page.locator(".admin-nav").bounding_box()["y"]
                     shot(page, f"quote-confirm-save-viewport-{width}", full_page=False)
                 if width != 320:
-                    page.get_by_role("button", name="Close", exact=True).click()
+                    page.get_by_role("button", name="Back to visit", exact=True).click()
             page.get_by_role("button", name="Confirm visit", exact=True).click()
             customer_history = page.get_by_role("link", name="Customer history", exact=True)
             expect(customer_history).to_be_visible()
