@@ -1229,7 +1229,6 @@
 .work-cal-event[data-status="Overdue"] small { color: var(--c-red); }
 .work-cal-event[data-status="Done"] { background: var(--c-subtle); }
 .work-cal-event:focus-visible { outline-offset: -2px; }
-.work-cal-strip, .work-cal-scroll-hint { display: none; }
 .work-cal-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--c-border); }
 .work-cal-weekday { padding: 8px; text-align: center; color: var(--c-text-2); font-size: 12px; }
 .work-cal-month-cell { min-width: 0; min-height: 92px; padding: 5px 6px; border-top: 1px solid var(--c-border); border-right: 1px solid var(--c-border); }
@@ -1310,20 +1309,23 @@
 .crm-bcard-row .crm-bcard-phone { grid-column: 1; }
 
 @media (max-width: 900px) {
-  .work-cal-canvas.is-week {
-    grid-template-columns: repeat(7, minmax(146px, calc((100% - 18px) / 2)));
-    scroll-snap-type: x proximity;
+  .work-cal-canvas.is-week { overflow-x: hidden; }
+  .work-cal-canvas.is-week .work-cal-day { padding: 0 2px 8px; }
+  .work-cal-canvas.is-week .work-cal-day h3 {
+    flex-direction: column; justify-content: center; gap: 0; margin: 0 -2px 4px;
+    padding: 4px 2px; font-size: 10px;
   }
-  .work-cal-canvas.is-week .work-cal-day { scroll-snap-align: start; }
-  .work-cal-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; padding: 6px; border-top: 1px solid var(--c-border); }
-  .work-cal-strip button {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 44px; gap: 2px; padding: 2px;
-    background: none; border: 1px solid transparent; border-radius: var(--r-control); color: var(--c-text-2); font-size: 11px;
+  .work-cal-canvas.is-week .work-cal-day h3 strong { font-size: 15px; }
+  .work-cal-canvas.is-week :is(h3 small, .work-cal-empty, .work-cal-window > p, .work-cal-property-label small, .work-cal-event small svg) { display: none; }
+  .work-cal-canvas.is-week .work-cal-window + .work-cal-window { margin-top: 4px; }
+  .work-cal-canvas.is-week .work-cal-property { padding: 0; }
+  .work-cal-canvas.is-week .work-cal-property-label { margin: 4px 0 3px; }
+  .work-cal-canvas.is-week .work-cal-event { justify-content: center; min-height: 44px; gap: 1px; padding: 3px 2px; }
+  .work-cal-canvas.is-week :is(.work-cal-property-label strong, .work-cal-event strong, .work-cal-event span, .work-cal-event small) {
+    display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
-  .work-cal-strip button strong { font-size: 14px; color: var(--c-text); }
-  .work-cal-strip button[data-today="true"] { border-color: var(--c-accent); }
-  .work-cal-strip button[aria-pressed="true"] { background: var(--c-brand-tint); color: var(--c-brand); }
-  .work-cal-scroll-hint { display: block; padding: 7px 10px; border-top: 1px solid var(--c-border); font-size: 12px; color: var(--c-text-2); }
+  .work-cal-canvas.is-week :is(.work-cal-property-label strong, .work-cal-event strong) { font-size: 10px; }
+  .work-cal-canvas.is-week :is(.work-cal-event span, .work-cal-event small) { font-size: 9px; }
 }
 
 @media (max-width: 650px) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CalendarEntry } from '@/lib/calendar-data'
 import { addDays, calendarHref, calendarRange, compareVisitTimes, dateLabel, visitHref, visitStatus, visitTime, visitWindow, VISIT_WINDOWS, type CalendarContext } from '@/lib/calendar-view'
 import { customerDisplayName } from '@/lib/lead-labels'
@@ -70,7 +70,6 @@ function DayVisits({ visits, context, today, day }: { visits: DisplayVisit[]; co
 export default function CalendarView({ context, today, visits, focus }: {
   context: CalendarContext; today: string; visits: DisplayVisit[]; focus?: string
 }) {
-  const canvas = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const [selection, setSelection] = useState({ contextDay: context.date, day: context.date })
   const selected = selection.contextDay === context.date ? selection.day : context.date
@@ -85,22 +84,12 @@ export default function CalendarView({ context, today, visits, focus }: {
   }
   for (const day of byDate.values()) day.sort((a, b) => compareVisitTimes(a.visit_time, b.visit_time))
 
-  function revealDay(date: string) {
-    const container = canvas.current
-    const target = container?.querySelector<HTMLElement>(`[data-cal-day="${date}"]`)
-    if (container && target && container.scrollWidth > container.clientWidth) {
-      container.scrollLeft = container.scrollLeft + target.getBoundingClientRect().left - container.getBoundingClientRect().left
-    }
-  }
-
   function selectDay(day: string) {
     setSelection({ contextDay: context.date, day })
-    revealDay(day)
     if (day !== context.date) router.replace(calendarHref({ ...context, date: day }), { scroll: false })
   }
 
   useEffect(() => {
-    revealDay(context.date)
     if (focus) document.getElementById(`calendar-${focus}`)?.focus()
   }, [context.date, focus])
 
@@ -133,34 +122,15 @@ export default function CalendarView({ context, today, visits, focus }: {
     </div>
   }
 
-  return <>
-    {context.view === 'week' && <div className="work-cal-strip" aria-label="Days this week">
-      {dates.map(date => <button key={date} type="button" aria-pressed={date === selected} data-today={date === today}
-        aria-label={dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}
-        onClick={() => selectDay(date)}>
-        <span>{dateLabel(date, { weekday: 'short' })}</span><strong>{Number(date.slice(-2))}</strong>
-      </button>)}
-    </div>}
-    <div className={`work-cal-canvas is-${context.view}`} ref={canvas} aria-label={`${context.view === 'week' ? 'Week' : 'Day'} calendar`}
-      onScroll={event => {
-        const container = event.currentTarget
-        if (context.view !== 'week' || container.scrollWidth <= container.clientWidth) return
-        const bounds = container.getBoundingClientRect()
-        const visible = Array.from(container.querySelectorAll<HTMLElement>('[data-cal-day]')).filter(column => {
-          const position = column.getBoundingClientRect()
-          return Math.min(position.right, bounds.right) - Math.max(position.left, bounds.left) > position.width / 2
-        })
-        if (visible.length && !visible.some(column => column.dataset.calDay === selected)) setSelection({ contextDay: context.date, day: visible[0].dataset.calDay! })
-      }}>
-      {dates.map(date => <section key={date} className="work-cal-day" data-cal-day={date} data-today={date === today} data-selected={date === selected}
-        aria-label={dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}>
-        <h3><span>{dateLabel(date, { weekday: context.view === 'week' ? 'short' : 'long' })}</span>
-          <strong>{Number(date.slice(-2))}</strong>
-          {date === today && <small>Today</small>}
-        </h3>
-        <DayVisits visits={byDate.get(date) ?? []} context={context} today={today} day={date} />
-      </section>)}
-    </div>
-    {context.view === 'week' && <p className="work-cal-scroll-hint">Swipe or choose a day to see the rest of the week.</p>}
-  </>
+  return <div className={`work-cal-canvas is-${context.view}`} aria-label={`${context.view === 'week' ? 'Week' : 'Day'} calendar`}>
+    {dates.map(date => <section key={date} className="work-cal-day" data-today={date === today}
+      aria-current={date === today ? 'date' : undefined}
+      aria-label={dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' })}>
+      <h3><span>{dateLabel(date, { weekday: context.view === 'week' ? 'short' : 'long' })}</span>
+        <strong>{Number(date.slice(-2))}</strong>
+        {date === today && <small>Today</small>}
+      </h3>
+      <DayVisits visits={byDate.get(date) ?? []} context={context} today={today} day={date} />
+    </section>)}
+  </div>
 }

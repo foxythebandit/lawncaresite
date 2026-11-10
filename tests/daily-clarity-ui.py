@@ -63,6 +63,23 @@ def assert_no_overflow(page):
     widths = page.evaluate("() => [document.documentElement.clientWidth, document.documentElement.scrollWidth]")
     assert widths[1] <= widths[0], f"Page overflows: {widths}"
 
+def week_columns(page):
+    week = page.locator(".work-cal-canvas.is-week")
+    columns = week.get_by_role("region")
+    expect(columns).to_have_count(7)
+    expect(week.get_by_role("heading", level=3)).to_have_count(7)
+    expect(page.get_by_label("Days this week")).to_have_count(0)
+    assert_no_overflow(page)
+    assert week.evaluate("(grid) => grid.scrollWidth === grid.clientWidth && grid.scrollLeft === 0")
+    assert columns.evaluate_all("""(days) => {
+        const grid = days[0].parentElement.getBoundingClientRect()
+        return days.every(day => {
+            const box = day.getBoundingClientRect()
+            return box.left >= grid.left && box.right <= grid.right + 1 && box.top === grid.top
+        })
+    }""")
+    return columns
+
 def calendar(view="week", on=None, **extra):
     return BASE + "/admin/jobs?" + urlencode({"view": view, "date": on or day(0), **extra})
 
@@ -104,6 +121,7 @@ def fixture():
     mowing = create_visit(customer, name, address, day(1), "Morning", "Lawn care", 85.50,
                           customer_notes="Use the side gate. The dog stays inside on Tuesdays.")
     cleanup = create_visit(customer, name, address, day(1), "14:15", "Leaf cleanup", 250.00)
+    create_visit(customer, name, address, day(0), "Morning", "Mulch", 125)
     create_visit(customer, name, address, day(5), "14:00", "Patio cleanup", 75.00)
     create_visit(customer, name, address, day(5), "9:00", "Bed weeding", 105.00)
     create_visit(customer, name, address, day(5), "09:00", "Hedge trimming", 125.00)
@@ -112,6 +130,7 @@ def fixture():
     long_customer = create_customer(long_name, long_addr, 82)
     create_visit(long_customer, long_name, long_addr, day(2), "Afternoon", "Bed maintenance", 112.25)
     create_visit(long_customer, long_name, long_addr, day(2), "After school pickup", "Hedge trimming", 95.00)
+    create_visit(long_customer, long_name, long_addr, day(6), "Any time", "Leaf cleanup", 150)
     create_visit(long_customer, long_name, long_addr, day(3), "Any time", "Mulch", 145.00, status="completed",
                  completed_at=f"{day(3)}T15:00:00Z")
     unnamed_addr = "71 Willowbank Walk, Apt 4, Austin, TX 78744"
@@ -1048,8 +1067,9 @@ try:
         expect(page.get_by_role("link", name=re.compile("Hedge trimming, After school pickup"))).to_be_visible()
         expect(page.get_by_role("link", name=re.compile("71 Willowbank Walk, Apt 4.*Lawn care"))).to_be_visible()
         expect(page.get_by_role("link", name=re.compile("Mulch.*Done"))).to_be_visible()
-        assert_no_overflow(page)
+        week_columns(page)
         shot(page, "calendar-week-desktop")
+        shot(page, "after-week-1440", full_page=False)
         assert not geocodes
         map_button = page.get_by_role("button", name="Map", exact=True)
         map_button.click()
@@ -1103,26 +1123,55 @@ try:
         expect(page.get_by_role("searchbox", name="Search visits")).to_have_value("Willowbank")
         expect(page.get_by_role("region", name="Search results")).to_be_visible()
 
-        for width in (390, 320):
-            phone = local_browser(browser, width, 844)
+        for width, height in ((320, 844), (390, 844), (430, 932)):
+            phone = local_browser(browser, width, height)
             mobile = phone.new_page()
             mobile.on("pageerror", lambda error: errors.append(str(error)))
             mobile.goto(BASE + "/admin/jobs")
             login(mobile)
-            expect(mobile.get_by_role("navigation", name="Calendar view").get_by_role("link", name="Week")).to_have_attribute("aria-current", "page")
+            views = mobile.get_by_role("navigation", name="Calendar view")
+            expect(views.get_by_role("link", name="Week")).to_have_attribute("aria-current", "page")
             mobile.goto(calendar())
-            assert_no_overflow(mobile)
-            expect(mobile.get_by_label("Days this week").get_by_role("button")).to_have_count(7)
-            assert mobile.locator(".work-cal-canvas").evaluate("(el) => el.scrollWidth > el.clientWidth")
-            month = mobile.get_by_role("navigation", name="Calendar view").get_by_role("link", name="Month")
-            toolbar = mobile.get_by_role("navigation", name="Calendar view")
-            assert month.bounding_box()["x"] + month.bounding_box()["width"] <= toolbar.bounding_box()["x"] + toolbar.bounding_box()["width"] + 1
-            mobile.get_by_label("Days this week").get_by_role("button", name=re.compile("^Tuesday")).click()
-            mobile.wait_for_url(re.compile("date=" + day(1)))
-            if width == 390:
-                mobile.reload()
-                expect(mobile.get_by_label("Days this week").get_by_role("button", name=re.compile("^Tuesday"))).to_have_attribute("aria-pressed", "true")
+            columns = week_columns(mobile)
+            expect(columns.nth(1).get_by_role("link")).to_have_count(2)
+            expect(columns.nth(2).get_by_role("link", name=re.compile(
+                r"^Christopher and Alexandra Montgomery-Rivera, Hedge trimming, After school pickup, Scheduled$"
+            ))).to_be_visible()
+            done = columns.nth(3).get_by_role("link", name=re.compile(r"Mulch, Any time, Done$"))
+            expect(done.get_by_text("Done", exact=True)).to_be_visible()
+            month = views.get_by_role("link", name="Month")
+            assert month.bounding_box()["x"] + month.bounding_box()["width"] <= views.bounding_box()["x"] + views.bounding_box()["width"] + 1
+            assert mobile.locator(".work-cal-canvas.is-week .work-cal-event").evaluate_all(
+                "(cards) => cards.every(card => card.getBoundingClientRect().height >= 44)"
+            )
             shot(mobile, f"calendar-week-{width}")
+            shot(mobile, f"after-week-{width}", full_page=False)
+            for index in range(7):
+                event = columns.nth(index).get_by_role("link").first
+                target = BASE + event.get_attribute("href")
+                return_to = parse_qs(urlsplit(target).query)["returnTo"][0]
+                event.click()
+                mobile.wait_for_url(target)
+                expect(mobile.get_by_role("heading", level=1)).to_be_visible()
+                mobile.get_by_role("link", name="Back to calendar").click()
+                mobile.wait_for_url(BASE + return_to)
+                expect(event).to_be_focused()
+                assert parse_qs(urlsplit(mobile.url).query)["date"] == [day(index)]
+                assert parse_qs(urlsplit(mobile.url).query)["view"] == ["week"]
+            if width == 390:
+                mobile.get_by_role("link", name="Next week", exact=True).click()
+                mobile.wait_for_url(re.compile("date=" + day(13)))
+                week_columns(mobile)
+                mobile.get_by_role("link", name="Previous week", exact=True).click()
+                mobile.wait_for_url(re.compile("date=" + day(6)))
+                mobile.get_by_role("link", name="Today", exact=True).click()
+                mobile.wait_for_url(re.compile("date=" + TODAY.isoformat()))
+                expect(mobile.locator(".work-cal-day[aria-current=date]")).to_have_count(1)
+                mobile.goto(calendar("week", (TODAY - timedelta(days=8)).isoformat()))
+                late = mobile.locator(".work-cal-canvas.is-week").get_by_role("link", name=re.compile(r"Kelli Alvarez.*Overdue$"))
+                expect(late.get_by_text("Overdue", exact=True)).to_be_visible()
+                shot(mobile, "week-overdue-390", full_page=False)
+            mobile.goto(calendar())
             link = mobile.get_by_role("link", name=re.compile("Kelli Alvarez, Lawn care, Morning"))
             link.focus()
             link.press("Enter")
@@ -1140,11 +1189,13 @@ try:
             mobile.get_by_role("link", name="Back to calendar").click()
             expect(mobile.get_by_role("link", name=re.compile("Kelli Alvarez, Lawn care, Morning"))).to_be_focused()
             assert f"date={day(1)}" in mobile.url and "view=week" in mobile.url
-            mobile.goto(calendar("month", day(1)))
+            views.get_by_role("link", name="Month", exact=True).click()
+            expect(views.get_by_role("link", name="Month")).to_have_attribute("aria-current", "page")
             expect(mobile.get_by_role("region", name="Selected day").get_by_role("link", name=re.compile("Kelli Alvarez, Leaf cleanup"))).to_be_visible()
             assert_no_overflow(mobile)
             shot(mobile, f"calendar-month-{width}")
-            mobile.goto(calendar("day", day(1)))
+            views.get_by_role("link", name="Day", exact=True).click()
+            expect(views.get_by_role("link", name="Day")).to_have_attribute("aria-current", "page")
             expect(mobile.get_by_role("link", name=re.compile("Kelli Alvarez, Lawn care"))).to_be_visible()
             assert_no_overflow(mobile)
             shot(mobile, f"calendar-day-{width}")
@@ -1346,6 +1397,6 @@ try:
         assert not errors, errors
         desktop.close()
         browser.close()
-    print("Calendar browser checks passed at 1440, 390, and 320 px.")
+    print("Calendar browser checks passed at 1440, 430, 390, and 320 px.")
 finally:
     clean_up()
