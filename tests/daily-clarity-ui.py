@@ -680,6 +680,8 @@ def quote_browser():
             expect(page.locator(".work-visit-facts")).to_contain_text("$125.00")
             page.get_by_role("button", name="Confirm first visit", exact=True).click()
             expect(page.get_by_text("First visit $125.00", exact=True)).to_be_visible()
+            page.get_by_label("Customer", exact=True).select_option(rows[0]["customer_id"])
+            page.get_by_label("Property", exact=True).select_option(rows[0]["property_id"])
             page.get_by_label("Service label", exact=True).select_option(label="Leaf cleanup")
             page.once("dialog", lambda dialog: dialog.dismiss())
             page.get_by_role("button", name="Back to visit", exact=True).click()
@@ -688,8 +690,9 @@ def quote_browser():
             page.get_by_label("Visit date", exact=True).fill(day(4))
             page.get_by_role("button", name="Confirm visit", exact=True).click()
             expect(page.get_by_role("link", name="Customer history", exact=True)).to_be_visible()
-            saved = request(f"bookings?id=eq.{row['id']}&select=status,confirmed_date,job_total,accepted_quote_snapshot")[0]
+            saved = request(f"bookings?id=eq.{row['id']}&select=status,confirmed_date,job_total,customer_id,property_id,accepted_quote_snapshot")[0]
             assert saved == {"status": "confirmed", "confirmed_date": day(4), "job_total": 125,
+                             "customer_id": rows[0]["customer_id"], "property_id": rows[0]["property_id"],
                              "accepted_quote_snapshot": row["accepted_quote_snapshot"]}
             expired = str(uuid4())
             request("sent_offers", "POST", {
