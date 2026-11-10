@@ -91,9 +91,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const [lines, setLines] = useState(items)
   const [introReview, setIntroReview] = useState<IntroCompletionReview | null>(null)
   const extraReview = introReview?.extraReview
-  const focusedEdit = panel === 'date' || panel === 'price'
   const [wholeMove, setWholeMove] = useState(false)
   const [dateChanged, setDateChanged] = useState(false)
+  const [confirmationChanged, setConfirmationChanged] = useState(false)
   const [movePreview, setMovePreview] = useState<{ key: string; preview: ServicePreview } | null>(null)
   const paymentLink = booking.payment_link
   const total = jobPrice(booking)
@@ -103,6 +103,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const paymentStatus = paid > 0 ? paid >= total ? 'Paid in full' : 'Partly paid' : booking.amount_charged != null ? 'Older payment record' : 'Unpaid'
   const name = customerDisplayName(booking)
   const pending = booking.status === 'pending'
+  const confirming = pending && panel === 'date'
+  const focusedEdit = (panel === 'date' && !pending) || panel === 'price'
+  const unsaved = priceChanged || (panel === 'date' && (dateChanged || confirmationChanged))
   const confirmed = booking.status === 'confirmed'
   const current = pending || confirmed
   const linked = Boolean(booking.customer_id && booking.property_id)
@@ -137,7 +140,12 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
 
   useEffect(() => { if (panel) editorHeading.current?.focus() }, [panel])
 
+  function discardAllowed() {
+    return !unsaved || window.confirm('Discard your unsaved visit changes?')
+  }
+
   function open(next: Panel, opener?: HTMLElement) {
+    if (!discardAllowed()) return
     if (opener) trigger.current = opener
     versions.current = { visit: booking.updated_at, agreement: agreement?.updated_at }
     setError('')
@@ -146,6 +154,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     if (next === 'date') {
       setWholeMove(false)
       setDateChanged(false)
+      setConfirmationChanged(false)
       setMovePreview(null)
       setSelectedCustomer(firstReview?.customerId ?? (samePhone.length ? '' : 'new'))
       setSelectedProperty(firstReview?.propertyId ?? 'new')
@@ -273,9 +282,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
     }
   }
 
-  const edit = (label: string, target: Panel, primary = false, icon?: 'check' | 'calendar' | 'note') =>
-    <button type="button" className={target === 'price' ? 'work-visit-price-edit' : `crm-button${primary && !panel ? ' crm-button-primary' : ''}`}
-      disabled={busy} hidden={target === 'price' && focusedEdit} onClick={event => open(target, event.currentTarget)}>{icon && <Icon name={icon} size={16} />}{label}</button>
+  const edit = (label: string, target: Panel, primary = false, icon?: 'check' | 'calendar' | 'note', placement?: 'facts') =>
+    <button type="button" className={placement === 'facts' ? 'work-visit-price-edit' : `crm-button${primary && !panel ? ' crm-button-primary' : ''}`}
+      disabled={busy} hidden={placement === 'facts' && focusedEdit} onClick={event => open(target, event.currentTarget)}>{icon && <Icon name={icon} size={16} />}{label}</button>
 
   const btn = (label: string, value?: string, primary = true) =>
     <button type="submit" value={value} className={`crm-button${primary ? ' crm-button-primary' : ''}`} disabled={busy}>{busy ? 'Saving…' : label}</button>
@@ -286,7 +295,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   </div>
 
   return <div className={`crm-page work-visit-page${focusedEdit ? ' is-editing' : ''}`}>
-    {!focusedEdit && <Link href={back} className="crm-back"><Icon name="arrowLeft" size={16} />Back to calendar</Link>}
+    {!focusedEdit && <Link href={back} className="crm-back" onNavigate={event => {
+      if (busy || !discardAllowed()) event.preventDefault()
+    }}><Icon name="arrowLeft" size={16} />Back to calendar</Link>}
     <header className="work-visit-card work-visit-hero">
       <div className="work-visit-title">
         <div><p className="crm-eyebrow">{serviceName}</p><h1 ref={pageHeading} tabIndex={-1}>{name}</h1>
@@ -299,7 +310,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
         <div><dt>{pending ? 'Preferred date' : 'Visit date'}</dt><dd>{visitDate ? dateText(visitDate) : 'Not set'}</dd></div>
         <div><dt>Arrival</dt><dd>{visitTime(pending ? booking.preferred_time : booking.confirmed_time)}</dd></div>
         <div><dt>Visit price</dt><dd><span>{(booking.job_total ?? booking.first_visit_price ?? booking.price_per_visit) == null ? 'Not set' : formatMoney(total)}</span>
-          {edit(current ? 'Edit price' : 'View items', 'price')}
+          {edit(current ? 'Edit price' : 'View items', 'price', false, undefined, 'facts')}
         </dd></div>
       </dl>
       {booking.completed_at && booking.status === 'completed' && <p className="crm-muted">Completed {dateText(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date(booking.completed_at)))}.</p>}
@@ -317,15 +328,18 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       <div className="work-visit-section-head">
         <h2 id="visit-editor-heading" tabIndex={-1} ref={editorHeading}>{PANELS[panel]}</h2>
         <button type="button" className="crm-button crm-button-ghost" onClick={() => {
-          if (!focusedEdit || (!dateChanged && !priceChanged) || window.confirm('Discard your unsaved visit changes?')) close()
-        }} disabled={busy}>{focusedEdit ? 'Back to visit' : 'Close'}</button>
+          if (discardAllowed()) close()
+        }} disabled={busy}>{focusedEdit || confirming ? 'Back to visit' : 'Close'}</button>
       </div>
       {error && <p className="work-visit-error" role="alert">{error}</p>}
       <form key={panel} onSubmit={save} onChange={panel === 'date' ? event => {
-        const form = new FormData(event.currentTarget)
-        const savedTime = (pending ? booking.preferred_time : booking.confirmed_time) ?? ''
-        setDateChanged(field(form, 'date') !== (visitDate ?? '') || field(form, 'time').trim() !== savedTime.trim())
-        setMovePreview(null)
+        if (pending) setConfirmationChanged(true)
+        else {
+          const form = new FormData(event.currentTarget)
+          const savedTime = booking.confirmed_time ?? ''
+          setDateChanged(field(form, 'date') !== (visitDate ?? '') || field(form, 'time').trim() !== savedTime.trim())
+          setMovePreview(null)
+        }
       } : undefined}>
         {panel === 'date' && <>
           {firstReview && pending && <>
@@ -384,6 +398,9 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
             {(firstReview.terms.needs_review || firstReview.terms.items_changed) && <label className="crm-check"><input type="checkbox" name="reviewed-terms" required />
               I reviewed the original quote and agreed this service with the customer.</label>}
           </>}
+          {confirming && booking.customer_notes && <div>
+            <h3>Customer note</h3><p className="work-visit-note">{booking.customer_notes}</p>
+          </div>}
           <div className="work-visit-fields">
             <label className="crm-field">Visit date<input name="date" type="date" required disabled={busy} defaultValue={visitDate ?? ''} /></label>
             <label className="crm-field">Arrival time or window<input name="time" maxLength={80} disabled={busy} defaultValue={(pending ? booking.preferred_time : booking.confirmed_time) ?? ''} placeholder="Morning, Afternoon, or HH:MM" /></label>
@@ -539,7 +556,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       <section className="work-visit-card work-visit-notes">
         <h2>Notes</h2>
         <h3>Visit note</h3><p className={booking.notes ? 'work-visit-note' : 'crm-muted'}>{booking.notes || 'No internal note yet.'}</p>
-        {booking.customer_notes && <><h3>Customer note</h3><p className="work-visit-note">{booking.customer_notes}</p></>}
+        {!confirming && booking.customer_notes && <><h3>Customer note</h3><p className="work-visit-note">{booking.customer_notes}</p></>}
       </section>
       <section className="work-visit-card">
         <div className="work-visit-section-head"><h2>Payment</h2><span className="work-visit-status" data-status={paymentStatus}>{paymentStatus}</span></div>

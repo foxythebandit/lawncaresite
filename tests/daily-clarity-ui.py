@@ -118,7 +118,8 @@ def fixture():
     unnamed = create_customer("", unnamed_addr, 83)
     unnamed_visit = create_visit(unnamed, unnamed["phone"], unnamed_addr, day(4), None, "Lawn care", 70.00)
     overdue = create_visit(customer, name, address, (TODAY - timedelta(days=8)).isoformat(), None, "Lawn care", 85.50)
-    pending = create_visit(unnamed, "", unnamed_addr, None, None, "Leaf cleanup", 130.00, status="pending")
+    pending = create_visit(unnamed, "", unnamed_addr, None, None, "Leaf cleanup", 130.00, status="pending",
+                           customer_notes="Use the side gate. The dog stays inside on Tuesdays.")
     create_visit(unnamed, "", unnamed_addr, day(2), "Morning", "Lawn care", 70.00, status="pending")
 
     recurring_name, recurring_address = "Noah Park", "303 Crescent Field Drive, Austin, TX 78749"
@@ -661,9 +662,34 @@ def quote_browser():
             shot(legacy, "quote-legacy-review-390")
             legacy.get_by_role("button", name="Request first visit", exact=True).click()
             expect(legacy.get_by_role("heading", name="Request received")).to_be_visible()
-            row = request(f"bookings?lead_id=eq.{legacy_id}&select=status,job_total,accepted_quote_snapshot")[0]
+            row = request(f"bookings?lead_id=eq.{legacy_id}&select=id,status,job_total,accepted_quote_snapshot")[0]
             assert row["status"] == "pending" and row["job_total"] is None
             assert row["accepted_quote_snapshot"]["source"] == "legacy_quote_review"
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.goto(f"{BASE}/admin/jobs/{row['id']}")
+            page.get_by_role("button", name="Confirm first visit", exact=True).click()
+            expect(page.get_by_role("button", name="Confirm visit", exact=True)).to_be_disabled()
+            price_continuation = page.get_by_role("button", name="Set agreed items and price", exact=True)
+            expect(price_continuation).to_be_visible()
+            shot(page, "quote-legacy-inline-price-390")
+            price_continuation.click()
+            page.get_by_label("Item 1 description").fill("Leaf cleanup")
+            page.get_by_label("Item 1 amount").fill("125.00")
+            page.get_by_role("button", name="Save visit price", exact=True).click()
+            expect(page.locator(".work-visit-facts")).to_contain_text("$125.00")
+            page.get_by_role("button", name="Confirm first visit", exact=True).click()
+            expect(page.get_by_text("First visit $125.00", exact=True)).to_be_visible()
+            page.get_by_label("Service label", exact=True).select_option(label="Leaf cleanup")
+            page.once("dialog", lambda dialog: dialog.dismiss())
+            page.get_by_role("button", name="Back to visit", exact=True).click()
+            expect(page.get_by_label("Service label", exact=True).locator("option:checked")).to_have_text("Leaf cleanup")
+            page.get_by_label("I reviewed the original quote and agreed this service with the customer.", exact=True).check()
+            page.get_by_label("Visit date", exact=True).fill(day(4))
+            page.get_by_role("button", name="Confirm visit", exact=True).click()
+            expect(page.get_by_role("link", name="Customer history", exact=True)).to_be_visible()
+            saved = request(f"bookings?id=eq.{row['id']}&select=status,confirmed_date,job_total,accepted_quote_snapshot")[0]
+            assert saved == {"status": "confirmed", "confirmed_date": day(4), "job_total": 125,
+                             "accepted_quote_snapshot": row["accepted_quote_snapshot"]}
             expired = str(uuid4())
             request("sent_offers", "POST", {
                 "id": expired, "lead_id": expired_lead_id, "version": 1,
@@ -728,8 +754,14 @@ def quote_browser():
             expect(page.get_by_text("Quoted address", exact=True)).to_be_visible()
             expect(page.get_by_text("Selected property", exact=True)).to_be_visible()
             expect(page.get_by_text("This customer has prior mowing", exact=False)).to_be_visible()
-            page.get_by_label("I verified that the quoted work belongs at the selected property.", exact=True).check()
+            property_review = page.get_by_label("I verified that the quoted work belongs at the selected property.", exact=True)
+            property_review.check()
             page.get_by_label("I reviewed the customer’s mowing history and the promised introductory price.", exact=True).check()
+            page.once("dialog", lambda dialog: dialog.dismiss())
+            page.get_by_role("button", name="More actions", exact=True).click()
+            expect(page.get_by_label("Customer", exact=True)).to_have_value(returning_customer)
+            expect(page.get_by_label("Property", exact=True)).to_have_value(returning_property)
+            expect(property_review).to_be_checked()
             page.get_by_label("Visit date", exact=True).fill(day(4))
             assert_no_overflow(page)
             shot(page, "quote-returning-property-review-390")
@@ -1207,11 +1239,19 @@ try:
         page.goto(f"{BASE}/admin/jobs/{pending}")
         expect(page.get_by_role("button", name="Confirm first visit", exact=True)).to_be_visible()
         expect(page.get_by_text("Needs scheduling", exact=True)).to_be_visible()
+        page.set_viewport_size({"width": 390, "height": 844})
         page.get_by_role("button", name="Confirm first visit", exact=True).click()
+        confirmation = page.get_by_role("region", name="Visit date and time")
+        expect(confirmation.get_by_text("Use the side gate. The dog stays inside on Tuesdays.", exact=True)).to_be_visible()
+        expect(confirmation.get_by_label("Visit date", exact=True)).to_be_visible()
+        assert_no_overflow(page)
+        confirmation.get_by_label("Visit date", exact=True).scroll_into_view_if_needed()
+        shot(page, "pending-confirmation-customer-note-390", full_page=False)
         page.get_by_label("Visit date", exact=True).fill(day(6))
         page.get_by_role("button", name="Confirm visit", exact=True).click()
         expect(page.get_by_role("status").get_by_text("Visit confirmed.")).to_be_visible()
         assert visit(pending)["status"] == "confirmed"
+        page.set_viewport_size({"width": 1440, "height": 1000})
         page.goto(f"{BASE}/admin/jobs/{unlinked}")
         page.get_by_role("link", name="Unlinked phone history").click()
         expect(page.get_by_role("link", name="Calendar", exact=True).last).to_be_visible()
