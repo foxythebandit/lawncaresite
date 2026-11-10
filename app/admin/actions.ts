@@ -192,7 +192,7 @@ export async function markComplete(
   id: string,
   data: { completed_at: string; expected_updated_at: string; operation_id: string; introReview?: string }
 ): Promise<ActionResult> {
-  await requireStaff()
+  const staff = await requireStaff()
   if (!UUID_RE.test(id) || !UUID_RE.test(data.operation_id) || !/^\d{4}-\d{2}-\d{2}$/.test(data.completed_at)) {
     return { success: false, error: 'Choose a valid completion date.' }
   }
@@ -200,7 +200,7 @@ export async function markComplete(
   const { data: result, error } = await db.rpc('complete_job', {
     p_booking_id: id, p_expected_updated_at: data.expected_updated_at,
     p_operation_id: data.operation_id, p_completed_on: data.completed_at,
-    ...(data.introReview ? { p_intro_review: data.introReview } : {}),
+    p_intro_review: data.introReview ?? null, p_staff_user_id: staff.id,
   })
   if (error) return completionError(error)
 

@@ -90,6 +90,7 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
   const [selectedProperty, setSelectedProperty] = useState('new')
   const [lines, setLines] = useState(items)
   const [introReview, setIntroReview] = useState<IntroCompletionReview | null>(null)
+  const extraReview = introReview?.extraReview
   const [wholeMove, setWholeMove] = useState(false)
   const [movePreview, setMovePreview] = useState<{ key: string; preview: ServicePreview } | null>(null)
   const paymentLink = booking.payment_link
@@ -238,7 +239,8 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
       }
     } else if (panel === 'complete') {
       const date = field(form, 'date')
-      const review = introReview?.token
+      const review = extraReview ? field(form, 'intro-disposition') : introReview?.token
+      if (extraReview && !review) return
       runVisit(key + (review ?? ''), { action: 'complete', date, introReview: review },
         (id, op) => markComplete(id, { expected_updated_at: versions.current.visit, operation_id: op, completed_at: date, introReview: review }),
         'Visit marked done.')
@@ -402,7 +404,26 @@ export default function VisitDetails({ bookingId, occurrence, booking, today, ba
                 <strong>{formatMoney(introReview.allocatedAmount)}{introReview.move && ` → ${formatMoney(introReview.replacementAmount)}`}</strong></li>
               <li>This visit <strong>{formatMoney(introReview.visitAmount)}{introReview.move && ` → ${formatMoney(introReview.introAmount)}`}</strong></li>
             </ul>}
-            <div className="work-visit-actions">{btn(introReview?.token ? 'Save reviewed completion' : 'Save completion')}</div>
+            {extraReview && <>
+              <p><strong>Original introductory offer · {formatMoney(extraReview.originalAmount)}</strong></p>
+              <ul className="work-visit-records">{extraReview.originalItems.map((item, index) =>
+                <li key={index}>{item.description}<strong>{formatMoney(item.amount)}</strong></li>)}</ul>
+              <p><strong>This visit’s agreed work · {formatMoney(extraReview.visitAmount)}</strong></p>
+              <ul className="work-visit-records">{extraReview.visitItems.map((item, index) =>
+                <li key={index}>{item.description}<strong>{formatMoney(item.amount)}</strong></li>)}</ul>
+              {extraReview.replaceBlocked && <p className="crm-muted">{extraReview.replaceBlocked} <Link href={visitHref({
+                booking_id: extraReview.priorBookingId, agreement_id: null, revision_id: null, cadence_on: null,
+              }, back)}>Open original priced visit</Link></p>}
+              {extraReview.restoredAmount != null && <p className="crm-muted">Replacing the offer restores {formatMoney(extraReview.restoredAmount)} to the visit holding the introductory price.</p>}
+              <fieldset key={extraReview.separateToken} disabled={busy}>
+                <legend>Confirm what the customer agreed to</legend>
+                {extraReview.replaceToken && <label className="crm-check"><input type="radio" name="intro-disposition" value={extraReview.replaceToken} required />
+                  This work and price replace the unused introductory offer.</label>}
+                <label className="crm-check"><input type="radio" name="intro-disposition" value={extraReview.separateToken} required />
+                  This is separate work. Keep the introductory offer available.</label>
+              </fieldset>
+            </>}
+            <div className="work-visit-actions">{btn(introReview?.token || extraReview ? 'Save reviewed completion' : 'Save completion')}</div>
           </>}
         </>}
         {panel === 'note' && <>

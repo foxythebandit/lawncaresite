@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { changeJob, finishVisit } from '../../actions'
-import { formatMoney, jobStatusLabel } from '@/lib/crm-jobs'
+import { formatMoney, jobStatusLabel, type ActionResult } from '@/lib/crm-jobs'
 import { calendarHref } from '@/lib/calendar-view'
 import Icon from '../../icons'
 import { uuid } from '@/lib/uuid'
@@ -32,12 +32,12 @@ export default function UpcomingVisits({ visits, nextScheduledOn }: { visits: Up
         View {dateLabel(calendarDate)} on Calendar</Link></p>
       : <p className="crm-muted">Nothing booked. Add a service to get started.</p>}
     {message && <div className={`crm-toast${message.error ? ' crm-toast-error' : ''}`} role={message.error ? 'alert' : 'status'}>
-      <span>{message.text}</span><button type="button" aria-label="Dismiss" onClick={() => setMessage(null)}>×</button>
+      <span>{message.text}{message.reviewHref && <> <Link href={message.reviewHref}>Open visit to review completion</Link></>}</span><button type="button" aria-label="Dismiss" onClick={() => setMessage(null)}>×</button>
     </div>}
   </section>
 }
 
-type Message = { text: string; error: boolean } | null
+type Message = { text: string; error: boolean; reviewHref?: string } | null
 
 function VisitRow({ visit, setMessage }: {
   visit: UpcomingVisit; setMessage: (message: Message) => void
@@ -56,12 +56,16 @@ function VisitRow({ visit, setMessage }: {
     if (!ops.current[name]) ops.current[name] = uuid()
     return ops.current[name]
   }
-  function run(action: () => Promise<{ success: boolean; error?: string; data?: Record<string, unknown> }>, done: string) {
+  function run(action: () => Promise<ActionResult>, done: string) {
     setMessage(null)
     startTransition(async () => {
       try {
         const result = await action()
-        if (!result.success) { setMessage({ text: result.error ?? 'Could not save.', error: true }); return }
+        if (!result.success) {
+          setMessage({ text: result.error ?? 'Could not save.', error: true,
+            reviewHref: result.data?.introReview?.extraReview ? `/admin/jobs/${visit.id}` : undefined })
+          return
+        }
         ops.current = {}
         setOpen(null)
         setMessage({ text: typeof result.data?.warning === 'string' ? result.data.warning : done, error: false })

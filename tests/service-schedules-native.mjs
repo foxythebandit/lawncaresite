@@ -48,6 +48,7 @@ async function withNativeSchedule(run) {
     execFileSync('supabase', ['db', 'query', '--local', `do $$
     begin
       update public.recurring_agreements set schedule_source_booking_id = null where customer_id = '${customerId}';
+      delete from public.crm_intro_grants where customer_id = '${customerId}';
       delete from public.crm_operations where id = '${operationId}'
         or target_id in (select id from public.bookings where customer_id = '${customerId}')
         or target_id in (select id from public.recurring_agreements where customer_id = '${customerId}');
@@ -374,4 +375,53 @@ test('native acceptance, confirmation and completion races share one booking and
       delete from public.customers where id = v_customer;
     end $fixture$;`], { stdio: 'pipe' })
   }
+})
+
+
+test('native competing reviewed extras close one introductory offer and replay the winning receipt', async () => {
+  await withNativeSchedule(async agreementId => {
+    const agreement = await data(admin.from('recurring_agreements').select('customer_id,property_id,schedule_source_booking_id')
+      .eq('id', agreementId).single())
+    const { id: label } = await data(admin.from('service_labels').select('id').eq('semantic_key', 'mowing').single())
+    await data(admin.from('recurring_agreements').update({ service_label_id: label }).eq('id', agreementId))
+    const source = await data(admin.from('bookings').select('updated_at').eq('id', agreement.schedule_source_booking_id).single())
+    const regular = [{ kind: 'service', description: 'Lawn care', amount: '83.55' },
+      { kind: 'service', description: 'Bagging', amount: '10.25' }]
+    const intro = [...regular, { kind: 'discount', description: 'Introductory mowing discount', amount: '-25.06' }]
+    await data(admin.rpc('crm_replace_job_items', { p_booking_id: agreement.schedule_source_booking_id,
+      p_expected_updated_at: source.updated_at, p_operation_id: randomUUID(), p_items: intro }))
+    await data(admin.rpc('crm_register_intro', { p_booking_id: agreement.schedule_source_booking_id, p_first: intro, p_standard: regular }))
+    const workers = [admin, client(config.SECRET_KEY)]
+    const staffId = randomUUID()
+    const requests = []
+    for (const worker of workers) {
+      const service = { p_customer_id: agreement.customer_id, p_staff_user_id: staffId,
+        p_request: { related_agreement_id: agreementId, property_id: agreement.property_id, label_id: label,
+          first_on: today, price: '78.00', arrival: 'Morning' } }
+      const preview = await data(worker.rpc('crm_service_create', service))
+      const extra = await data(worker.rpc('crm_service_create', { ...service, p_operation_id: randomUUID(), p_preview: preview.preview }))
+      const visit = await data(worker.from('bookings').select('updated_at').eq('id', extra.booking_id).single())
+      const completion = { p_booking_id: extra.booking_id, p_expected_updated_at: visit.updated_at,
+        p_operation_id: randomUUID(), p_completed_on: today }
+      const review = await worker.rpc('complete_job', completion)
+      assert.equal(review.error.code, 'PT422')
+      const { replaceToken } = JSON.parse(review.error.details).extraReview
+      assert.ok(replaceToken)
+      requests.push({ ...completion, p_intro_review: replaceToken, p_staff_user_id: staffId })
+    }
+    const responses = await Promise.all(workers.map((worker, i) => worker.rpc('complete_job', requests[i])))
+    const winner = responses.findIndex(result => !result.error)
+    assert.ok(winner >= 0)
+    assert.equal(responses[1 - winner].error.code, 'PT409')
+    const done = responses[winner].data
+    assert.equal(done.intro_resolution.disposition, 'replaced')
+    assert.deepEqual(await data(admin.rpc('complete_job', requests[winner])), { ...done, duplicate: true })
+    assert.deepEqual(await data(admin.from('crm_intro_grants').select('replaced_by_booking_id,consumed_on')
+      .eq('customer_id', agreement.customer_id).single()), { replaced_by_booking_id: done.booking_id, consumed_on: today })
+    assert.deepEqual(await data(admin.from('bookings').select('status,job_total').eq('id', done.booking_id).single()),
+      { status: 'completed', job_total: 78 })
+    assert.deepEqual(await data(admin.from('bookings').select('status,job_total').eq('id', requests[1 - winner].p_booking_id).single()),
+      { status: 'confirmed', job_total: 78 })
+    assert.equal((await data(admin.from('bookings').select('job_total').eq('id', agreement.schedule_source_booking_id).single())).job_total, 93.80)
+  })
 })

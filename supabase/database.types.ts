@@ -113,14 +113,14 @@ isOneToOne: false
                   ]
                 },"crm_intro_grants": {
                   Row: {
-                    "allocated_booking_id": string,"consumed_on": string | null,"customer_id": string,"first_items": NonNullable<Json>,"source_booking_id": string,"standard_items": NonNullable<Json>,"standard_price_override": boolean
+                    "allocated_booking_id": string,"consumed_on": string | null,"customer_id": string,"first_items": NonNullable<Json>,"replaced_by_booking_id": string | null,"source_booking_id": string,"standard_items": NonNullable<Json>,"standard_price_override": boolean
                   }
                   ComputedFields: never
                   Insert: {
-                    "allocated_booking_id": string,"consumed_on"?: string | null,"customer_id": string,"first_items": NonNullable<Json>,"source_booking_id": string,"standard_items": NonNullable<Json>,"standard_price_override": boolean
+                    "allocated_booking_id": string,"consumed_on"?: string | null,"customer_id": string,"first_items": NonNullable<Json>,"replaced_by_booking_id"?: string | null,"source_booking_id": string,"standard_items": NonNullable<Json>,"standard_price_override": boolean
                   }
                   Update: {
-                    "allocated_booking_id"?: string,"consumed_on"?: string | null,"customer_id"?: string,"first_items"?: NonNullable<Json>,"source_booking_id"?: string,"standard_items"?: NonNullable<Json>,"standard_price_override"?: boolean
+                    "allocated_booking_id"?: string,"consumed_on"?: string | null,"customer_id"?: string,"first_items"?: NonNullable<Json>,"replaced_by_booking_id"?: string | null,"source_booking_id"?: string,"standard_items"?: NonNullable<Json>,"standard_price_override"?: boolean
                   }
                   Relationships: [
                     {
@@ -134,6 +134,12 @@ isOneToOne: true
       columns: ["customer_id"]
 isOneToOne: true
       referencedRelation: "customers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "crm_intro_grants_replaced_by_booking_id_fkey"
+      columns: ["replaced_by_booking_id"]
+isOneToOne: true
+      referencedRelation: "bookings"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "crm_intro_grants_source_booking_id_fkey"
@@ -511,6 +517,8 @@ isOneToOne: false
 { Args: { "p_booking_id": string,"p_completed_on": string,"p_expected_updated_at": string,"p_operation_id": string }; Returns: Json
                            } |
 { Args: { "p_booking_id": string,"p_completed_on": string,"p_expected_updated_at": string,"p_intro_review": string,"p_operation_id": string }; Returns: Json
+                           } |
+{ Args: { "p_booking_id": string,"p_completed_on": string,"p_expected_updated_at": string,"p_intro_review": string,"p_operation_id": string,"p_staff_user_id": string }; Returns: Json
                            },
 "completed_job_count":
 { Args: Record<PropertyKey, never>; Returns: number
@@ -594,6 +602,8 @@ isOneToOne: false
                            },
 "crm_intro_before_complete":
 { Args: { "p_booking_id": string,"p_completed_on": string,"p_review": string,"p_source": string }; Returns: undefined
+                           } |
+{ Args: { "p_booking_id": string,"p_completed_on": string,"p_review": string,"p_source": string,"p_staff_user_id": string }; Returns: Json
                            },
 "crm_intro_continuation":
 { Args: { "p_customer_id": string }; Returns: {

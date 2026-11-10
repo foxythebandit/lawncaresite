@@ -707,6 +707,161 @@ test('earlier explicitly related extra keeps its custom price until compatible i
   assert.equal((await entries(id, 123))[0].price, 80)
 })
 
+const mismatchedExtra = async () => {
+  const agreement = await confirmedPromotion()
+  await winterResume(agreement)
+  const extra = await extraFor(agreement, day(116))
+  return { agreement, visit: await savedVisit(extra.booking_id) }
+}
+
+const completionOptions = async (visit, on = day(116)) => {
+  let detail
+  await assert.rejects(complete(visit, on), error => {
+    detail = JSON.parse(error.detail)
+    return error.code === 'PT422' && !!detail.extraReview
+  })
+  return detail.extraReview
+}
+const reviewedComplete = (visit, token, op = randomUUID(), staff = actor, on = day(116)) =>
+  sqlValue('select complete_job($1,$2,$3,$4,$5,$6) value', [visit.id, visit.updated_at, op, on, token, staff]).then(r => r.value)
+const introOutcome = customer => sqlValue('select replaced_by_booking_id,consumed_on::text from crm_intro_grants where customer_id=$1', [customer])
+const visitItems = id => db.query('select kind,description,amount::text from job_items where booking_id=$1 order by created_at,id', [id]).then(r => r.rows)
+
+test('reviewed replacement completes the agreed $78 work and keeps the original $68.74 canceled history', async () => {
+  const { agreement, visit } = await mismatchedExtra()
+  const id = agreement.agreement_id
+  const original = await savedVisit(agreement.booking_id)
+  const priorItems = await visitItems(original.id)
+  const actualItems = await visitItems(visit.id)
+  const [next] = await entries(id, 123)
+  await assert.rejects(projectedAction(id, next, 'complete', { date: day(123), expected_items: regularItems }),
+    error => error.code === 'PT422' && JSON.parse(error.detail).earlierVisitId === visit.id)
+  const options = await completionOptions(visit)
+  assert.deepEqual(options.originalItems, firstItems)
+  assert.deepEqual(options.visitItems, actualItems)
+  assert.equal(options.originalAmount, 68.74)
+  assert.equal(options.visitAmount, 78)
+  assert.equal(options.restoredAmount, null)
+  assert.ok(options.replaceToken && options.separateToken && options.replaceToken !== options.separateToken)
+  await assert.rejects(reviewedComplete(visit, options.replaceToken, randomUUID(), null), /staff review/i)
+  const operation = randomUUID()
+  const result = await reviewedComplete(visit, options.replaceToken, operation)
+  assert.equal(result.intro_resolution.disposition, 'replaced')
+  assert.deepEqual(await reviewedComplete(visit, options.replaceToken, operation), { ...result, duplicate: true })
+  await assert.rejects(reviewedComplete(visit, options.replaceToken, operation, randomUUID()), error => error.code === '23505')
+  assert.deepEqual(await introOutcome(agreement.customer_id), { replaced_by_booking_id: visit.id, consumed_on: day(116) })
+  const done = await savedVisit(visit.id)
+  assert.equal(done.status, 'completed')
+  assert.equal(done.job_total, '78.00')
+  assert.deepEqual(done.accepted_quote_snapshot, visit.accepted_quote_snapshot)
+  assert.deepEqual(await visitItems(visit.id), actualItems)
+  const after = await savedVisit(original.id)
+  assert.equal(after.status, 'canceled')
+  assert.equal(after.job_total, '68.74')
+  assert.deepEqual(after.accepted_quote_snapshot, original.accepted_quote_snapshot)
+  assert.deepEqual(await visitItems(original.id), priorItems)
+  const { request, result: receipt } = await sqlValue('select request,result from crm_operations where id=$1', [operation])
+  assert.equal(request.staff_user_id, actor)
+  assert.deepEqual(receipt.intro_resolution, { disposition: 'replaced', source_booking_id: original.id,
+    prior_booking_id: original.id, completed_booking_id: visit.id, original_items: firstItems, original_amount: 68.74,
+    visit_items: actualItems, visit_amount: 78, restored_amount: null })
+  assert.equal((await entries(id, 123))[0].price, 93.80)
+  await projectedAction(id, next, 'complete', { date: day(123), expected_items: regularItems })
+  assert.equal((await entries(id, 123))[0].price, 93.80)
+  assert.equal((await introOutcome(agreement.customer_id)).replaced_by_booking_id, visit.id)
+})
+
+test('reviewed separate work keeps the intro for later and protects existing payment facts', async () => {
+  const { agreement, visit } = await mismatchedExtra()
+  const original = await savedVisit(agreement.booking_id)
+  await db.query("update bookings set payment_link='https://example.test/original' where id=$1", [original.id])
+  await db.query('select record_job_payment($1,$2,$3,$4,$5,$6)', [visit.id, randomUUID(), 78, day(116), 'cash', 'manual'])
+  const options = await completionOptions(visit)
+  assert.equal(options.replaceToken, null)
+  assert.match(options.replaceBlocked, /payment/i)
+  assert.ok(options.separateToken)
+  const done = await reviewedComplete(visit, options.separateToken)
+  assert.equal(done.intro_resolution.disposition, 'separate_work')
+  assert.deepEqual(await introOutcome(agreement.customer_id), { replaced_by_booking_id: null, consumed_on: null })
+  assert.equal((await savedVisit(visit.id)).job_total, '78.00')
+  assert.equal((await sqlValue('select amount from job_payments where booking_id=$1', [visit.id])).amount, '78.00')
+  assert.equal((await savedVisit(original.id)).payment_link, 'https://example.test/original')
+  assert.equal((await entries(agreement.agreement_id, 123))[0].price, 93.80)
+})
+
+test('replacement restores an open unprotected allocation without touching a paid extra', async () => {
+  const agreement = await confirmedPromotion()
+  const extra = await extraFor(agreement, day(2))
+  const original = await savedVisit(agreement.booking_id)
+  const visit = await savedVisit(extra.booking_id)
+  await db.query('select record_job_payment($1,$2,$3,$4,$5,$6)', [visit.id, randomUUID(), 78, day(2), 'cash', 'manual'])
+  await db.query("update bookings set payment_link='https://example.test/actual' where id=$1", [visit.id])
+  const paidVisit = await savedVisit(visit.id)
+  const options = await completionOptions(paidVisit, day(2))
+  assert.equal(options.restoredAmount, 93.80)
+  await reviewedComplete(paidVisit, options.replaceToken, randomUUID(), actor, day(2))
+  assert.equal((await savedVisit(visit.id)).job_total, '78.00')
+  assert.equal((await savedVisit(visit.id)).payment_link, 'https://example.test/actual')
+  assert.equal((await sqlValue('select amount from job_payments where booking_id=$1', [visit.id])).amount, '78.00')
+  const restored = await savedVisit(original.id)
+  assert.equal(restored.job_total, '93.80')
+  assert.deepEqual(restored.accepted_quote_snapshot, original.accepted_quote_snapshot)
+  assert.deepEqual((await visitItems(original.id)).sort((a, b) => a.description.localeCompare(b.description)), [regularItems[1], regularItems[0]])
+  await complete(restored, day(4))
+})
+
+test('a stale replacement cannot release a newly protected introductory amount', async () => {
+  const { agreement, visit } = await mismatchedExtra()
+  const options = await completionOptions(visit)
+  await assert.rejects(reviewedComplete(visit, options.replaceToken, randomUUID(), actor, day(115)),
+    error => error.code === 'PT422')
+  const edited = [{ kind: 'service', description: 'Back lawn only', amount: '78.00' }]
+  await sqlValue('select crm_replace_job_items($1,$2,$3,$4) value', [visit.id, visit.updated_at, randomUUID(), JSON.stringify(edited)])
+  const current = await savedVisit(visit.id)
+  await assert.rejects(reviewedComplete(current, options.replaceToken), error => error.code === 'PT422')
+  const latest = await completionOptions(current)
+  assert.deepEqual(latest.visitItems, edited)
+  await db.query('select record_job_payment($1,$2,$3,$4,$5,$6)', [agreement.booking_id, randomUUID(), 68.74, day(4), 'cash', 'manual'])
+  await assert.rejects(reviewedComplete(current, latest.replaceToken), error => {
+    const refreshed = JSON.parse(error.detail).extraReview
+    return error.code === 'PT422' && refreshed.replaceToken === null && /payment/i.test(refreshed.replaceBlocked)
+  })
+  assert.equal((await savedVisit(visit.id)).status, 'confirmed')
+  assert.equal((await savedVisit(agreement.booking_id)).job_total, '68.74')
+  assert.deepEqual(await introOutcome(agreement.customer_id), { replaced_by_booking_id: null, consumed_on: null })
+})
+
+test('an explicitly separate completed visit leaves the next eligible projected mow at the intro price', async () => {
+  const { agreement, visit } = await mismatchedExtra()
+  const items = [{ kind: 'service', description: 'Leaf cleanup', amount: '78.00' }]
+  await sqlValue('select crm_replace_job_items($1,$2,$3,$4) value', [visit.id, visit.updated_at, randomUUID(), JSON.stringify(items)])
+  const actual = await savedVisit(visit.id)
+  const review = await completionOptions(actual)
+  const result = await reviewedComplete(actual, review.separateToken)
+  assert.deepEqual(result.intro_resolution.visit_items, items)
+  assert.equal((await savedVisit(visit.id)).status, 'completed')
+  const [next] = await entries(agreement.agreement_id, 123)
+  assert.equal(next.price, 68.74)
+  await projectedAction(agreement.agreement_id, next, 'complete', { date: day(123), expected_items: firstItems })
+  assert.deepEqual(await introOutcome(agreement.customer_id), { replaced_by_booking_id: null, consumed_on: day(123) })
+})
+
+test('a pause-canceled first visit returns at its standard amount after an agreed replacement', async () => {
+  const agreement = await confirmedPromotion()
+  const id = agreement.agreement_id
+  await scheduleEdit(id, { mode: 'pause', from: day(0) })
+  const extra = await extraFor(agreement, day(2))
+  const visit = await savedVisit(extra.booking_id)
+  const options = await completionOptions(visit, day(2))
+  await reviewedComplete(visit, options.replaceToken, randomUUID(), actor, day(2))
+  const original = await savedVisit(agreement.booking_id)
+  assert.equal(original.job_total, '68.74')
+  const { preview } = await scheduleEdit(id, { mode: 'resume', from: day(0) })
+  assert.equal(preview.changes.find(change => change.booking_id === original.id).price, 93.80)
+  assert.equal((await savedVisit(original.id)).job_total, '93.80')
+  assert.deepEqual((await savedVisit(original.id)).accepted_quote_snapshot, original.accepted_quote_snapshot)
+})
+
 test('a related extra with different items and an old shared payment link stay price-protected', async () => {
   const agreement = await confirmedPromotion()
   const id = agreement.agreement_id

@@ -401,15 +401,15 @@ def quote_browser():
     import hmac
 
     provider_log = Path(os.environ["QG_QUOTE_PROVIDER_LOG"])
-    lead_id, legacy_id, phone_id, cleanup_id, expired_lead_id, draft_lead_id, mixed_cleanup_id, winter_lead_id = (
-        str(uuid4()) for _ in range(8))
+    lead_id, legacy_id, phone_id, cleanup_id, expired_lead_id, draft_lead_id, mixed_cleanup_id, winter_lead_id, replacement_id = (
+        str(uuid4()) for _ in range(9))
     returning_customer, returning_property, returning_visit = (str(uuid4()) for _ in range(3))
     address = "9 Quote Lane, Austin, TX 78704"
     draft = {"address": address, "contactAddressAtReview": address, "sections": [], "freq": "onetime",
              "jobLatLng": None, "calculatedPrice": 83.55, "calculatedFirstVisit": 58.49, "overridePrice": None,
              "includeMowing": True, "manualLines": [], "discountCents": 0, "totalCents": 8355, "notes": ""}
     ids = ", ".join(f"'{key}'" for key in (
-        lead_id, legacy_id, phone_id, cleanup_id, expired_lead_id, draft_lead_id, mixed_cleanup_id, winter_lead_id))
+        lead_id, legacy_id, phone_id, cleanup_id, expired_lead_id, draft_lead_id, mixed_cleanup_id, winter_lead_id, replacement_id))
     draft_address = "40 Draft Lane, Austin, TX"
     saved_address = draft_address + " 78704"
     draft_mow = {**draft, "address": draft_address, "contactAddressAtReview": draft_address,
@@ -435,6 +435,31 @@ def quote_browser():
         page.get_by_role("button", name="Preview email", exact=True).click()
         expect(page.get_by_role("heading", name="Review email before sending")).to_be_visible()
         return page.locator('iframe[title="Email preview"]').get_attribute("srcdoc")
+
+    def schedule_edit(plan_id, edit):
+        version = request(f"recurring_agreements?id=eq.{plan_id}&select=updated_at")[0]["updated_at"]
+        args = {"p_agreement_id": plan_id, "p_expected_updated_at": version, "p_request": edit, "p_staff_user_id": str(uuid4())}
+        preview = request("rpc/crm_service_edit", "POST", args)
+        return request("rpc/crm_service_edit", "POST", {**args, "p_operation_id": str(uuid4()), "p_preview": preview["preview"]})
+
+    def pause_mowing_request(lead, name, phone, property_address, first_items, standard_items):
+        lead_version = request("leads?select=updated_at", "POST", {"id": lead, "name": name, "phone": phone,
+            "address": property_address, "source": "staff", "services": ["Lawn care"]})[0]["updated_at"]
+        pending = request("rpc/crm_staff_quote_request", "POST", {
+            "p_lead_id": lead, "p_expected_updated_at": lead_version, "p_operation_id": str(uuid4()),
+            "p_terms": {"source": "staff_agreed_quote", "frequency": "weekly", "mowing": True,
+                        "items": first_items, "regular_items": standard_items, "date": day(4)},
+            "p_actor_email": "staff@example.test",
+        })["booking_id"]
+        lead_version = request(f"leads?id=eq.{lead}&select=updated_at")[0]["updated_at"]
+        visit_version = request(f"bookings?id=eq.{pending}&select=updated_at")[0]["updated_at"]
+        saved = request("rpc/crm_confirm_first_visit", "POST", {
+            "p_booking_id": pending, "p_expected_updated_at": visit_version, "p_lead_version": lead_version,
+            "p_operation_id": str(uuid4()), "p_request": {"date": day(4), "arrival": "Morning",
+                "name": name, "address": property_address, "staff_user_id": str(uuid4())},
+        })
+        schedule_edit(saved["agreement_id"], {"mode": "pause", "from": TODAY.isoformat()})
+        return saved
 
     try:
         for id_ in (lead_id, legacy_id):
@@ -466,28 +491,24 @@ def quote_browser():
                 "quote_confirmed_at": f"{TODAY.isoformat()}T12:00:00Z", "source": "staff", "services": ["Lawn care"]})
         request("leads", "POST", {"id": mixed_cleanup_id, "name": "Test Phone Cleanup", "phone": "5125550185",
                 "address": "44 Cleanup Lane, Austin, TX 78704", "source": "staff", "services": ["Lawn care", "Leaf cleanup"]})
-        winter = request("leads?select=updated_at", "POST", {"id": winter_lead_id, "name": "Test Winter Mow", "phone": "5125550184",
-                "address": draft_address, "source": "staff", "services": ["Lawn care"]})[0]
-        winter_pending = request("rpc/crm_staff_quote_request", "POST", {
-            "p_lead_id": winter_lead_id, "p_expected_updated_at": winter["updated_at"], "p_operation_id": str(uuid4()),
-            "p_terms": {"source": "staff_agreed_quote", "frequency": "weekly", "mowing": True,
-                        "items": intro_items, "regular_items": lawn_items, "date": day(4)},
-            "p_actor_email": "staff@example.test",
-        })
-        winter_booking = winter_pending["booking_id"]
-        winter_lead_version = request(f"leads?id=eq.{winter_lead_id}&select=updated_at")[0]["updated_at"]
-        winter_visit_version = request(f"bookings?id=eq.{winter_booking}&select=updated_at")[0]["updated_at"]
-        winter_result = request("rpc/crm_confirm_first_visit", "POST", {
-            "p_booking_id": winter_booking, "p_expected_updated_at": winter_visit_version, "p_lead_version": winter_lead_version,
-            "p_operation_id": str(uuid4()), "p_request": {"date": day(4), "arrival": "Morning",
-                "name": "Test Winter Mow", "address": draft_address, "staff_user_id": str(uuid4())},
-        })
+        winter_result = pause_mowing_request(winter_lead_id, "Test Winter Mow", "5125550184", draft_address, intro_items, lawn_items)
         winter_plan = winter_result["agreement_id"]
-        winter_version = request(f"recurring_agreements?id=eq.{winter_plan}&select=updated_at")[0]["updated_at"]
-        pause = {"p_agreement_id": winter_plan, "p_expected_updated_at": winter_version,
-                 "p_request": {"mode": "pause", "from": TODAY.isoformat()}, "p_staff_user_id": str(uuid4())}
-        pause_preview = request("rpc/crm_service_edit", "POST", pause)
-        request("rpc/crm_service_edit", "POST", {**pause, "p_operation_id": str(uuid4()), "p_preview": pause_preview["preview"]})
+        replacement_address = "22 Replacement Lane, Austin, TX 78704"
+        replacement_regular = [{"kind": "service", "description": "Lawn care", "amount": "83.55"},
+                               {"kind": "service", "description": "Bagging", "amount": "10.25"}]
+        replacement_intro = replacement_regular + [{"kind": "discount", "description": "Introductory mowing discount", "amount": "-25.06"}]
+        replacement = pause_mowing_request(replacement_id, "Test Revised Mow", "5125550174", replacement_address,
+                                          replacement_intro, replacement_regular)
+        replacement_plan = replacement["agreement_id"]
+        schedule_edit(replacement_plan, {"mode": "resume", "from": day(120)})
+        replacement_booking = replacement["booking_id"]
+        source_before = request(f"bookings?id=eq.{replacement_booking}&select=status,job_total,accepted_quote_snapshot")[0]
+        extra_args = {"p_customer_id": replacement["customer_id"], "p_staff_user_id": str(uuid4()),
+                      "p_request": {"related_agreement_id": replacement_plan, "property_id": replacement["property_id"],
+                                    "label_id": lawn_label, "first_on": day(116), "price": "78.00", "arrival": "Morning"}}
+        extra_preview = request("rpc/crm_service_create", "POST", extra_args)
+        extra_booking = request("rpc/crm_service_create", "POST", {**extra_args, "p_operation_id": str(uuid4()),
+                                "p_preview": extra_preview["preview"]})["booking_id"]
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             staff = local_browser(browser, 1440, 1000)
@@ -841,6 +862,46 @@ def quote_browser():
             expect(page.get_by_role("textbox", name=re.compile(r"Item \d+ description")).last).to_have_value("Introductory mowing discount")
             shot(page, "winter-intro-projected-detail-390")
             assert request(f"bookings?agreement_id=eq.{winter_plan}&confirmed_date=gte.{day(120)}&select=id") == []
+            page.goto(f"{BASE}/admin/customers/{replacement['customer_id']}")
+            upcoming = page.get_by_role("region", name="Upcoming visits")
+            upcoming.get_by_role("button", name="Done", exact=True).click()
+            upcoming.get_by_label("Date done", exact=True).fill(day(116))
+            upcoming.get_by_label("Paid now ($, optional)", exact=True).fill("")
+            upcoming.get_by_role("button", name="Mark done", exact=True).click()
+            review_link = upcoming.get_by_role("link", name="Open visit to review completion", exact=True)
+            expect(review_link).to_be_visible()
+            shot(page, "intro-replacement-customer-continuation-390")
+            review_link.click()
+            page.wait_for_url(re.compile(rf"/admin/jobs/{extra_booking}$"))
+            page.get_by_role("button", name="Mark done", exact=True).click()
+            page.get_by_label("Date completed", exact=True).fill(day(116))
+            page.get_by_role("button", name="Save completion", exact=True).click()
+            expect(page.get_by_text("Original introductory offer · $68.74", exact=True)).to_be_visible()
+            expect(page.get_by_text("This visit’s agreed work · $78.00", exact=True)).to_be_visible()
+            expect(page.get_by_role("listitem").filter(has_text=re.compile(r"Bagging\s*\$10\.25"))).to_be_visible()
+            save_replacement = page.get_by_role("button", name="Save reviewed completion", exact=True)
+            for width in (1440, 390, 320):
+                page.set_viewport_size({"width": width, "height": 844 if width < 500 else 1000})
+                assert_no_overflow(page)
+                shot(page, f"intro-replacement-review-{width}")
+            save_replacement.click()
+            assert request(f"bookings?id=eq.{extra_booking}&select=status")[0]["status"] == "confirmed"
+            page.get_by_role("radio", name="This work and price replace the unused introductory offer.", exact=True).check()
+            save_replacement.scroll_into_view_if_needed()
+            save_replacement.click(trial=True)
+            assert save_replacement.bounding_box()["y"] + save_replacement.bounding_box()["height"] <= page.locator(".admin-nav").bounding_box()["y"]
+            shot(page, "intro-replacement-save-viewport-320", full_page=False)
+            save_replacement.click()
+            expect(page.get_by_text("Done", exact=True)).to_be_visible()
+            expect(page.get_by_text("$78.00", exact=True)).to_be_visible()
+            shot(page, "intro-replacement-done-320")
+            assert request(f"bookings?id=eq.{replacement_booking}&select=status,job_total,accepted_quote_snapshot")[0] == source_before
+            assert request(f"crm_intro_grants?customer_id=eq.{replacement['customer_id']}&select=replaced_by_booking_id,consumed_on")[0] == {
+                "replaced_by_booking_id": extra_booking, "consumed_on": day(116)}
+            page.goto(calendar("day", day(123)))
+            page.get_by_role("link", name=re.compile("Test Revised Mow, Lawn care")).click()
+            expect(page.get_by_text("$93.80", exact=True)).to_be_visible()
+            shot(page, "intro-replacement-next-320")
             assert not errors, errors
             browser.close()
         print("Quote delivery, first-visit review, and introductory completion passed in Chromium at 1440/390/320.")
@@ -852,7 +913,7 @@ def quote_browser():
           fixture_customers := coalesce(fixture_customers,'{{}}'::uuid[]) || '{returning_customer}'::uuid;
           update public.recurring_agreements set schedule_source_booking_id = null where customer_id = any(fixture_customers);
           delete from public.crm_intro_grants where customer_id = any(fixture_customers);
-          delete from public.crm_operations where target_id in (select id from public.bookings where lead_id in ({ids}))
+          delete from public.crm_operations where target_id in (select id from public.bookings where lead_id in ({ids}) or customer_id = any(fixture_customers))
             or target_id in (select id from public.sent_offers where lead_id in ({ids}))
             or target_id in (select id from public.recurring_agreements where customer_id = any(fixture_customers))
             or target_id in ({ids});
@@ -862,8 +923,8 @@ def quote_browser():
           delete from public.intake_events where lead_id in ({ids});
           delete from public.sent_offers where lead_id in ({ids});
           delete from public.lead_activities where lead_id in ({ids});
-          delete from public.job_items where booking_id in (select id from public.bookings where lead_id in ({ids}));
-          delete from public.bookings where lead_id in ({ids}) or id = '{returning_visit}';
+          delete from public.job_items where booking_id in (select id from public.bookings where lead_id in ({ids}) or customer_id = any(fixture_customers));
+          delete from public.bookings where lead_id in ({ids}) or customer_id = any(fixture_customers);
           delete from public.leads where id in ({ids});
           delete from public.agreement_schedule_revisions where agreement_id in (select id from public.recurring_agreements
             where customer_id = any(fixture_customers));

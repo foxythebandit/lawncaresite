@@ -69,6 +69,8 @@ export function callVisitItems(cents: number, freq: OfferFrequency, description:
 export type IntroCompletionReview = {
   token?: string; earlierVisitId?: string; earlierOccurrence?: { agreementId: string; revisionId: string; on: string }; allocatedAmount?: number; allocatedOn?: string
   visitAmount?: number; introAmount?: number; replacementAmount?: number; move?: boolean
+  extraReview?: { separateToken: string; replaceToken: string | null; replaceBlocked: string | null; priorBookingId: string
+    originalItems: JobLine[]; originalAmount: number; visitItems: JobLine[]; visitAmount: number; restoredAmount: number | null }
 }
 export type ActionResult = { success: true; data?: Record<string, unknown> }
   | { success: false; error: string; data?: { introReview?: IntroCompletionReview } }
