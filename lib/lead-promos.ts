@@ -1,3 +1,4 @@
+// lib-ok: read by lib/lead-summary.ts, which the board, lead page and alert texts all share
 /**
  * Ad offers a lead was shown, so staff honor them when quoting. The forms don't apply discounts;
  * this only tags the lead. Pure: no database, no env.
