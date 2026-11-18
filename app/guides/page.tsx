@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
-import { GUIDES } from '@/lib/guides'
+import { GUIDES } from '@/app/guides/guides'
 import { SITE_URL } from '@/lib/site'
 
 const title = 'Austin Lawn Care Guides — QuietGreen'

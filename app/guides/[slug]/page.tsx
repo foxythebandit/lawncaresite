@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Nav from '@/components/Nav'
 import Footer from '@/components/Footer'
 import { AREAS } from '@/lib/areas'
-import { GUIDES, guide as findGuide } from '@/lib/guides'
+import { GUIDES, guide as findGuide } from '@/app/guides/guides'
 import { BUSINESS_ID, SITE_URL, jsonLd } from '@/lib/site'
 
 const h2Style = { fontFamily: 'var(--font-display)', fontSize: 26, color: 'var(--green-deep)', marginBottom: 14 }

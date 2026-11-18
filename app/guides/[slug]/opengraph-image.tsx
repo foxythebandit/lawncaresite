@@ -1,4 +1,4 @@
-import { GUIDES, guide } from '@/lib/guides'
+import { GUIDES, guide } from '@/app/guides/guides'
 import { OG_SIZE, ogCard } from '@/lib/og-card'
 
 export const alt = 'QuietGreen lawn care guide for Austin, TX'

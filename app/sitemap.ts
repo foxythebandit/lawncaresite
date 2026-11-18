@@ -1,6 +1,6 @@
 import { MetadataRoute } from 'next'
 import { AREA_SLUGS } from '@/lib/areas'
-import { GUIDES } from '@/lib/guides'
+import { GUIDES } from '@/app/guides/guides'
 import { SITE_URL } from '@/lib/site'
 import { SERVICE_PAGES } from '@/lib/service-pages'
 
