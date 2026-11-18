@@ -85,3 +85,13 @@ export function trackBookingRequested(value?: number) {
     trackEvent('conversion', { send_to: `AW-18401747819/${BOOKING_CONVERSION_LABEL}`, ...valueParams })
   }
 }
+
+/**
+ * Fires when the project request form (homepage and every /services page)
+ * saves an inquiry. Primary Ads conversion "Service request" at a flat value,
+ * so leaf, gutter and garden bed ads have something to optimize toward.
+ */
+export function trackServiceRequest(service: string) {
+  trackEvent('service_request', { service })
+  trackEvent('conversion', { send_to: 'AW-18401747819/VimdCLSynLIdEOvG0cZE' })
+}

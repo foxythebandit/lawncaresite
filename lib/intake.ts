@@ -37,6 +37,12 @@ export async function recordIntake(source: string, submission: string, lead: Rec
     throw new Error(error.code === '23505' ? 'Submission ID conflict' : 'Could not save inquiry')
   }
   const result = data as IntakeResult
+  dispatchIntake(result)
+  return result
+}
+
+export function dispatchIntake(result: IntakeResult) {
+  if (!result.event_id) return
   // The outbox is committed before responding. Recovery handles interrupted callbacks.
   // A known lead (E10): claimed -> only the claimer gets "just booked online", no ring;
   // unclaimed -> record_intake_v3 queued the normal alert to both, worded as a booking request.
@@ -46,5 +52,4 @@ export async function recordIntake(source: string, submission: string, lead: Rec
       else await dispatchAlert(result.event_id)
     } catch { console.error('Staff alert pending reconciliation', result.event_id) }
   })
-  return result
 }

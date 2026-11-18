@@ -84,16 +84,10 @@ try:
         page.locator('input[name=password]').fill('Local-test-password-123!')
         page.get_by_role('button', name='Sign in').click()
         page.wait_for_url('**/admin/leads')
-        page.goto(BASE + '/admin?search=' + marker)
-        try:
-            page.wait_for_load_state('networkidle', timeout=5000)
-        except PlaywrightTimeoutError:
-            pass
-        card = page.locator('.admin-card', has_text=name)
-        card.wait_for(timeout=15000)
-        card.locator('.admin-card-summary').click()
-        button = card.get_by_role('button', name='Confirm & email customer')
-        button.wait_for(timeout=10000)
+        page.goto(BASE + '/admin/jobs/' + job['id'])
+        page.get_by_role('button', name='Confirm first visit', exact=True).click()
+        page.get_by_label('Email this date to the customer').check()
+        button = page.get_by_role('button', name='Confirm visit', exact=True)
         with page.expect_request(lambda request: request.method == 'POST'
                                  and request.url.startswith(BASE + '/admin')
                                  and 'next-action' in request.headers) as sent:

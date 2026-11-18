@@ -37,8 +37,9 @@ function where(params, values) {
       const list = value.replace(/^\(|\)$/g, '').split(',').filter(Boolean).map(v => v.replace(/^"|"$/g, ''))
       if (!list.length) { parts.push('false'); continue }
       parts.push(`${ident(key)} in (${list.map(v => { values.push(v); return `$${values.length}` }).join(',')})`)
-    } else if (op === 'is') {
-      parts.push(`${ident(key)} is ${value === 'null' ? 'null' : value === 'true' ? 'true' : 'false'}`)
+    } else if (op === 'is' || (op === 'not' && value.startsWith('is.'))) {
+      const v = op === 'is' ? value : value.slice(3)
+      parts.push(`${ident(key)} is ${op === 'not' ? 'not ' : ''}${v === 'null' ? 'null' : v === 'true' ? 'true' : 'false'}`)
     } else if (OPS[op]) {
       values.push(op.endsWith('like') ? value.replace(/\*/g, '%') : value)
       parts.push(`${ident(key)} ${OPS[op]} $${values.length}`)
@@ -56,7 +57,8 @@ function orderBy(order) {
 }
 
 async function json(sql, values) {
-  const { rows } = await db.query(`select coalesce(json_agg(t), '[]'::json)::text as body from (${sql}) t`, values)
+  // A CTE, so insert/update/delete ... returning work as well as select.
+  const { rows } = await db.query(`with t as (${sql}) select coalesce(json_agg(t), '[]'::json)::text as body from t`, values)
   return JSON.parse(rows[0].body)
 }
 

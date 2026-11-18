@@ -1,11 +1,10 @@
 # Phone flow go-live (PLAN.md section 7)
 
-For the deployment handoff on Paxton's laptop. Do these in order. Nothing here has been done yet.
+This is the October 28 phone-flow handoff. Follow [AGENTS.md](../../AGENTS.md) and the reviewed feature release through `npm run release` for current production work. Calendar and first-visit behavior are documented in [Calendar and service schedules](../daily-clarity/README.md).
 
-**Order matters:** voice alerts are already on in production (`STAFF_VOICE_ENABLED=true`), so the moment this code deploys, new leads use the press-1 flow. Do steps 2–3 (env vars, Vault secret, Twilio caller-ID verification) first, then step 1 (database), then merge to `main` right away (step 4). The database push makes the `booking-maps` bucket private, so map images on the old live admin and customer portal break until the new code deploys; keep that gap to a few minutes. Texts stay off until the campaign is approved (HANDOFF.md "Waiting on").
+## 1. Database in the October release
 
-## 1. Database
-`supabase db push --dry-run`, then `supabase db push`. It applies, in order: `20261028120000_crm_board_phone.sql` (board, call log, short links, claim RPCs), `20261028130000_private_map_screenshots.sql` (makes the `booking-maps` bucket private; the code signs links), `20261028150000_phone_flow.sql` (press-1 RPCs, `staff_texts`) `20261028160000_crm_call_job.sql` (Log call Booked → first visit on Jobs) `20261029120000_crm_call_job_first_visit.sql` (that first visit charged the 30% first-visit price; the plan keeps the full price) and `20261029130000_phone_cron_schedule.sql` (Supabase calls `/api/cron/phone` every 5 minutes). Push all six before the code. Existing leads all start in New; place them with the S8 script after the prod data review (`node scripts/place-leads-on-board.mjs` dry run first).
+The release introduced the lead board and call log (`20261028120000_crm_board_phone.sql`), private booking maps (`20261028130000_private_map_screenshots.sql`), phone flow (`20261028150000_phone_flow.sql`), booked-call visit creation (`20261028160000_crm_call_job.sql`), introductory pricing (`20261029120000_crm_call_job_first_visit.sql`), and the phone worker (`20261029130000_phone_cron_schedule.sql`).
 
 ## 2. Vercel environment variables (Production)
 | Variable | Value |
@@ -28,7 +27,7 @@ For the deployment handoff on Paxton's laptop. Do these in order. Nothing here h
 4. Both phones: save (512) 643-5722 as "QuietGreen Leads" and allow it through Focus/Do Not Disturb (R9).
 
 ## 4. Deploy, then acceptance checks (PLAN.md 7.7), with a third phone as the customer
-Merge `claude/crm-ux-polish-f7dd65` (it contains the build branch) into `main` and push (Vercel deploys `main`). Then:
+The checks below describe the October release.
 Use a lead named like a real person, with the third phone's number. A `TEST…` name rings nobody.
 1. Submit the lead: both cells get the text and both ring at the same time.
 2. Caelan presses 1: Paxton's ring stops, Paxton gets "Caelan took …", and the third phone rings showing Caelan's cell.

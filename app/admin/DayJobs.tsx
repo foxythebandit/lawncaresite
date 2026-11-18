@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { customerDisplayName } from '@/lib/lead-labels'
 import ReminderButtons from './ReminderButtons'
 import { formatMoney, jobPrice } from '@/lib/crm-jobs'
 import Icon from './icons'
@@ -25,7 +27,7 @@ interface Job {
   last_reminder_sent_at?: string | null
 }
 
-export default function DayJobs({ jobs, emptyLabel = 'No jobs confirmed.' }: { jobs: Job[]; emptyLabel?: string }) {
+export default function DayJobs({ jobs, emptyLabel = 'No visits confirmed.' }: { jobs: Job[]; emptyLabel?: string }) {
   if (jobs.length === 0) {
     return <div className="admin-empty">{emptyLabel}</div>
   }
@@ -39,10 +41,10 @@ export default function DayJobs({ jobs, emptyLabel = 'No jobs confirmed.' }: { j
             <span>Stop {i + 1}</span>
           </div>
           <div className="admin-route-info">
-            <div className="admin-route-name">{b.name}</div>
+            <Link className="admin-route-name" href={`/admin/jobs/${b.id}`}>{customerDisplayName(b)}</Link>
             <div className="admin-route-addr">{b.address}</div>
             <div className="admin-route-meta">
-              {jobPrice(b) > 0 && <strong>{formatMoney(jobPrice(b))} job value</strong>}
+              {jobPrice(b) > 0 && <strong>{formatMoney(jobPrice(b))} visit value</strong>}
               {b.sq_ft        && <span>{b.sq_ft.toLocaleString()} sq ft</span>}
               {b.frequency    && <span>{normalizeFrequency(b.frequency) ? FREQUENCY_LABEL[normalizeFrequency(b.frequency)!] : b.frequency}</span>}
             </div>

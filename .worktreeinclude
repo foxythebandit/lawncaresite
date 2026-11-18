@@ -1,0 +1,4 @@
+# Files a new worktree copies from the main checkout (git-ignore syntax).
+.env.local
+.envrc
+supabase/functions/.env

@@ -7,7 +7,7 @@ import { ago, money, summarizeLead, type LeadSummary, type SummaryBooking, type 
 
 export type BoardCard = {
   id: string; href: string; column: BoardColumn
-  name: string; ago: string; value: string | null
+  name: string; phone: string; ago: string; value: string | null
   card: LeadSummary['card']
   /** Lowercase name, phone digits and address, for the Leads search box. */
   search: string
@@ -21,7 +21,7 @@ export function boardCard(lead: SummaryLead & { estimated_value?: unknown }, boo
   const value = Number(lead.estimated_value)
   return {
     id: lead.id, href: `/admin/leads/${lead.id}`, column: s.column,
-    name: s.name, ago: ago(lead.created_at, now), card: s.card,
+    name: s.name, phone: s.phoneDisplay, ago: ago(lead.created_at, now), card: s.card,
     search: [s.name, String(lead.phone ?? '').replace(/\D/g, ''), lead.address ?? ''].join(' ').toLowerCase(),
     value: lead.estimated_value != null && Number.isFinite(value) && value > 0 ? money(Math.round(value * 100)) : null,
     createdAt: lead.created_at, checkBackOn: lead.check_back_on ?? null,

@@ -133,5 +133,18 @@ export function leadSource(lead: { source?: string | null; attribution?: unknown
   if (source === 'google') return { channel: 'Google search (free)', detail: null, conviflo }
   if (source) return { channel: humanize(source), detail: null, conviflo }
   if (conviflo) return { channel: 'ConviFlo form', detail: null, conviflo }
+  if (lead.source === 'staff') return { channel: 'Phone or text', detail: null, conviflo }
   return { channel: 'Typed in / unknown', detail: null, conviflo }
+}
+
+/** Staff-facing identity. Older visits sometimes stored the contact phone in the name field. */
+export function customerDisplayName({ name, address, phone }: {
+  name?: string | null; address?: string | null; phone?: string | null
+}) {
+  const label = name?.trim()
+  const phoneDigits = phone?.replace(/\D/g, '')
+  const nameDigits = label?.replace(/\D/g, '') ?? ''
+  const copiedPhone = Boolean(label && /^[+()\d.\s-]+$/.test(label)
+    && (phoneDigits ? nameDigits === phoneDigits : nameDigits.length >= 7 && nameDigits.length <= 15))
+  return (copiedPhone ? '' : label) || address?.trim() || 'Unnamed customer'
 }

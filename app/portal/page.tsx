@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { adminDb } from '@/lib/supabase/admin'
 import { jobPrice } from '@/lib/crm-jobs'
+import { getPortalBookings } from './bookings'
 import { signedMapUrl } from '@/lib/map-screenshot'
 
 function formatDate(s: string) {
@@ -30,12 +31,10 @@ export default async function PortalPage() {
 
   if (!user) redirect('/portal/login')
 
-  const { data: bookings } = await supabase
-    .from('bookings')
-    .select('id, email, created_at, status, confirmed_date, preferred_date, confirmed_time, address, sq_ft, frequency, price_per_visit, job_total, map_screenshot_url, completed_at, amount_charged, payment_method, payment_link')
-    .order('created_at', { ascending: false })
-
-  const visits = bookings ?? []
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
+  const { upcoming, overdue, bookings } = await getPortalBookings(supabase, today)
+  const scheduled = [overdue, upcoming].filter(visit => visit != null)
+  const visits = [...scheduled, ...bookings]
   // Only IDs already authorized by the customer's booking RLS may reach this lookup.
   // Keep payment provenance/operations private; render aggregate amounts only.
   const { data: payments, error: paymentError } = visits.length
@@ -55,11 +54,8 @@ export default async function PortalPage() {
   for (const payment of payments ?? []) paidByJob.set(payment.booking_id,
     (paidByJob.get(payment.booking_id) ?? 0) + Number(payment.amount))
 
-  const upcoming = visits.find(b =>
-    b.status === 'confirmed' && (b.confirmed_date || b.preferred_date)
-  )
   // The map bucket is private (P7); a short-lived signed link, or no image if signing fails.
-  const upcomingMap = upcoming ? await signedMapUrl(upcoming.map_screenshot_url, 3600) : null
+  const scheduledMaps = await Promise.all(scheduled.map(visit => signedMapUrl(visit.map_screenshot_url, 3600)))
   const history = visits.filter(b => b.status === 'completed')
   const pending  = visits.filter(b => b.status === 'pending')
 
@@ -82,36 +78,36 @@ export default async function PortalPage() {
         </div>
       ) : (
         <>
-          {/* Upcoming visit */}
-          {upcoming ? (
-            <div className="portal-upcoming">
-              <div className="portal-upcoming-label">Your next visit</div>
+          {scheduled.map((visit, i) => (
+            <div key={visit.id} className="portal-upcoming">
+              <div className="portal-upcoming-label">{visit.id === overdue?.id ? 'Past scheduled visit' : 'Your next visit'}</div>
               <div className="portal-upcoming-date">
-                {formatDate(upcoming.confirmed_date ?? upcoming.preferred_date)}
-                {upcoming.confirmed_time && (
-                  <span className="portal-upcoming-time"> · {formatTime(upcoming.confirmed_time)}</span>
+                {formatDate((visit.confirmed_date ?? visit.preferred_date)!)}
+                {visit.confirmed_time && (
+                  <span className="portal-upcoming-time"> · {formatTime(visit.confirmed_time)}</span>
                 )}
               </div>
               <div className="portal-upcoming-detail">
-                {upcoming.address} · {upcoming.sq_ft?.toLocaleString()} sq ft · {upcoming.frequency}
+                {visit.address} · {visit.sq_ft?.toLocaleString()} sq ft · {visit.frequency}
               </div>
               <div className="portal-upcoming-price">
-                {visitPrice(upcoming) != null
-                  ? <>${visitPrice(upcoming)!.toFixed(2)}<span>/visit</span></>
+                {visitPrice(visit) != null
+                  ? <>${visitPrice(visit)!.toFixed(2)}<span>/visit</span></>
                   : 'Price not set'}
               </div>
-              {upcomingMap && (
-                <img src={upcomingMap} alt="Your lawn" className="portal-upcoming-map" />
+              {scheduledMaps[i] && (
+                <img src={scheduledMaps[i]!} alt="Your lawn" className="portal-upcoming-map" />
               )}
             </div>
-          ) : pending.length > 0 ? (
+          ))}
+          {!scheduled.length && pending.length > 0 && (
             <div className="portal-pending-notice">
               <div className="portal-pending-icon">⏳</div>
               <div>
                 <strong>Booking received</strong> — we're reviewing your request and will confirm shortly.
               </div>
             </div>
-          ) : null}
+          )}
 
           {/* Visit history */}
           {history.length > 0 && (

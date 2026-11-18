@@ -1,5 +1,22 @@
 # QuietGreen CRM revamp — project spine
 
+### Quote email with lawn map + Add lead — 3 November 2026
+
+- Owner asked to email a phoned-in lead (6404 Night Chinook Dr, Buda, TX 78610; Census geocoder 30.105215, -97.778884; Photon/Nominatim only know the street, so use the map's "Set its location") a quote with a picture of the traced lawn and a website-style breakdown: weekly spring–early summer, bi-weekly after, bagging add-on. Branch `claude/quote-email-map`. No migration, no production reads or writes, nothing emailed.
+- **Add lead** (board header): name, phone, address, optional email, plan, notes. Inserts the lead directly (source `staff`, shown as "Phone or text"), so no intake event, no staff alert calls/texts, and no customer contact.
+- **Email quote** now goes compose → **Preview** (the exact email in a sandboxed frame, with the map picture) → **Send to …**. Nothing is sent before that click. Staff choose which plans to show (weekly / every 2 weeks / monthly) with a "when" note each, and per-visit add-ons with a price. Mowing prices come from the saved quote (`quoteOffer`: 15%/10% plan discounts, 30% off the first visit); add-ons are full price and not part of any booking/plan price. `lib/quote-email.ts` builds subject/text/HTML for both preview and send; the server rebuilds from the stored draft and refuses if the lead changed since the preview.
+- Map picture: drawn in the browser from Esri tiles plus the staff tracing (`app/admin/leads/lawn-map-image.ts`, same projection as `TracingMap`), 960×560 JPEG, sent as an inline Resend attachment (`cid:lawn-map`), so it never expires. Not stored in Storage.
+- `scripts/dev-pglite-api.mjs`: inserts/updates now work (CTE wrap) and `not.is.null` filters are supported.
+- Verified: `tests/quote-email.test.ts` (6), full `npm test` 102/102, typecheck, scoped lint. Local browser run on the PGlite stand-in with a local Resend mock: added the lead, set location, traced, saved as quoted, previewed, sent; mock received the subject, plans, bagging, first visit and a valid 960×560 inline JPEG; history logged "Emailed quote to …". Not checked against real Resend or a real inbox.
+- Next: owner merges/deploys, then adds the real lead, traces the lawn, sets the bagging price, previews and sends. Needs the customer's name and email.
+
+### Google Ads revenue feed and report — 2 November 2026
+
+- Owner asked to send CRM money (price, recurring or not) back to Google Ads and compare it with ad results. Branch `claude/google-ads-revenue`. No migration and no production writes. Production was read only, with the owner's authorization, to size the data: 20/29 leads and 12/38 jobs carry a gclid; 11 customers trace to a Google click; $856 of $1,241 recorded money is credited to them; 6 active plans.
+- `lib/google-ads-revenue.ts` credits each recorded payment (dated `job_payments` + legacy `amount_charged`) to the job's gclid, else the customer's earliest gclid (D13 first-touch reporting, not causal). `app/api/google-ads/conversions` serves a Basic-auth CSV for a Google Ads scheduled upload (two actions: mowing plan / one-time, actual amounts, no PII). Revenue page "Google Ads results" card shows customers, paid plan vs one-time and forecast share; spend is typed in and kept in localStorage only. Actual money and forecast stay separate (D12).
+- Verified: `tests/google-ads-revenue.test.ts` (6 tests), typecheck, scoped lint, and a local dev request against production data returned 401 without credentials and 10 rows ($856) with them. `tests/visit-flow.test.mjs` can't run in this worktree (pglite not installed), which is unrelated. Revenue card not browser-checked: local staff sign-in needs `STAFF_EMAILS`.
+- Next: owner sets `GOOGLE_ADS_FEED_USER`/`GOOGLE_ADS_FEED_PASSWORD` in Vercel, merges, then creates the two conversion actions (Secondary) and the daily HTTPS upload schedule. Steps are in `docs/google-ads-revenue.md`. Plan visits marked Done without a recorded payment are not sent.
+
 ### Address reliability repair — 27 October 2026
 
 - User authorized a focused, thorough repair after a real ConviFlo Hutto address produced no autocomplete and CRM required a selection. Work is isolated on codex/address-reliability, based on origin/main145bb15.
@@ -296,3 +313,28 @@ Built from `docs/ops-plan/PLAN.md` (decisions, execution ledger in section 11) o
 ### Plan customer visit flow — 30 October 2026
 
 Owner could not log visits for existing plan customers (Liz Watson's lead visit outside her plan, stale plan "next visit", Mark complete disabled) or move one visit (Dmitre). Branch `claude/visit-flow-d5e70c`. Customer page now lists **Upcoming visits** with Done (+ payment), Move (one visit or the whole plan, optional email), Add to mowing plan and Cancel; plan card shows the real next booked visit; Start mowing plan can reuse a visit already booked at the property and schedules the first visit. Jobs card: Add to mowing plan, Move the rest of the plan. Migration `20261030120000_crm_visit_flow.sql`: next plan visit never in the past and never a second open one; `crm_attach_to_agreement`; `crm_shift_agreement`. Not applied to prod. Tests: `tests/visit-flow.test.mjs` (PGlite, all migrations). Details, root cause and the in-app fix for existing data: `docs/visit-flow/README.md`.
+
+### Calendar schedule foundation — 9 November 2026
+
+Slice 1 of daily-clarity adds bounded visit generation, date-range and attention reads, and a database-only schedule worker. Existing visit IDs, prices, acquisition records and completed work survive cutover. The compatibility commands keep individual moves and skips through a series shift. See [Calendar and service schedules](../daily-clarity/README.md) for data identity and rollout details.
+
+Slice 1 review fixes preserve actual dates in the next-visit summary, remap monthly shifts by cadence order and route ambiguous first dates or legacy moves to schedule review. The existing plan controls can restart from an explicit date after saved work. Tests cover exact-cents repricing with protected exclusions, native concurrent generation and the customer portal’s owned past and upcoming visits.
+
+The second Slice 1 review fix checks saved and projected dates before single moves or series shifts. A pre-existing collision keeps the saved visit visible and pauses that plan’s generation without stopping other agreements.
+
+A time-only plan edit keeps the saved date and cadence slot for each visit, including an explicit next date and any individual moves or skips. The new window carries forward on the existing rule segments without changing their dates or prices.
+
+
+### Daily clarity Slice 2 — staff Calendar and visit page
+
+The Calendar tab retains `/admin/jobs` and opens on Week at desktop and phone widths. Day and Month are available from the calendar header. Staff sign-in restores calendar and visit link context. Exact arrival times sort chronologically within their group. Saved visits open by booking ID. Projected visits open by revision and date with the same controls. A deliberate edit saves atomically with the visit record. An explicit payment link or reminder prepares the visit and then calls the existing provider. Preferred-date requests stay in Needs scheduling. Overdue and schedule-review queues share their count and drilldown predicates. Today, Next 7 days, customer history, revenue and lead links lead to the selected visit where its ID is known. Staff keep the existing contact, property, pricing, completion, payment, and service schedule actions on the visit page. See `docs/daily-clarity/README.md` for the local browser checks.
+
+### Daily clarity Slice 3 — independent service scheduling
+
+Customers can have multiple separately priced services at a property, including one-off and same-day work. Staff can manage service labels and review concrete dates and amounts before creating or editing a schedule. Weekly, biweekly and monthly schedules support annual seasons and bounded overrides. A one-off can become the first visit of a repeating service with a separately agreed ongoing price. Notes and contact corrections stay with the visit, and date, arrival and price edits have separate protections. A reviewed resume restores eligible visits canceled by a service pause while preserving individual cancellations. Staff schedule revisions carry the operation and actor. See [Calendar and service schedules](../daily-clarity/README.md).
+
+### Daily clarity Slice 4 checkpoint — frozen email offers
+
+Staff review the exact email before sending. Each email offer retains its terms and its own signed customer link. A revised send can replace an open offer after provider acceptance, and an uncertain send retries the same frozen request within the provider's supported window. A customer request keeps exact prices and acquisition facts and stays pending until staff confirms the visit. Older links use the saved request or continue to staff review. The shared intake path supplies defaults for the calendar visit flags.
+
+This checkpoint covers a single quoted option. The multi-row quote decision, first-visit activation, and introductory price carry remain in the daily-clarity plan.

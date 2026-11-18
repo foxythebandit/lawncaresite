@@ -1,0 +1,22 @@
+name: check
+on:
+  push: { branches: ['**'] }
+  workflow_dispatch:
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }          # check-migrations / check-repo diff against origin/main
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.supabase/cache
+          key: supabase-${{ runner.os }}-${{ hashFiles('supabase/supabase.lock') }}
+      - run: npm ci
+      - run: npm run check

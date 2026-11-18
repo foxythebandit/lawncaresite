@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Icon from './icons'
 
 interface BookingPin {
   id: string
@@ -12,6 +13,8 @@ interface BookingPin {
   confirmed_time?: string | null
 }
 
+const textForPopup = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
 interface GeocodedPin extends BookingPin {
   lat: number
   lng: number
@@ -19,8 +22,7 @@ interface GeocodedPin extends BookingPin {
 
 const STATUS_COLOR: Record<string, string> = {
   confirmed: '#52b788',
-  pending:   '#f5a623',
-  declined:  '#e05252',
+  completed: '#87918b',
 }
 
 export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
@@ -30,28 +32,17 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
   const [geocoding, setGeocoding] = useState(true)
   const didGeocode = useRef(false)
 
-  // Hidden by default, revealed on hover (mouse) or click (touch/pin open)
-  const [hovering, setHovering] = useState(false)
-  const [pinned,   setPinned]   = useState(false)
-  const open = hovering || pinned
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [open, setOpen] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
 
-  const handleEnter = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current)
-    setHovering(true)
-  }
-  const handleLeave = () => {
-    closeTimer.current = setTimeout(() => setHovering(false), 200)
-  }
-
-  // Geocode on mount
+  // Geocode only after staff opens this bounded calendar map.
   useEffect(() => {
-    if (didGeocode.current) return
+    if (!open || didGeocode.current) return
     didGeocode.current = true
 
     const run = async () => {
       const results: GeocodedPin[] = []
-      for (const b of bookings.filter(b => b.status !== 'declined')) {
+      for (const b of bookings) {
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(b.address)}&limit=1`,
@@ -66,11 +57,11 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
       setGeocoding(false)
     }
     run()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookings, open])
 
   // Init / refresh map when pins arrive
   useEffect(() => {
-    if (!containerRef.current || geocoding) return
+    if (!open || !containerRef.current || geocoding) return
 
     let mounted = true
 
@@ -111,9 +102,9 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
           .addTo(map)
           .bindPopup(
             `<div style="font-family:sans-serif;font-size:13px;min-width:130px">
-              <div style="font-weight:600;margin-bottom:2px">${p.name}</div>
-              <div style="color:#4a5e54;font-size:12px;margin-bottom:4px">${p.address}</div>
-              <span style="color:${color};font-weight:500;text-transform:capitalize;font-size:12px">${p.status}</span>
+              <div style="font-weight:600;margin-bottom:2px">${textForPopup(p.name)}</div>
+              <div style="color:#4a5e54;font-size:12px;margin-bottom:4px">${textForPopup(p.address)}</div>
+              <span style="color:${color};font-weight:500;text-transform:capitalize;font-size:12px">${p.status === 'confirmed' ? 'Scheduled' : 'Done'}</span>
               ${p.price_per_visit ? `<span style="color:#888;font-size:12px"> · $${p.price_per_visit}/visit</span>` : ''}
             </div>`,
             { maxWidth: 220 }
@@ -136,7 +127,7 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
       mapInstanceRef.current?.remove()
       mapInstanceRef.current = null
     }
-  }, [pins, geocoding])
+  }, [open, pins, geocoding])
 
   // Route only today's scheduled visits, in arrival-time order (not every date at once).
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
@@ -148,42 +139,28 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
     : todayStops.length === 1 ? `https://maps.google.com/?q=${todayStops[0]}` : null
 
   const confirmedCount = pins.filter(p => p.status === 'confirmed').length
-  const pendingCount   = pins.filter(p => p.status === 'pending').length
+  const completedCount = pins.filter(p => p.status === 'completed').length
 
   return (
     <>
-    <link rel="stylesheet" href="/leaflet.css" />
+    {open && <link rel="stylesheet" href="/leaflet.css" />}
 
-    <button
-      type="button"
-      className={`admin-map-fab ${open ? 'admin-map-fab-hidden' : ''}`}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      onClick={() => setPinned(p => !p)}
-      aria-label="Show client map"
-      aria-expanded={open}
-    >
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <span>Map</span>
-      {!geocoding && pins.length > 0 && <span className="admin-map-fab-badge">{pins.length}</span>}
-    </button>
+    <button type="button" className="crm-button" ref={trigger} onClick={() => setOpen(!open)}
+      aria-expanded={open} aria-controls="calendar-map"><Icon name="map" size={15} />Map</button>
 
-    <div
-      className={`admin-map-panel ${open ? 'admin-map-panel-open' : ''}`}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-    >
+    <div id="calendar-map" aria-hidden={!open} inert={!open}
+      className={`admin-map-panel ${open ? 'admin-map-panel-open' : ''}`}>
       <div className="admin-map-header">
         <div className="admin-map-title">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-          Clients
+          Calendar map
         </div>
         <div className="admin-map-legend">
           {geocoding
             ? <span className="admin-map-locating">Locating…</span>
             : <>
                 <span className="admin-map-leg"><span className="admin-map-dot confirmed" />{confirmedCount} scheduled</span>
-                <span className="admin-map-leg"><span className="admin-map-dot pending" />{pendingCount} to schedule</span>
+                <span className="admin-map-leg"><span className="admin-map-dot completed" />{completedCount} done</span>
               </>
           }
         </div>
@@ -196,7 +173,7 @@ export default function AdminMap({ bookings }: { bookings: BookingPin[] }) {
         <button
           type="button"
           className="admin-map-close"
-          onClick={() => { setPinned(false); setHovering(false) }}
+          onClick={() => { setOpen(false); trigger.current?.focus() }}
           aria-label="Hide map"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

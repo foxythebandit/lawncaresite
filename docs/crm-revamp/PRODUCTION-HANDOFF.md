@@ -23,7 +23,9 @@
 - Hosting target, actual deployed revision and migration history: **verify on friend's machine**
 - Rollback application revision: **verify current deployed revision on friend’s machine; recovery constraints below prohibit destructive down migrations**
 
-## Deployment-agent instructions
+## Historical deployment checklist
+
+Use [AGENTS.md](../../AGENTS.md) and `npm run release` for a current release. The October deployment and acceptance steps below are historical.
 
 You are deploying the reviewed QuietGreen CRM revamp from my machine. Read `AGENTS.md`, `docs/crm-revamp/SPINE.md`, this release evidence, the actual changed migrations and relevant installed framework/skill guidance before acting. Use my existing Supabase project, hosting and Twilio setup; my keys are available locally. Do not print or commit secrets. Do not provision replacement services or rewrite the marketing site.
 

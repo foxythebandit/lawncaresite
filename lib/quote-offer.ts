@@ -14,13 +14,12 @@ const FREQ: Record<OfferFrequency, { label: string; detail: string; discount: nu
 export const FIRST_VISIT_DISCOUNT_PCT = 30
 
 export const planDiscountPct = (freq: OfferFrequency) => FREQ[freq].discount
-/** Recurring plans get the first visit 30% off; a one-time job does not. Whole dollars, like the website. */
-export const firstVisitPrice = (price: number, freq: OfferFrequency) =>
-  freq === 'onetime' ? price : Math.round(price * (1 - FIRST_VISIT_DISCOUNT_PCT / 100))
-
-/** The same rule in cents: whole-dollar prices round like the website, other prices to the cent. */
-export const firstVisitCents = (cents: number, freq: OfferFrequency) => cents % 100 === 0
-  ? firstVisitPrice(cents / 100, freq) * 100 : freq === 'onetime' ? cents : Math.round(cents * (100 - FIRST_VISIT_DISCOUNT_PCT) / 100)
+/** Whole-dollar offers round like the website. Other offers round to the cent. */
+export const firstVisitCents = (cents: number, freq: OfferFrequency, eligible = freq !== 'onetime') => {
+  if (!eligible) return cents
+  const percent = 100 - FIRST_VISIT_DISCOUNT_PCT
+  return cents % 100 === 0 ? Math.round((cents / 100) * (percent / 100)) * 100 : Math.round(cents * percent / 100)
+}
 
 export const frequencyLabel = (freq: OfferFrequency) => FREQ[freq].label
 
@@ -39,8 +38,16 @@ export function quoteOffer(draft: QuoteDraft): QuoteOffer {
   const base = quotedPrice / (1 - FREQ[draft.freq].discount / 100)
   const options = (Object.keys(FREQ) as OfferFrequency[]).map(freq => {
     const price = freq === draft.freq ? quotedPrice : Math.round(base * (1 - FREQ[freq].discount / 100))
-    const firstVisit = firstVisitPrice(price, freq)
+    const firstVisit = firstVisitCents(Math.round(price * 100), freq, true) / 100
     return { freq, label: FREQ[freq].label, detail: FREQ[freq].detail, price, firstVisit }
   })
   return { recurring, quoted: draft.freq, options, sqFt }
+}
+
+export type IntroEligibility = 'eligible' | 'ineligible' | 'review'
+export type IntroChoice = 'intro' | 'standard'
+
+export function introductoryPrice(eligibility: IntroEligibility, choice?: IntroChoice | null): boolean | null {
+  if (eligibility === 'review' && !choice) return null
+  return eligibility !== 'ineligible' && choice !== 'standard'
 }

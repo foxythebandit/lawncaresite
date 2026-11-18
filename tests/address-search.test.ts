@@ -156,6 +156,28 @@ test('ordinary complete addresses without commas retain street, locality and ZIP
   }
 })
 
+test('abbreviated street types (Cv, Trl, Xing) match the full names map providers return', async () => {
+  const cases = [
+    ['2702 Calabash Cv, Austin, TX 78745', '2702 Calabash Cv', '2702', 'Calabash Cove', '78745'],
+    ['2702 Calabash Cv Austin TX 78745', '2702 Calabash Cv', '2702', 'Calabash Cove', '78745'],
+    ['501 Brushy Creek Trl, Cedar Park, TX 78613', '501 Brushy Creek Trl', '501', 'Brushy Creek Trail', '78613'],
+    ['12 Settlers Xing, Hutto, TX 78634', '12 Settlers Xing', '12', 'Settlers Crossing', '78634'],
+  ] as const
+  for (const [query, street, number, road, zip] of cases) {
+    globalThis.fetch = async input => {
+      const url = new URL(String(input))
+      assert.equal(url.searchParams.get('street'), street)
+      return response([{ display_name: `${number} ${road}`, lat: '30.19', lon: '-97.82',
+        address: { house_number: number, road, postcode: zip, country_code: 'us' } }])
+    }
+    assert.equal((await geocodeAddress(query))?.precision, 'address', query)
+  }
+  // The suffix still has to match: a Cove is not a Court.
+  globalThis.fetch = async () => response([{ display_name: '2702 Calabash Court', lat: '30.19', lon: '-97.82',
+    address: { house_number: '2702', road: 'Calabash Court', postcode: '78745', country_code: 'us' } }])
+  assert.notEqual((await geocodeAddress('2702 Calabash Cv, Austin, TX 78745'))?.precision, 'address')
+})
+
 test('unpunctuated wrong ZIP or explicit different city never degrades to a road', async () => {
   for (const query of ['162 Danish Dr Hutto TX 78701', '162 Danish Dr Dallas TX 78634']) {
     globalThis.fetch = async input => String(input).includes('nominatim')

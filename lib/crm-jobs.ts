@@ -54,19 +54,26 @@ export function jobStatusLabel(status: string) {
 export type JobLine = { kind: 'service' | 'discount'; description: string; amount: string }
 
 /**
- * Items for a first visit booked by phone (Caelan, 29 Oct): recurring plans charge the first visit
- * 30% off, like a website booking, as the plan price plus a discount line. `plan` is what later
+ * Items for a first visit booked by phone. Eligible first mows include the existing
+ * discount as a separate line. `plan` is what later
  * visits charge. `firstVisitPrice` is whole dollars for the bookings column, or null.
  */
-export function callVisitItems(cents: number, freq: OfferFrequency, description: string) {
+export function callVisitItems(cents: number, freq: OfferFrequency, description: string, introEligible = freq !== 'onetime') {
   const plan: JobLine[] = [{ kind: 'service', description, amount: centsAmount(cents) }]
-  const first = firstVisitCents(cents, freq)
+  const first = firstVisitCents(cents, freq, introEligible)
   const items: JobLine[] = first < cents
     ? [...plan, { kind: 'discount', description: `First visit ${FIRST_VISIT_DISCOUNT_PCT}% off`, amount: `-${centsAmount(cents - first)}` }]
     : plan
-  return { items, plan, firstVisitPrice: freq !== 'onetime' && first % 100 === 0 ? first / 100 : null }
+  return { items, plan, firstVisitPrice: first < cents && first % 100 === 0 ? first / 100 : null }
 }
-export type ActionResult = { success: true; data?: Record<string, unknown> } | { success: false; error: string }
+export type IntroCompletionReview = {
+  token?: string; earlierVisitId?: string; earlierOccurrence?: { agreementId: string; revisionId: string; on: string }; allocatedAmount?: number; allocatedOn?: string
+  visitAmount?: number; introAmount?: number; replacementAmount?: number; move?: boolean
+  extraReview?: { separateToken: string; replaceToken: string | null; replaceBlocked: string | null; priorBookingId: string
+    originalItems: JobLine[]; originalAmount: number; visitItems: JobLine[]; visitAmount: number; restoredAmount: number | null }
+}
+export type ActionResult = { success: true; data?: Record<string, unknown> }
+  | { success: false; error: string; data?: { introReview?: IntroCompletionReview } }
 
 export function commandError(error: { code?: string; message?: string } | null): string {
   if (!error) return 'Could not save. Please retry.'
@@ -85,6 +92,7 @@ type ForecastAgreement = {
   id: string; status: string; customer_id: string; property_id: string
   price_per_visit: number | string | null
   items_template: { kind: string; description: string }[]
+  service_labels?: { semantic_key: string | null } | null
 }
 
 /** Conservative mowing outlook. Legacy grouping is a report key, never a customer merge. */
@@ -100,8 +108,9 @@ export function mowingForecast(jobs: ForecastJob[], agreements: ForecastAgreemen
   }
   for (const agreement of activeAgreements) {
     const related = jobs.find(job => job.agreement_id === agreement.id)
-    if (!agreement.items_template.some(item => item.kind === 'service'
-      && /(mow|lawn care|grass cut)/i.test(item.description))) continue
+    const mowing = agreement.service_labels ? agreement.service_labels.semantic_key === 'mowing'
+      : agreement.items_template.some(item => item.kind === 'service' && /(mow|lawn care|grass cut)/i.test(item.description))
+    if (!mowing) continue
     const perVisit = Number(agreement.price_per_visit ?? 0)
     if (perVisit <= 0) continue
     rows.push({ id: agreement.id, href: `/admin/customers/${agreement.customer_id}`,

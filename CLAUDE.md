@@ -49,7 +49,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   ← new Supabase key format (not anon ke
 Set these in Vercel dashboard AND in a local `.env.local` (see `.env.local.example`).
 
 ## Supabase migrations
-Prod project ref `juwvyquorsxulajrchjv`, linked with the Supabase CLI (link state in gitignored `supabase/.temp/`; copy it into a new worktree). `supabase/migrations/` mirrors prod's migration history exactly (pulled with `supabase migration fetch --linked`). To change the schema: add `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql` with a timestamp later than the newest file, run `supabase db push --dry-run`, then `supabase db push`. The old numbered files in `supabase/legacy-migrations/` are history only and don't replay cleanly. Never paste SQL in the dashboard; that skips the history.
+Prod project ref `juwvyquorsxulajrchjv`, linked with the Supabase CLI (`npm run release` links it by itself). `supabase/migrations/` mirrors prod's migration history exactly (pulled with `supabase migration fetch --linked`). To change the schema: add `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql` with a timestamp later than the newest file, try it locally with `npm run db:reset`, then migrate and merge only with `npm run release`. The old numbered files in `supabase/legacy-migrations/` are history only and don't replay cleanly. Never paste SQL in the dashboard; that skips the history.
 
 ## Things learned / gotchas
 - **node_modules must be installed with the active Node version.** The machine had Node 18 installed via a direct `.pkg`. We installed Node 24 LTS via `n` (npm package) to `~/.n`. If node_modules ever breaks with a native binding error (`@tailwindcss/oxide-darwin-arm64`), delete `node_modules`, `package-lock.json`, and `.next`, then `npm install` again with the correct Node.
@@ -60,4 +60,4 @@ Prod project ref `juwvyquorsxulajrchjv`, linked with the Supabase CLI (link stat
 - **MapQuoteBuilder uses leaflet** — user added this component with `leaflet` and `leaflet-draw`. These are already in `node_modules`.
 
 ## Deploy
-Vercel project `lawncaresite`, domain `quietgreen.co`, deploys from `main`. Apply any new migration with `supabase db push` before pushing code that depends on it.
+Vercel project `lawncaresite`, domain `quietgreen.co`, deploys from `main`. Migrate and merge only with `npm run release`: it migrates prod first, then merges. Merging on the GitHub website skips the migration, so run `npm run release` on `main` right after to catch prod up.

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { submitServiceInquiry, type ServiceInquiryKind } from '@/app/actions/submit-service-inquiry'
 import { photonSearch, type GeoResult } from '@/lib/address-search'
 import { getAttribution } from '@/lib/attribution'
+import { trackServiceRequest } from '@/lib/gtag'
 import { trackWebsiteLead } from '@/lib/meta-events'
 import { QUOTE_CONSENT_TEXT } from '@/lib/quote-consent'
 import { submissionId } from '@/lib/submission-id'
@@ -89,6 +90,7 @@ export default function GeneralInquiry({ defaultService }: { defaultService?: Se
       try { sessionStorage.removeItem('qg_submission_service') } catch { /* The inquiry is saved even if storage is unavailable. */ }
       setStatus('success')
       try { trackWebsiteLead(result.eventId) } catch { /* Tracking must not hide a saved inquiry. */ }
+      try { trackServiceRequest(service) } catch { /* Tracking must not hide a saved inquiry. */ }
     } catch {
       setStatus('idle'); setError('Something went wrong. Please try again.')
     }

@@ -1,0 +1,4 @@
+# Squawk 2.70.0 ignores included_rules and reports every rule, so
+# scripts/check-migrations.mjs reads this list and keeps only these rules.
+included_rules = ["ban-drop-table","ban-drop-column","ban-drop-database","ban-drop-schema","ban-truncate-cascade","changing-column-type","renaming-column","renaming-table"]
+pg_version = "17"

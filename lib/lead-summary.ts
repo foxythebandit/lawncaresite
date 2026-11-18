@@ -5,7 +5,7 @@
  */
 import { CALL_OUTCOME, CLOSED_REASON_LABEL, COLUMN_LABEL, FREQUENCY_LABEL, QUOTED_REASON_LABEL, isCallOutcome,
   isClosedReason, isColumn, isQuotedReason, normalizeFrequency, type BoardColumn, type Frequency } from './lead-board'
-import { leadSource, readableAnswers, serviceLabels } from './lead-labels'
+import { customerDisplayName, leadSource, readableAnswers, serviceLabels } from './lead-labels'
 import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer } from './quote-offer'
 import { quoteTotalCents, type QuoteDraft } from './quote-draft'
 
@@ -327,7 +327,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
 
   return {
     column, columnLabel: COLUMN_LABEL[column], booking, bookingLabel: BOOKING_LABEL[booking], price, chips, headline, headlineTone, meta, card,
-    name: nameOf(lead), phoneDisplay: phoneDisplay(lead.phone), city, services,
+    name: customerDisplayName(lead), phoneDisplay: phoneDisplay(lead.phone), city, services,
     frequencyLabel: freq ? FREQUENCY_LABEL[freq] : null, wanted: want, source, tracedSqFt: traced(lead), notes,
     answers: readableAnswers(lead.answers), link: options.baseUrl && lead.short_code ? leadLink(options.baseUrl, lead.short_code) : null,
   }

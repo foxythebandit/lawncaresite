@@ -3,8 +3,12 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getAgreements, getBookings, getCustomers, getJobPayments, getLeads } from '../../actions'
 import { formatMoney, jobPrice, jobStatusLabel } from '@/lib/crm-jobs'
+import { adminDb } from '@/lib/supabase/admin'
+import { definitionFrom, scheduleLabel, serviceEditorHref } from '@/lib/service-schedules'
+import { visitService } from '@/lib/calendar-data'
 import { requireStaff } from '@/lib/staff'
 import Icon from '../../icons'
+import { nextScheduleDates } from '../../jobs/visit-context'
 import CustomerActions from './CustomerActions'
 import UpcomingVisits, { type UpcomingVisit } from './UpcomingVisits'
 
@@ -25,7 +29,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   await requireStaff(`/admin/customers/${id}`)
   if (!validId.test(id)) notFound()
   const [{ customers, properties }, allJobs, allLeads, allPayments, allAgreements] = await Promise.all([
-    getCustomers(), getBookings(), getLeads(), getJobPayments(), getAgreements(),
+    getCustomers(), getBookings(), getLeads(), getJobPayments(), getAgreements(id),
   ])
   const customer = customers.find(row => row.id === id)
   if (!customer) notFound()
@@ -35,7 +39,7 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const jobIds = new Set(jobs.map(row => row.id))
   const payments = allPayments.filter(row => jobIds.has(row.booking_id))
   const historicalAmounts = jobs.filter(row => row.amount_charged != null)
-  const agreements = allAgreements.filter(row => row.customer_id === id)
+  const agreements = allAgreements
   const addressById = new Map(ownProperties.map(row => [row.id, row.address]))
 
   // Open visits first, soonest (and overdue) on top; everything else is history, newest first.
@@ -44,17 +48,35 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
   const openJobs = jobs.filter(isOpen).sort((a, b) => (visitDate(a) ?? '').localeCompare(visitDate(b) ?? ''))
   const pastJobs = jobs.filter(job => !isOpen(job))
     .sort((a, b) => (visitDate(b) ?? b.created_at).localeCompare(visitDate(a) ?? a.created_at))
-  const activePlans = agreements.filter(agreement => agreement.status === 'active')
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
+  const [revisions, nextDates] = await Promise.all([
+    agreements.length ? adminDb().from('agreement_schedule_revisions')
+      .select('agreement_id,definition').in('agreement_id', agreements.map(row => row.id)).is('ends_before', null).throwOnError() : { data: [] },
+    nextScheduleDates(agreements.filter(agreement => agreement.status === 'active').map(agreement => agreement.id), today),
+  ])
+  const definitions = new Map((revisions.data ?? []).map(revision => [revision.agreement_id, definitionFrom(revision.definition)]))
+  const labels = new Map(agreements.map(agreement => [agreement.id, agreement.service_labels?.name]))
+  const serviceIds = jobs.map(job => job.service_label_id).filter((id): id is string => Boolean(id))
+  const { data: namedLabels } = serviceIds.length ? await adminDb().from('service_labels').select('id,name')
+    .in('id', [...new Set(serviceIds)]).throwOnError() : { data: [] }
+  const namesByLabel = new Map((namedLabels ?? []).map(label => [label.id, label.name]))
+  const byVisit = new Map<string, string>()
+  for (let i = 0; i < openJobs.length; i += 100) {
+    const { data } = await adminDb().from('bookings').select('id,job_items(kind,description)')
+      .in('id', openJobs.slice(i, i + 100).map(job => job.id)).throwOnError()
+    for (const visit of data) {
+      const description = visitService(visit.job_items)
+      if (description) byVisit.set(visit.id, description)
+    }
+  }
   const needsPlan = (job: (typeof jobs)[number]) => !job.agreement_id && !job.one_time
-    && Boolean(job.frequency?.trim()) && !/^(one[ -]?time|single|once)$/i.test(job.frequency.trim())
+    && !!job.frequency?.trim() && !/^(one[ -]?time|single|once)$/i.test(job.frequency.trim())
   const upcomingVisits: UpcomingVisit[] = openJobs.map(job => ({
     id: job.id, updatedAt: job.updated_at, status: job.status, date: visitDate(job), time: job.confirmed_time ?? null,
     address: job.address, price: jobPrice(job), inPlan: Boolean(job.agreement_id),
-    joinPlanId: needsPlan(job) ? activePlans.find(plan => plan.property_id === job.property_id)?.id ?? null : null,
+    service: namesByLabel.get(job.service_label_id ?? '') ?? byVisit.get(job.id) ?? labels.get(job.agreement_id ?? '') ?? 'Service visit',
     needsPlan: needsPlan(job),
   }))
-  const nextPlanVisit = (agreementId: string) => openJobs.find(job => job.agreement_id === agreementId)
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date())
 
   const nameParts: string[] = String(customer.name ?? '').trim().split(/\s+/).filter(Boolean)
   const initials = nameParts.map(part => part[0]).filter((_, i) => i === 0 || i === nameParts.length - 1).join('').toUpperCase() || '?'
@@ -73,30 +95,42 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
         {customer.email && <a className="crm-button" href={`mailto:${customer.email}`}><Icon name="mail" size={15} />Email</a>}
       </div>
     </div>
-    <CustomerActions customerId={id} properties={ownProperties.map(property => ({ id: property.id, address: property.address,
-      hasActivePlan: agreements.some(agreement => agreement.property_id === property.id && ['active', 'paused'].includes(agreement.status)),
-      // A recurring visit already booked here (from a lead) can be the plan's first visit instead of a duplicate.
-      openVisits: openJobs.filter(job => job.property_id === property.id && !job.agreement_id)
-        .map(job => ({ id: job.id, date: visitDate(job), price: Number(job.price_per_visit ?? jobPrice(job)), recurring: needsPlan(job) })) }))} />
-    {activePlans.map(agreement => {
-      const next = nextPlanVisit(agreement.id)
-      const nextDate = next ? visitDate(next) : null
-      return <div className="crm-plan-card" key={agreement.id}>
-        <div>
-          <strong>Mowing plan · every {agreement.interval_count === 1 ? '' : `${agreement.interval_count} `}{agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {money(agreement.price_per_visit)}/visit</strong>
-          <span>{addressById.get(agreement.property_id) || 'Property'} · {next
-            ? `next visit ${dateText(nextDate)}${nextDate && nextDate < today ? ' (overdue — mark it done or move it)' : ''}`
-            : 'no visit booked'}</span>
+    <CustomerActions customerId={id} properties={ownProperties.map(property => ({ id: property.id, address: property.address }))} />
+    <section className="crm-panel service-customer-schedules" aria-label="Service schedules">
+      <h2>Service schedules ({agreements.length})</h2>
+      {agreements.length ? agreements.map(agreement => {
+        const next = nextDates.get(agreement.id)
+        const overdue = openJobs.find(job => job.agreement_id === agreement.id && job.status === 'confirmed'
+          && job.confirmed_date && job.confirmed_date < today)
+        const awaitingFirst = agreement.status === 'active' && !agreement.generation_starts_on && !agreement.schedule_review_reason
+        const pendingFirst = awaitingFirst && openJobs.find(job => job.agreement_id === agreement.id
+          && job.occurrence_on === agreement.anchor_on && job.status === 'pending')
+        const description = agreement.service_labels?.name ?? visitService(
+          Array.isArray(agreement.items_template) ? agreement.items_template as { kind?: unknown; description?: unknown }[] : []
+        ) ?? 'Service schedule'
+        return <div className="crm-customer-entry service-customer-row" key={agreement.id} id={`schedule-${agreement.id}`}>
+          <div>
+            <strong>{description} · {money(agreement.price_per_visit)} per visit</strong>
+            <span>{addressById.get(agreement.property_id) ?? 'Property'} · {scheduleLabel(definitions.get(agreement.id) ?? null, agreement)}</span>
+            <span>{agreement.schedule_review_reason ?? (agreement.status === 'paused' ? 'Paused' : agreement.status === 'ended' ? 'Ended'
+              : awaitingFirst ? 'Awaiting first-visit confirmation'
+              : next ? `Next ${dateText(next)}` : overdue ? `Overdue · ${dateText(overdue.confirmed_date)}` : 'No upcoming date')}</span>
+          </div>
+          {pendingFirst && <Link className="crm-button crm-button-sm" href={`/admin/jobs/${pendingFirst.id}`}>Confirm first visit</Link>}
+          {agreement.status !== 'ended' && !awaitingFirst && <div className="work-visit-actions">
+            <Link className="crm-button crm-button-sm" href={serviceEditorHref(id, { schedule: agreement.id })}>
+              {agreement.schedule_review_reason ? 'Fix schedule' : agreement.status === 'paused' ? 'Resume schedule' : 'Edit repeat'}</Link>
+            {agreement.service_label_id && <Link className="crm-button crm-button-sm" href={serviceEditorHref(id, { schedule: agreement.id, extra: true })}>Add extra visit</Link>}
+          </div>}
         </div>
-      </div>
-    })}
-    <UpcomingVisits visits={upcomingVisits} firstName={String(customer.name ?? '').trim().split(/\s+/)[0] || 'the customer'}
-      hasEmail={Boolean(customer.email)} emailConfigured={Boolean(process.env.RESEND_API_KEY)} />
+      }) : <p className="crm-muted">No repeating services yet.</p>}
+    </section>
+    <UpcomingVisits visits={upcomingVisits} nextScheduledOn={[...nextDates.values()].sort()[0]} />
     <div className="crm-customer-sections">
       <section className="crm-panel crm-customer-wide"><h2>Past visits ({pastJobs.length})</h2>
         {pastJobs.length ? pastJobs.map(job => <div className="crm-customer-entry" key={job.id}>
           <div>
-            <strong>{job.address}</strong>
+            <Link href={`/admin/jobs/${job.id}`}>{job.address || "Open visit"}</Link>
             <span>{dateText(job.confirmed_date || job.preferred_date || job.created_at)} · {money(jobPrice(job))} job total
               {job.accepted_quote_snapshot ? ' · Accepted quote preserved' : ''}</span>
             {job.lead_id && <Link href={`/admin/leads/${job.lead_id}`}>Open linked lead →</Link>}
@@ -111,15 +145,6 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
             <span>{visitCount(jobs.filter(job => job.property_id === property.id).length)}{property.measured_at ? ` · Measured ${dateText(property.measured_at)}` : ''}</span>
           </div>
         </div>) : <p className="crm-muted">No property linked yet.</p>}
-      </section>
-      <section className="crm-panel"><h2>Mowing plans ({agreements.length})</h2>
-        {agreements.length ? agreements.map(agreement => <div className="crm-customer-entry" key={agreement.id}>
-          <div>
-            <strong>{addressById.get(agreement.property_id) || 'Property'}</strong>
-            <span>Every {agreement.interval_count} {agreement.interval_unit}{agreement.interval_count === 1 ? '' : 's'} · {agreement.status === 'active' ? `Next ${nextPlanVisit(agreement.id) ? dateText(visitDate(nextPlanVisit(agreement.id)!)) : 'not booked'} · ` : ''}{money(agreement.price_per_visit)} per visit</span>
-          </div>
-          <span className={`admin-badge admin-badge-${agreement.status === 'active' ? 'confirmed' : agreement.status === 'paused' ? 'pending' : 'canceled'}`}>{agreement.status.charAt(0).toUpperCase() + agreement.status.slice(1)}</span>
-        </div>) : <p className="crm-muted">No mowing plan.</p>}
       </section>
       <section className="crm-panel"><h2>Payments ({payments.length + historicalAmounts.length})</h2>
         {payments.length ? payments.map(payment => <div className="crm-customer-entry" key={payment.id}>

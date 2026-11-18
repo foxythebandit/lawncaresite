@@ -42,50 +42,44 @@ with sync_playwright() as p:
     page.locator('input[name=password]').fill('Local-test-password-123!')
     page.get_by_role('button', name='Sign in').click()
     page.wait_for_url('**/admin/leads')
-    page.goto(BASE + '/admin?search=' + marker)
-    try:
-        page.wait_for_load_state('networkidle', timeout=5000)
-    except PlaywrightTimeoutError:
-        pass  # Other local test traffic can keep Next's dev connection active.
-    card = page.locator('.admin-card', has_text=name)
-    card.wait_for(timeout=15000)
-    card.locator('.admin-card-summary').click()
-    card.get_by_role('button', name='Link reviewed identity').click()
+    page.goto(BASE + '/admin/jobs/' + job['id'])
+    page.get_by_role('button', name='More actions', exact=True).click()
+    page.get_by_role('button', name='Link customer and property', exact=True).click()
+    page.get_by_role('button', name='Link reviewed identity').click()
     page.get_by_text('Customer and property linked.').wait_for(timeout=15000)
     linked = db('bookings?id=eq.' + job['id'])[0]
     assert linked['customer_id'] and linked['property_id']
-    card = page.locator('.admin-card', has_text=name)
-    assert card.get_by_role('link', name='Text link').count() == 1
-    card.get_by_role('button', name='Job items and price').click()
-    card.get_by_label('Item 1 description').fill('Lawn care')
-    card.get_by_role('button', name='Add discount').click()
-    card.get_by_label('Item 2 amount').fill('5.00')
-    card.get_by_role('button', name='Save current job price').click()
-    page.get_by_text('Current job price saved. Accepted quote preserved.').wait_for(timeout=15000)
-    assert card.get_by_role('link', name='Text link').count() == 0
+    assert page.get_by_role('link', name='Text link').count() == 1
+    page.get_by_role('button', name='Items and price').click()
+    page.get_by_label('Item 1 description').fill('Lawn care')
+    page.get_by_role('button', name='Add discount').click()
+    page.get_by_label('Item 2 amount').fill('5.00')
+    page.get_by_role('button', name='Save this visit price').click()
+    page.get_by_text('Visit price saved.').wait_for(timeout=15000)
+    assert page.get_by_role('link', name='Text link').count() == 0
     priced = db('bookings?id=eq.' + job['id'])[0]
     assert priced['payment_link'] is None
     assert float(priced['job_total']) == 55 and priced['accepted_quote_snapshot']['original_total'] == 60
-    card = page.locator('.admin-card', has_text=name)
-    card.get_by_role('button', name='Start mowing plan').click()
-    card.get_by_label('Interval count').fill('1')
-    card.locator('section[aria-label="Start recurring agreement"] input[type=date]').fill(next_on)
-    card.get_by_role('button', name='Start plan').click()
-    page.get_by_text('Mowing plan started.').wait_for(timeout=15000)
+    page.get_by_role('button', name='Set schedule').click()
+    page.get_by_label('Repeat every').fill('1')
+    page.get_by_label('Next visit after this one').fill(next_on)
+    page.get_by_role('button', name='Start mowing schedule').click()
+    page.get_by_text('Mowing schedule started.').wait_for(timeout=15000)
     agreement_id = db('bookings?id=eq.' + job['id'])[0]['agreement_id']
     assert agreement_id
-    card = page.locator('.admin-card', has_text=name)
-    card.get_by_role('button', name='Save visit date').click()
+    page.get_by_role('button', name='Confirm first visit', exact=True).click()
+    page.get_by_role('button', name='Confirm visit', exact=True).click()
     page.get_by_text('Visit confirmed.').wait_for(timeout=15000)
-    card = page.locator('.admin-card', has_text=name)
-    card.get_by_role('button', name='Mark complete').click()
-    page.get_by_text('Visit completed.').wait_for(timeout=15000)
+    page.get_by_role('button', name='Mark done', exact=True).click()
+    page.get_by_role('button', name='Save completion', exact=True).click()
+    page.get_by_text('Visit marked done.').wait_for(timeout=15000)
     original = db('bookings?id=eq.' + job['id'])[0]
-    future = db('bookings?agreement_id=eq.' + agreement_id + '&occurrence_on=eq.' + next_on)
+    future = [visit for visit in db('rpc/crm_calendar_entries', 'POST', {'p_from': next_on, 'p_through': next_on})
+              if visit['agreement_id'] == agreement_id]
     assert original['status'] == 'completed' and len(future) == 1
-    card = page.locator('.admin-card', has_text=name).filter(has=page.locator('.admin-badge-completed')).first
-    card.get_by_label('Paid amount').fill('25.00')
-    card.get_by_role('button', name='Record payment').click()
+    page.get_by_role('button', name='Record payment', exact=True).click()
+    page.get_by_label('Paid amount').fill('25.00')
+    page.get_by_role('button', name='Save payment', exact=True).click()
     page.get_by_text('Payment recorded.').wait_for(timeout=15000)
     payments = db('job_payments?booking_id=eq.' + job['id'])
     assert len(payments) == 1 and float(payments[0]['amount']) == 25

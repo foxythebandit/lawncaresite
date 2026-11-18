@@ -20,6 +20,7 @@ const paths = {
   ruler: 'M3 17 17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
   check: 'M5 12l5 5 9-10',
+  plus: 'M12 5v14M5 12h14',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   columns: 'M4 4h4v16H4zM10 4h4v10h-4zM16 4h4v13h-4z',

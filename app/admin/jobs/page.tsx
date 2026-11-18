@@ -1,198 +1,103 @@
-import { getAgreements, getBookings, getCustomers, getJobItems, getJobPayments } from '../actions'
-import BookingCard from '../BookingCard'
-import AdminSearch from '../AdminSearch'
+import Link from 'next/link'
+import { ATTENTION_PAGE_SIZE, austinDay, getCalendarAttention, getCalendarAttentionPage, getCalendarVisits, getVisitSearch } from '@/lib/calendar-data'
+import { ATTENTION, CALENDAR_PATH, VIEWS, calendarContext, calendarHref, calendarRange, dateLabel, shiftCalendar, visitHref, visitStatus, visitTime } from '@/lib/calendar-view'
+import { customerDisplayName } from '@/lib/lead-labels'
+import { formatPhone } from '@/lib/format-phone'
+import { formatMoney } from '@/lib/crm-jobs'
 import AdminMap from '../AdminMap'
+import CalendarAttention from '../CalendarAttention'
 import CalendarView from '../CalendarView'
 import Icon from '../icons'
-import { formatMoneyWhole, jobPrice } from '@/lib/crm-jobs'
-import { latestQuoteBooking } from '@/lib/crm-quote-booking'
-import { signMapUrls } from '../signed-maps'
-import { tracedShapes } from '../leads/TracingMap'
-import { adminDb } from '@/lib/supabase/admin'
 
-export default async function AdminPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ filter?: string; search?: string; view?: string }>
-}) {
-  const { filter = 'all', search = '', view = 'list' } = await searchParams
-  const [all, identities, agreements, allItems, allPayments] = await Promise.all([
-    getBookings(), getCustomers(), getAgreements(), getJobItems(), getJobPayments(),
+export default async function CalendarPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const today = austinDay()
+  const query = await searchParams
+  const context = calendarContext(query, today)
+  const { first, last } = calendarRange(context.view, context.date)
+  const page = context.page ?? 1
+  const attention = context.attention
+  const focus = typeof query.focus === 'string' && /^[a-zA-Z0-9_-]{1,90}$/.test(query.focus) ? query.focus : undefined
+  const returnTo = calendarHref(context, focus)
+  const [visits, attentionPage, search] = await Promise.all([
+    attention || context.search ? [] : getCalendarVisits(first, last, returnTo),
+    attention ? getCalendarAttentionPage(today, attention, page, returnTo) : getCalendarAttention(today, returnTo).then(counts => ({ counts, rows: [] })),
+    context.search && !attention ? getVisitSearch(context.search, page, context.filter, { first, last }, returnTo) : null,
   ])
-  // The map bucket is private (P7): sign each screenshot on the server; unsigned ones show no image.
-  const signedMaps = await signMapUrls(all.map(b => b.map_screenshot_url))
-  // Visits without a saved map image show the lead's tracing instead, like the lead page.
-  const tracedLeadIds = [...new Set(all.filter(b => b.lead_id && !signedMaps.get(b.map_screenshot_url)).map(b => b.lead_id as string))]
-  const { data: tracings } = tracedLeadIds.length ? await adminDb().from('leads').select('id,lawn_tracing').in('id', tracedLeadIds) : { data: [] }
-  const shapesByLead = new Map((tracings ?? []).map(row => [row.id as string, tracedShapes(row.lawn_tracing)]))
-
-  const now = new Date()
-  const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7)
-
-  const q = search.toLowerCase().trim()
-  const searched = q
-    ? all.filter(b =>
-        b.name?.toLowerCase().includes(q) ||
-        b.address?.toLowerCase().includes(q) ||
-        b.phone?.toLowerCase().includes(q) ||
-        b.email?.toLowerCase().includes(q)
-      )
-    : all
-
-  const filtered = searched.filter(b => {
-    if (filter === 'pending')   return b.status === 'pending'
-    if (filter === 'confirmed') return b.status === 'confirmed'
-    if (filter === 'week') {
-      if (!b.preferred_date) return false
-      const d = new Date(b.preferred_date + 'T12:00:00')
-      return d >= now && d <= weekEnd
+  const label = context.view === 'month' ? dateLabel(first, { month: 'long', year: 'numeric' })
+    : first === last ? dateLabel(first, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    : `${dateLabel(first, { month: 'short', day: 'numeric', ...(first.slice(0, 4) !== last.slice(0, 4) && { year: 'numeric' }) })} – ${dateLabel(last, { month: 'short', day: 'numeric', year: 'numeric' })}`
+  const resultsTitle = attention ? ATTENTION[attention] : 'Search results'
+  const rows = attention ? attentionPage.rows : (search?.rows ?? []).map(row => {
+    const requested = row.status === 'pending' || !row.confirmed_date
+    return {
+      booking_id: row.id, agreement_id: null, revision_id: null, cadence_on: null, customer_id: null,
+      name: row.name, address: row.address, phone: row.phone, visit_status: row.status, job_total: row.job_total,
+      service_on: requested ? row.preferred_date : row.confirmed_date,
+      visit_time: requested ? row.preferred_time : row.confirmed_time, reason: null, service: undefined, requested,
     }
-    return true
   })
+  const more = attention ? page * ATTENTION_PAGE_SIZE < attentionPage.counts[attention] : search?.more
+  const visibleVisits = context.filter === 'confirmed' ? visits.filter(visit => visit.visit_status === 'confirmed') : visits
 
-  const pendingCount   = all.filter(b => b.status === 'pending').length
-  const confirmedCount = all.filter(b => b.status === 'confirmed').length
-  const weekCount      = all.filter(b => {
-    if (!b.preferred_date) return false
-    const d = new Date(b.preferred_date + 'T12:00:00')
-    return d >= now && d <= weekEnd
-  }).length
-
-
-  const chicagoParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
-  const chicagoDate = `${chicagoParts.find(p => p.type === 'year')?.value}-${chicagoParts.find(p => p.type === 'month')?.value}-${chicagoParts.find(p => p.type === 'day')?.value}`
-  // Upcoming booked: scheduled visits from today on (past-due ones are not future money).
-  const upcomingBooked = all.filter(b => b.status === 'confirmed' && (b.confirmed_date ?? '') >= chicagoDate).reduce((sum, b) => sum + jobPrice(b), 0)
-
-  // Generated mowing visits keep the lead ID, but only a quote booking carries its outcome.
-  const quotedVisitByLead = new Map<string, string>()
-  for (const leadId of new Set(all.map(b => b.lead_id).filter((id): id is string => !!id))) {
-    const quoted = latestQuoteBooking(all.filter(b => b.lead_id === leadId))
-    if (quoted) quotedVisitByLead.set(leadId, quoted.id)
-  }
-  const visitCounts = new Map<string, number>()
-  for (const b of all) {
-    const key = b.customer_id ?? b.id
-    visitCounts.set(key, (visitCounts.get(key) ?? 0) + 1)
-  }
-
-  const searchSuffix = q ? `&search=${encodeURIComponent(q)}` : ''
-
-  // Upcoming (soonest first, undated requests on top) and Past (newest first), instead of by status.
-  const dateOf = (b: (typeof all)[number]) => (b.confirmed_date ?? b.preferred_date ?? b.occurrence_on ?? null) as string | null
-  const isUpcoming = (b: (typeof all)[number]) => { const d = dateOf(b); return d ? d >= chicagoDate : ['pending', 'confirmed'].includes(b.status) }
-  const groups = [
-    { key: 'upcoming', label: 'Upcoming', rows: filtered.filter(isUpcoming).sort((a, b) => (dateOf(a) ?? '').localeCompare(dateOf(b) ?? '')) },
-    { key: 'past', label: 'Past', rows: filtered.filter(b => !isUpcoming(b)).sort((a, b) => (dateOf(b) ?? b.created_at).localeCompare(dateOf(a) ?? a.created_at)) },
-  ].filter(group => group.rows.length)
-
-  return (
-    <div className="crm-page">
-      <div className="crm-page-heading">
-        <div><h1>Jobs</h1><p className="crm-muted">Every visit, from request to payment.</p></div>
-        <div className="crm-head-actions">
-          <div className="admin-view-toggle" role="navigation" aria-label="Job view">
-            <a href={`/admin/jobs?filter=${filter}${searchSuffix}`} className={`admin-view-btn${view !== 'calendar' ? ' active' : ''}`}><Icon name="list" size={15} />List</a>
-            <a href={`/admin/jobs?view=calendar`} className={`admin-view-btn${view === 'calendar' ? ' active' : ''}`}><Icon name="calendar" size={15} />Calendar</a>
-          </div>
-        </div>
-      </div>
-
-      <div className="admin-stats">
-        <div className="admin-stat">
-          <span className="admin-stat-val">{pendingCount}</span>
-          <span className="admin-stat-label">To schedule</span>
-        </div>
-        <div className="admin-stat">
-          <span className="admin-stat-val">{confirmedCount}</span>
-          <span className="admin-stat-label">Scheduled</span>
-        </div>
-        <a href="/admin/week" className="admin-stat admin-stat-link">
-          <span className="admin-stat-val">{weekCount}</span>
-          <span className="admin-stat-label">This week <Icon name="arrowRight" size={14} /></span>
-        </a>
-        <a href="/admin/revenue" className="admin-stat admin-stat-link">
-          <span className="admin-stat-val">{formatMoneyWhole(upcomingBooked)}</span>
-          <span className="admin-stat-label">Upcoming booked <Icon name="arrowRight" size={14} /></span>
-        </a>
-      </div>
-
-      {view !== 'calendar' && <div className="admin-toolbar">
-        <div className="admin-filters" role="navigation" aria-label="Job filters">
-          {[
-            { key: 'all',       label: 'All'       },
-            { key: 'pending',   label: 'To schedule' },
-            { key: 'confirmed', label: 'Scheduled' },
-            { key: 'week',      label: 'This week' },
-          ].map(f => (
-            <a key={f.key} href={`/admin/jobs?filter=${f.key}${searchSuffix}`} className={`admin-filter-btn ${filter === f.key ? 'active' : ''}`}>
-              {f.label}
-            </a>
-          ))}
-        </div>
-        <div className="admin-toolbar-right">
-          <label className="admin-search"><Icon name="search" size={15} /><AdminSearch defaultValue={search} filter={filter} /></label>
-        </div>
-      </div>}
-
-      {view === 'calendar' ? (
-        <CalendarView bookings={all.map(b => ({
-          id: b.id,
-          name: b.name,
-          address: b.address,
-          confirmed_date: b.confirmed_date ?? null,
-          preferred_date: b.preferred_date ?? null,
-          confirmed_time: b.confirmed_time ?? null,
-          status: b.status,
-          price_per_visit: jobPrice(b),
-          customer_id: b.customer_id ?? null,
-          phone: b.phone,
-        }))} />
-      ) : (
-        <>
-          <div className="admin-list">
-            {filtered.length === 0 ? (
-              <div className="admin-empty">
-                {q ? `No bookings matching "${search}".` : 'No bookings here yet.'}
-              </div>
-            ) : (
-              groups.map(group => <section key={group.key} className="admin-list-group" aria-label={group.label}>
-                <h2 className="admin-list-group-head">{group.label} <span>{group.rows.length}</span></h2>
-                {group.rows.map(b => (
-                <BookingCard key={b.id} shapes={(b.lead_id && shapesByLead.get(b.lead_id)) || []} booking={{ ...b, map_screenshot_url: signedMaps.get(b.map_screenshot_url) ?? null } as any}
-                  emailConfigured={Boolean(process.env.RESEND_API_KEY)}
-                  historyCount={visitCounts.get(b.customer_id ?? b.id) ?? 1}
-                  quotedVisit={!!b.lead_id && quotedVisitByLead.get(b.lead_id) === b.id}
-                  customers={identities.customers} properties={identities.properties}
-                  agreement={agreements.find(a => a.id === b.agreement_id) as any}
-                  customerPlan={(!b.agreement_id && b.customer_id && agreements.find(a => a.status === 'active'
-                    && a.customer_id === b.customer_id && a.property_id === b.property_id)) as any || null}
-                  futureJobIds={all.filter(row => row.agreement_id === b.agreement_id
-                    && Boolean(b.agreement_id) && ['pending','confirmed'].includes(row.status)
-                    && (!((row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) as string | null)
-                      || (row.confirmed_date ?? row.preferred_date ?? row.occurrence_on) >= chicagoDate))
-                    .map(row => row.id).sort()}
-                  items={allItems.filter(item => item.booking_id === b.id).map(item => ({
-                    kind: item.kind as 'service' | 'discount', description: item.description,
-                    amount: String(item.amount),
-                  }))}
-                  payments={allPayments.filter(payment => payment.booking_id === b.id)} />
-                ))}
-              </section>)
-            )}
-          </div>
-
-          <AdminMap bookings={all.map(b => ({
-            id: b.id,
-            name: b.name,
-            address: b.address,
-            status: b.status,
-            price_per_visit: jobPrice(b),
-            confirmed_date: b.confirmed_date ?? null,
-            confirmed_time: b.confirmed_time ?? null,
-          }))} />
-        </>
-      )}
+  return <div className="crm-page work-calendar-page">
+    <div className="crm-page-heading">
+      <div><h1>Calendar</h1><p className="crm-muted">Schedule and manage service visits.</p></div>
+      <Link className="crm-button" href="/admin/route"><Icon name="navigation" size={15} />Today’s route</Link>
     </div>
-  )
+    <CalendarAttention counts={attentionPage.counts} context={context} />
+    <section className="work-cal-panel" aria-label="Service calendar">
+      <div className="work-cal-toolbar">
+        <div className="work-cal-navigation">
+          <Link className="crm-button" href={calendarHref({ ...context, date: today, page: undefined })}>Today</Link>
+          <Link className="crm-button work-cal-arrow" aria-label={`Previous ${context.view}`} href={calendarHref({ ...context, date: shiftCalendar(context.view, context.date, -1), page: undefined })}><Icon name="chevronLeft" size={17} /></Link>
+          <Link className="crm-button work-cal-arrow" aria-label={`Next ${context.view}`} href={calendarHref({ ...context, date: shiftCalendar(context.view, context.date, 1), page: undefined })}><Icon name="chevronRight" size={17} /></Link>
+        </div>
+        <h2>{label}</h2>
+        <div role="navigation" className="admin-view-toggle" aria-label="Calendar view">
+          {VIEWS.map(view => <Link key={view} href={calendarHref({ ...context, view, page: undefined })}
+            className={`admin-view-btn${context.view === view ? ' active' : ''}`} aria-current={context.view === view ? 'page' : undefined}>
+            {view[0].toUpperCase() + view.slice(1)}
+          </Link>)}
+        </div>
+      </div>
+      <form className="work-cal-search" action={CALENDAR_PATH}>
+        <input type="hidden" name="view" value={context.view} /><input type="hidden" name="date" value={context.date} />
+        {context.filter && <input type="hidden" name="filter" value={context.filter} />}
+        <label className="admin-search"><Icon name="search" size={16} />
+          <input className="admin-search-input" type="search" name="search" aria-label="Search visits" placeholder="Search visits…" key={context.search} defaultValue={context.search} maxLength={160} />
+        </label>
+        <button type="submit" className="crm-button">Search</button>
+        {(context.search || attention || context.filter) && <Link href={calendarHref({ view: context.view, date: context.date, search: '' })} className="crm-button crm-button-ghost">Clear</Link>}
+        {visibleVisits.some(visit => visit.booking_id && visit.address) && <AdminMap key={first + last}
+          bookings={visibleVisits.filter(visit => visit.booking_id && visit.address).map(visit => ({
+            id: visit.booking_id!, name: customerDisplayName(visit), address: visit.address, status: visit.visit_status,
+            price_per_visit: visit.job_total, confirmed_date: visit.service_on, confirmed_time: visit.visit_time,
+          }))} />}
+      </form>
+      {attention || search ? <section className="work-cal-results" aria-label={resultsTitle}>
+        <h3>{resultsTitle}</h3>
+        {!rows.length && <p className="crm-muted">{attention ? 'Nothing here right now.' : `No visits match “${context.search}”.`}</p>}
+        {rows.map(row => {
+          const name = customerDisplayName(row)
+          const when = row.service_on ? dateLabel(row.service_on, { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date set'
+          const href = row.booking_id || row.revision_id ? visitHref(row, calendarHref(context))
+            : `/admin/customers/${row.customer_id}#schedule-${row.agreement_id}`
+          return <Link key={row.booking_id ?? `${row.agreement_id}-${row.cadence_on}`} className="work-cal-result" prefetch={false} href={href}>
+            <span><strong>{name}</strong>
+              <small>{[row.address !== name ? row.address : null, row.phone ? formatPhone(row.phone) : null].filter(Boolean).join(' · ')}</small>
+              {row.reason && <small>{row.reason}</small>}</span>
+            <span><strong>{attention === 'needs_scheduling' ? row.service ?? 'Service not specified'
+              : row.reason ? 'Review schedule' : visitStatus(row.visit_status ?? '', row.requested ? null : row.service_on, today)}</strong>
+              {!row.reason && <small>{(row.visit_status === 'pending' || row.requested) && row.service_on ? 'Requested ' : ''}{when}{row.visit_time ? ` · ${visitTime(row.visit_time)}` : ''}{row.job_total != null ? ` · ${formatMoney(row.job_total)}` : ''}</small>}</span>
+            <Icon name="chevronRight" size={16} />
+          </Link>
+        })}
+        {(page > 1 || more) && <div role="navigation" className="work-cal-pagination" aria-label={`${resultsTitle} pages`}>
+          {page > 1 && <Link className="crm-button" href={calendarHref({ ...context, page: page - 1 })}>Previous page</Link>}
+          {more && <Link className="crm-button" href={calendarHref({ ...context, page: page + 1 })}>Next page</Link>}
+        </div>}
+      </section> : <CalendarView key={`${context.view}:${first}`} context={context} today={today} visits={visibleVisits} focus={focus} />}
+    </section>
+
+  </div>
 }
