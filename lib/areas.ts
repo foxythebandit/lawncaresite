@@ -1,4 +1,4 @@
-// Service-area pages, shared by /areas/[area], the sitemap, the footer and the business schema.
+// lib-ok: Service-area data is shared by /areas/[area], the sitemap, the footer and the business schema.
 export interface AreaData {
   name: string
   zips: string[]
