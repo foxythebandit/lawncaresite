@@ -1,4 +1,4 @@
-// Canonical site facts shared by metadata and structured data.
+// lib-ok: Canonical site facts and the JSON-LD helper are shared by every public page's metadata and structured data.
 export const SITE_URL = 'https://quietgreen.co'
 export const BUSINESS_ID = `${SITE_URL}/#business`
 export const GOOGLE_MAPS_URL = 'https://www.google.com/maps?cid=10749444056015936389'
