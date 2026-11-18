@@ -14,6 +14,7 @@ BASE = os.environ.get('QG_SEO_BASE', 'http://localhost:3101').rstrip('/')
 PUBLIC = 'https://quietgreen.co'
 AREAS = ['south-austin', 'east-austin', 'cedar-park', 'round-rock', 'pflugerville', 'north-austin']
 SERVICES = ['gutter-cleaning', 'leaf-cleanup', 'garden-beds-mulch']
+GUIDES = ['when-to-start-mowing-austin', 'pre-emergent-timing-austin', 'st-augustine-spring-care-austin']
 assert urllib.parse.urlparse(BASE).hostname in ('localhost', '127.0.0.1', 'quietgreen.co', 'www.quietgreen.co')
 
 
@@ -92,6 +93,20 @@ for slug in AREAS:
 business = next(s for s in home.schemas if s.get('@type') == 'LocalBusiness')
 assert 'geo' not in business and 'openingHoursSpecification' not in business
 assert business['telephone'] == '+16823528260'
+guides_index = Page(fetch('/guides'))
+assert guides_index.canonicals == [PUBLIC + '/guides'], guides_index.canonicals
+assert guides_index.h1_count == 1
+for slug in GUIDES:
+    assert '/guides/' + slug in guides_index.links, slug
+    page = Page(fetch('/guides/' + slug))
+    assert page.canonicals == [PUBLIC + '/guides/' + slug], page.canonicals
+    assert page.h1_count == 1
+    assert page.meta['og:type'] == 'article'
+    assert page.meta['og:image'].startswith(PUBLIC + '/guides/' + slug + '/opengraph-image')
+    graph = [node['@type'] for s in page.schemas for node in s.get('@graph', [])]
+    assert {'Article', 'BreadcrumbList'} <= set(graph), graph
+    assert '/#map-quote' in page.links
+assert '/guides' in home.links, 'footer links to the guides'
 for slug in SERVICES:
     page = Page(fetch('/services/' + slug))
     assert page.canonicals == [PUBLIC + '/services/' + slug], page.canonicals
@@ -116,7 +131,11 @@ ns = {'s': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
 urls = [el.text for el in sitemap.findall('s:url/s:loc', ns)]
 assert sorted(urls) == sorted([PUBLIC, PUBLIC + '/privacy', PUBLIC + '/terms']
                            + [PUBLIC + '/areas/' + slug for slug in AREAS]
-                           + [PUBLIC + '/services/' + slug for slug in SERVICES])
-assert not sitemap.findall('s:url/s:lastmod', ns), 'Do not label every deploy as a content update.'
+                           + [PUBLIC + '/services/' + slug for slug in SERVICES]
+                           + [PUBLIC + '/guides'] + [PUBLIC + '/guides/' + slug for slug in GUIDES])
+# Only guides carry lastmod, and it's their hand-set content date, never the deploy time.
+for url in sitemap.findall('s:url', ns):
+    if url.find('s:lastmod', ns) is not None:
+        assert '/guides/' in url.find('s:loc', ns).text, 'Do not label every deploy as a content update.'
 assert PUBLIC + '/sitemap.xml' in robots_text
-print('PASS: homepage/6 area pages/3 service pages, crawlable area links, matching canonicals/OG metadata, honest schema, login noindex visible to crawlers, public sitemap, mowing-first order.')
+print('PASS: homepage/6 area pages/3 service pages/3 guides, crawlable area links, matching canonicals/OG metadata, honest schema, login noindex visible to crawlers, public sitemap, mowing-first order.')
