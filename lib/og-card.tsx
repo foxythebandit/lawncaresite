@@ -1,4 +1,4 @@
-// lib-ok: One share-image card is shared by the home, area and service opengraph-image routes.
+// lib-ok: One share-image card is shared by the home, area, service and guide opengraph-image routes.
 import { ImageResponse } from 'next/og'
 
 export const OG_SIZE = { width: 1200, height: 630 }

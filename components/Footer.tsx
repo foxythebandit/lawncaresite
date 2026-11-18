@@ -14,6 +14,7 @@ export default function Footer() {
         <Link href="/#how">Services</Link>
         <Link href="/#map-quote">Pricing</Link>
         <a href="#service-areas">Service areas</a>
+        <Link href="/guides">Lawn guides</Link>
         <a href="mailto:hello@quietgreen.co">Contact</a>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
