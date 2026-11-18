@@ -6,6 +6,7 @@
 import { CALL_OUTCOME, CLOSED_REASON_LABEL, COLUMN_LABEL, FREQUENCY_LABEL, QUOTED_REASON_LABEL, isCallOutcome,
   isClosedReason, isColumn, isQuotedReason, normalizeFrequency, type BoardColumn, type Frequency } from './lead-board'
 import { customerDisplayName, leadSource, readableAnswers, serviceLabels } from './lead-labels'
+import { leadPromo, type LeadPromo } from './lead-promos'
 import { FIRST_VISIT_DISCOUNT_PCT, firstVisitCents, planDiscountPct, quoteOffer } from './quote-offer'
 import { quoteTotalCents, type QuoteDraft } from './quote-draft'
 
@@ -63,6 +64,8 @@ export type LeadSummary = {
   services: string[]; frequencyLabel: string | null
   wanted: { date: string | null; window: string | null; label: string | null }
   source: { channel: string; detail: string | null; conviflo: boolean }
+  /** Ad offer they were shown (lib/lead-promos.ts); staff apply it by hand when quoting. */
+  promo: LeadPromo | null
   tracedSqFt: number | null
   notes: string | null
   answers: { label: string; value: string }[]
@@ -253,6 +256,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   const freq = price?.frequency ?? normalizeFrequency(live?.frequency) ?? normalizeFrequency(lead.frequency)
   const want = wanted(lead, live)
   const source = leadSource(lead)
+  const promo = leadPromo(lead)
   const answers = asObject(lead.answers) ?? {}
   const notes = [live?.customer_notes, answers.notes, answers.project_description].find((v): v is string => typeof v === 'string' && !!v.trim())?.trim() ?? null
   const city = cityOf(lead.address)
@@ -276,6 +280,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   else if (answers.address_needs_review === true) chips.push({ key: 'address', label: 'Check address', tone: 'warn' })
   if (options.addressChanged) chips.push({ key: 'address_changed', label: 'Address changed', tone: 'warn' })
   if (answers.service_unmapped === true) chips.push({ key: 'service_unclear', label: 'Service unclear', tone: 'warn' })
+  if (promo) chips.push({ key: 'promo', label: promo.label, tone: 'accent' })
 
   const want1 = services.length ? services.join(', ').toLowerCase() : null
   let headline: string, headlineTone: ChipTone = 'neutral'
@@ -319,7 +324,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
     amount: price ? money(price.cents) : null,
     unit: price ? `${price.recurring ? '/visit' : 'total'} · ${price.source === 'website' ? 'website' : price.source === 'phone' ? 'phone' : 'emailed'}` : null,
     status: cardStatus,
-    detail: [services.join(', ') || null, city ?? (lead.address ? null : 'No address')].filter(Boolean).join(' · '),
+    detail: [services.join(', ') || null, city ?? (lead.address ? null : 'No address'), promo?.short ?? null].filter(Boolean).join(' · '),
   }
   const sourceShort = source.detail && source.channel === 'Facebook ad' ? `${source.channel} · ${source.detail.split(' · ')[0]}` : source.channel
   const meta = [services[0] ?? null, city ?? (lead.address ? null : 'no address yet'), source.conviflo && source.channel !== 'ConviFlo form' ? 'ConviFlo' : null, sourceShort]
@@ -328,7 +333,7 @@ export function summarizeLead(lead: SummaryLead, bookings: SummaryBooking[] = []
   return {
     column, columnLabel: COLUMN_LABEL[column], booking, bookingLabel: BOOKING_LABEL[booking], price, chips, headline, headlineTone, meta, card,
     name: customerDisplayName(lead), phoneDisplay: phoneDisplay(lead.phone), city, services,
-    frequencyLabel: freq ? FREQUENCY_LABEL[freq] : null, wanted: want, source, tracedSqFt: traced(lead), notes,
+    frequencyLabel: freq ? FREQUENCY_LABEL[freq] : null, wanted: want, source, promo, tracedSqFt: traced(lead), notes,
     answers: readableAnswers(lead.answers), link: options.baseUrl && lead.short_code ? leadLink(options.baseUrl, lead.short_code) : null,
   }
 }
@@ -384,6 +389,7 @@ export function alertText(lead: SummaryLead, bookings: SummaryBooking[], baseUrl
     `${test}NEW LEAD · ${s.name}`,
     priceLine,
     request,
+    s.promo ? `Promo: ${s.promo.label}` : null,
     ...answers,
     s.tracedSqFt ? `${sqFt(s.tracedSqFt)}${Array.isArray(lead.lawn_tracing) && lead.lawn_tracing.length ? ' traced' : ''}` : null,
     place,
