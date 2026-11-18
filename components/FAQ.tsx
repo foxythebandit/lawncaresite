@@ -1,3 +1,5 @@
+import { jsonLd } from '@/lib/site'
+
 const faqs = [
   {
     q: "How do I pay?",
@@ -45,9 +47,20 @@ const faqs = [
   },
 ]
 
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map(item => ({
+    '@type': 'Question',
+    name: item.q,
+    acceptedAnswer: { '@type': 'Answer', text: item.a },
+  })),
+}
+
 export default function FAQ() {
   return (
     <section className="faq" id="faq">
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(faqSchema)} />
       <div className="faq-grid">
         <div className="faq-heading-col">
           <div className="section-label reveal">FAQ</div>

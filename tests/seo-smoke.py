@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 BASE = os.environ.get('QG_SEO_BASE', 'http://localhost:3101').rstrip('/')
 PUBLIC = 'https://quietgreen.co'
 AREAS = ['south-austin', 'east-austin', 'cedar-park', 'round-rock', 'pflugerville', 'north-austin']
+SERVICES = ['gutter-cleaning', 'leaf-cleanup', 'garden-beds-mulch']
 assert urllib.parse.urlparse(BASE).hostname in ('localhost', '127.0.0.1', 'quietgreen.co', 'www.quietgreen.co')
 
 
@@ -83,10 +84,23 @@ for slug in AREAS:
     assert area.meta['og:title'] == area.title
     assert area.h1_count == 1
     assert 'noindex' not in area.meta.get('robots', '')
+    assert area.meta['og:image'].startswith(PUBLIC + '/areas/' + slug + '/opengraph-image')
+    graph = [node['@type'] for s in area.schemas for node in s.get('@graph', [])]
+    assert {'Service', 'BreadcrumbList', 'FAQPage'} <= set(graph), graph
+    assert any('/areas/' in link and slug not in link for link in area.links), 'sibling area links'
 
 business = next(s for s in home.schemas if s.get('@type') == 'LocalBusiness')
 assert 'geo' not in business and 'openingHoursSpecification' not in business
 assert business['telephone'] == '+16823528260'
+for slug in SERVICES:
+    page = Page(fetch('/services/' + slug))
+    assert page.canonicals == [PUBLIC + '/services/' + slug], page.canonicals
+    assert page.meta['og:image'].startswith(PUBLIC + '/services/' + slug + '/opengraph-image')
+    graph = [node['@type'] for s in page.schemas for node in s.get('@graph', [])]
+    assert {'Service', 'BreadcrumbList', 'FAQPage'} <= set(graph), graph
+assert home.meta['og:image'].startswith(PUBLIC + '/opengraph-image')
+assert home.meta['twitter:card'] == 'summary_large_image'
+assert any(s.get('@type') == 'FAQPage' for s in home.schemas)
 
 robots_text = fetch('/robots.txt')
 robots = urllib.robotparser.RobotFileParser()
@@ -100,7 +114,9 @@ assert robots.can_fetch('Googlebot', PUBLIC + '/')
 sitemap = ET.fromstring(fetch('/sitemap.xml'))
 ns = {'s': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
 urls = [el.text for el in sitemap.findall('s:url/s:loc', ns)]
-assert sorted(urls) == sorted([PUBLIC] + [PUBLIC + '/areas/' + slug for slug in AREAS])
+assert sorted(urls) == sorted([PUBLIC, PUBLIC + '/privacy', PUBLIC + '/terms']
+                           + [PUBLIC + '/areas/' + slug for slug in AREAS]
+                           + [PUBLIC + '/services/' + slug for slug in SERVICES])
 assert not sitemap.findall('s:url/s:lastmod', ns), 'Do not label every deploy as a content update.'
 assert PUBLIC + '/sitemap.xml' in robots_text
-print('PASS: homepage/6 area pages, crawlable area links, matching canonicals/OG metadata, honest schema, login noindex visible to crawlers, public sitemap, mowing-first order.')
+print('PASS: homepage/6 area pages/3 service pages, crawlable area links, matching canonicals/OG metadata, honest schema, login noindex visible to crawlers, public sitemap, mowing-first order.')
