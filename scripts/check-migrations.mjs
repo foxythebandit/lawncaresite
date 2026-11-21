@@ -89,11 +89,24 @@ function squawkHits(files) {
   return hits;
 }
 
-function grepHits(sql) {
-  const code = sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*$/gm, '');
+// A function body runs later, when the app calls it, not when the migration runs. 2026-11-12: a
+// migration that only added tables and their "remove" functions was flagged as deleting data.
+// A function that deletes still counts if this file calls it (a backfill).
+const BODY = /\bcreate\s+(?:or\s+replace\s+)?(?:function|procedure)\s+([\w."]+)[\s\S]*?(\$\w*\$)[\s\S]*?\2/gi;
+const DELETES = /\b(truncate|delete\s+from)\b/i;
+
+export function grepHits(sql) {
+  const later = [];
+  const code = sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*$/gm, '').replace(BODY, (body, name) => {
+    if (DELETES.test(body)) later.push(name.replace(/"/g, '').split('.').pop());
+    return '';
+  });
   const hits = [];
   if (/\btruncate\b/i.test(code)) hits.push('truncate');
   if (/\bdelete\s+from\b/i.test(code)) hits.push('delete from');
+  for (const name of later) {
+    if (new RegExp(`\\b(select|perform|call)\\b[^;]*\\b${name}\\s*\\(`, 'i').test(code)) hits.push(`calls ${name}, which deletes`);
+  }
   return hits;
 }
 
@@ -133,4 +146,4 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
